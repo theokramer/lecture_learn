@@ -1,5 +1,9 @@
 -- Supabase Database Schema for React Learning Notes App
 -- Run this in your Supabase SQL Editor to create the necessary tables
+--
+-- IMPORTANT: After running this schema, also run:
+-- 1. storage-policies.sql (for storage bucket RLS policies)
+-- 2. setup-study-content-table.sql (for study_content table with feynman_topics)
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

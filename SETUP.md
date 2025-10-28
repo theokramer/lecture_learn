@@ -18,14 +18,16 @@ This document provides step-by-step instructions to set up the React Learning No
 
 ## Step 2: Set Up Storage
 
-1. In Supabase, go to Storage
-2. Create a new bucket called `documents`
-3. Make it private (not public)
-4. Set up the following policies:
-   - INSERT: `auth.uid() = user_id`
-   - SELECT: `auth.uid() = user_id`
-   - UPDATE: `auth.uid() = user_id`
-   - DELETE: `auth.uid() = user_id`
+1. In Supabase, go to **Storage**
+2. Click **"New bucket"**
+3. Name: **`documents`**
+4. Public bucket: **OFF** (make it private)
+5. Click **"Create bucket"**
+6. Go to **SQL Editor** in Supabase
+7. Copy and paste the contents of `storage-policies.sql`
+8. Run the SQL script to create RLS policies for storage
+
+**Alternative:** The storage policies SQL script creates policies that ensure users can only access files in their own user folders (based on the folder name structure).
 
 ## Step 3: Get API Keys
 

@@ -411,7 +411,7 @@ async function generateAllStudyContent(noteId: string, content: string) {
       .from('study_content')
       .select('id')
       .eq('note_id', noteId)
-      .single();
+      .maybeSingle();
 
     const contentData: any = {};
     
@@ -497,7 +497,7 @@ export const studyContentService = {
       .from('study_content')
       .select('id')
       .eq('note_id', noteId)
-      .single();
+      .maybeSingle();
 
     const contentData: any = {};
     
