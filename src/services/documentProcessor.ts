@@ -54,7 +54,8 @@ export const documentProcessor = {
         
         video.onloadedmetadata = async () => {
           try {
-            const stream = video.captureStream();
+            // @ts-ignore - captureStream may not be available in all TypeScript types
+            const stream = (video as any).captureStream();
             const mediaStreamDestination = audioContext.createMediaStreamDestination();
             const sourceNode = audioContext.createMediaElementSource(video);
             

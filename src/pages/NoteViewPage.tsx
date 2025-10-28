@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
 import { NoteSidebar } from '../components/note/NoteSidebar';
 import { ContentView } from '../components/note/ContentView';

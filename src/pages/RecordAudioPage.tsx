@@ -3,12 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { IoStop, IoMic, IoArrowBack } from 'react-icons/io5';
 import { useAppData } from '../context/AppDataContext';
-import { storageService } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
 
 export const RecordAudioPage: React.FC = () => {
   const navigate = useNavigate();
-  const { createNote } = useAppData();
+  const { /* createNote */ } = useAppData();
   const { user } = useAuth();
   const [isRecording, setIsRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);

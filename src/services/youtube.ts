@@ -2,7 +2,7 @@
 // This package requires server-side implementation
 
 export const youtubeService = {
-  async getTranscript(videoUrl: string): Promise<string> {
+  async getTranscript(_videoUrl: string): Promise<string> {
     throw new Error('YouTube transcript feature is temporarily disabled. Please use other input methods.');
   },
 
@@ -22,7 +22,7 @@ export const youtubeService = {
     return null;
   },
 
-  async getTranscriptWithFallback(videoUrl: string): Promise<string> {
+  async getTranscriptWithFallback(_videoUrl: string): Promise<string> {
     throw new Error('YouTube transcript feature is temporarily disabled. Please use other input methods.');
   },
 };

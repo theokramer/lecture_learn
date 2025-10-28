@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 import { IoMic, IoLink, IoCloudUpload } from 'react-icons/io5';
 import { HiDocumentText } from 'react-icons/hi2';
 import { Modal } from '../components/shared/Modal';
-import { youtubeService } from '../services/youtube';
 
 export const NoteCreationPage: React.FC = () => {
   const navigate = useNavigate();

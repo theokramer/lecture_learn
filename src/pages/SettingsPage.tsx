@@ -5,13 +5,13 @@ import { useSettings } from '../context/SettingsContext';
 import { Sidebar } from '../components/home/Sidebar';
 import { Button } from '../components/shared/Button';
 import { HiUser, HiKey, HiMoon, HiSun, HiAcademicCap } from 'react-icons/hi2';
-import { HiOutlineMail, HiLogout } from 'react-icons/hi';
+import { HiLogout } from 'react-icons/hi';
 
 export const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { preferences, updatePreferences } = useSettings();
-  const [darkMode, setDarkMode] = useState(true);
+  const [darkMode] = useState(true);
   const [localPreferences, setLocalPreferences] = useState(preferences);
   const [showSaveButton, setShowSaveButton] = useState(false);
 

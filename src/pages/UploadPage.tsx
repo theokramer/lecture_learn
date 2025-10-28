@@ -1,6 +1,5 @@
 import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { IoCloudUpload, IoClose, IoArrowBack } from 'react-icons/io5';
 import { HiDocument } from 'react-icons/hi2';
 import { documentProcessor } from '../services/documentProcessor';
