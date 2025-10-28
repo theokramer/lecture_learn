@@ -1,6 +1,7 @@
 export interface Note {
   id: string;
   title: string;
+  content: string;
   createdAt: Date;
   documents: Document[];
   folderId: string | null;
@@ -30,7 +31,13 @@ export interface User {
   name: string;
 }
 
-export type StudyMode = 'summary' | 'feynman' | 'flashcards' | 'quiz' | 'exercises';
+export interface UserPreferences {
+  flashcardsCount: number;
+  quizCount: number;
+  exercisesCount: number;
+}
+
+export type StudyMode = 'summary' | 'transcript' | 'feynman' | 'flashcards' | 'quiz' | 'exercises' | 'documents';
 
 export interface ChatMessage {
   id: string;

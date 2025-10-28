@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { User } from '../types';
+import { supabase, userService } from '../services/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -8,40 +9,101 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   signUp: (email: string, password: string, name: string) => Promise<boolean>;
+  loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Check for existing session
+    const checkSession = async () => {
+      const currentUser = await userService.getCurrentUser();
+      if (currentUser) {
+        setUser({
+          id: currentUser.id,
+          email: currentUser.email || '',
+          name: currentUser.user_metadata?.name || currentUser.email?.split('@')[0] || 'User',
+        });
+      }
+      setLoading(false);
+    };
+
+    checkSession();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email || '',
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+        });
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    // Mock authentication
-    if (email && password) {
-      setUser({
-        id: '1',
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
-        name: email.split('@')[0],
+        password,
       });
+
+      if (error) throw error;
+      if (!data.user) return false;
+
+      setUser({
+        id: data.user.id,
+        email: data.user.email || '',
+        name: data.user.user_metadata?.name || email.split('@')[0],
+      });
+
       return true;
+    } catch (error) {
+      console.error('Login error:', error);
+      return false;
     }
-    return false;
   };
 
   const signUp = async (email: string, password: string, name: string): Promise<boolean> => {
-    // Mock sign up
-    if (email && password && name) {
-      setUser({
-        id: '1',
+    try {
+      const { data, error } = await supabase.auth.signUp({
         email,
+        password,
+        options: {
+          data: {
+            name,
+          },
+        },
+      });
+
+      if (error) throw error;
+      if (!data.user) return false;
+
+      setUser({
+        id: data.user.id,
+        email: data.user.email || '',
         name,
       });
+
       return true;
+    } catch (error) {
+      console.error('Sign up error:', error);
+      return false;
     }
-    return false;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await userService.signOut();
     setUser(null);
   };
 
@@ -53,6 +115,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         login,
         logout,
         signUp,
+        loading,
       }}
     >
       {children}

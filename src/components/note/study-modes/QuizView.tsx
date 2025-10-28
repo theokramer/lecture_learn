@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { HiPlus, HiPencil, HiTrash, HiCheck } from 'react-icons/hi2';
+import { openaiService } from '../../../services/openai';
+import { studyContentService } from '../../../services/supabase';
+import { useAppData } from '../../../context/AppDataContext';
+import { useSettings } from '../../../context/SettingsContext';
 
 interface Question {
   id: string;
@@ -18,13 +22,101 @@ interface QuizResult {
   answers: { questionId: string; isCorrect: boolean }[];
 }
 
-export const QuizView: React.FC = () => {
+interface QuizViewProps {
+  noteContent: string;
+}
+
+export const QuizView: React.FC<QuizViewProps> = ({ noteContent }) => {
+  const { selectedNoteId } = useAppData();
+  const { getPreference } = useSettings();
   const [view, setView] = useState<View>('management');
-  const [questions, setQuestions] = useState<Question[]>([
-    { id: '1', question: 'What does JSX stand for?', options: ['JavaScript XML', 'JavaScript Extension', 'JSON Extension', 'JavaScript Syntax'], correct: 0 },
-    { id: '2', question: 'Which hook lets you manage state in functional components?', options: ['useEffect', 'useState', 'useContext', 'useReducer'], correct: 1 },
-    { id: '3', question: 'What is the virtual DOM?', options: ['A real DOM implementation', 'A JavaScript representation of the DOM', 'A database', 'A server'], correct: 1 },
-  ]);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const isInitialLoad = React.useRef(true);
+
+  // Load saved quiz questions from Supabase
+  useEffect(() => {
+    const loadSavedQuiz = async () => {
+      if (!selectedNoteId) return;
+      
+      try {
+        const studyContent = await studyContentService.getStudyContent(selectedNoteId);
+        
+        if (studyContent.quizQuestions && studyContent.quizQuestions.length > 0) {
+          setQuestions(studyContent.quizQuestions);
+        } else if (noteContent) {
+          // Only generate if no saved questions and note content exists
+          generateQuiz();
+        }
+      } catch (err) {
+        console.error('Error loading saved quiz:', err);
+        // Still try to generate if there's an error loading
+        if (noteContent) {
+          generateQuiz();
+        }
+      } finally {
+        setIsLoading(false);
+        isInitialLoad.current = false;
+      }
+    };
+
+    loadSavedQuiz();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNoteId]);
+
+  // Save questions to Supabase whenever they change
+  const saveQuestions = useCallback(async (questionsToSave: Question[]) => {
+    if (!selectedNoteId) return;
+    
+    try {
+      await studyContentService.saveStudyContent(selectedNoteId, {
+        quizQuestions: questionsToSave,
+      });
+    } catch (err) {
+      console.error('Error saving quiz questions:', err);
+    }
+  }, [selectedNoteId]);
+
+  // Save whenever questions array changes (but not during initial load)
+  // Note: We explicitly save after generation, so this mainly handles user edits
+  useEffect(() => {
+    if (!isInitialLoad.current && !isGenerating && questions.length > 0) {
+      saveQuestions(questions);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions]);
+
+  const generateQuiz = async () => {
+    if (!noteContent.trim()) return;
+    
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const count = getPreference('quizCount');
+      const generated = await openaiService.generateQuiz(noteContent, count);
+      const newQuestions = generated.map((q, idx) => ({
+        id: `gen-${idx}`,
+        question: q.question,
+        options: q.options,
+        correct: q.correctAnswer,
+      }));
+      setQuestions(newQuestions);
+      
+      // Explicitly save after generation
+      if (selectedNoteId) {
+        await studyContentService.saveStudyContent(selectedNoteId, {
+          quizQuestions: newQuestions,
+        });
+      }
+    } catch (error) {
+      console.error('Error generating quiz:', error);
+      setError(error instanceof Error ? error.message : 'Failed to generate quiz');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
@@ -76,26 +168,52 @@ export const QuizView: React.FC = () => {
         options: newQuestion.options,
         correct: newQuestion.correct,
       };
-      setQuestions([...questions, question]);
+      const updatedQuestions = [...questions, question];
+      setQuestions(updatedQuestions);
+      saveQuestions(updatedQuestions);
       setNewQuestion({ question: '', options: ['', '', '', ''], correct: 0 });
       setShowAddQuestion(false);
     }
   };
 
   const handleDeleteQuestion = (id: string) => {
-    setQuestions(questions.filter(q => q.id !== id));
+    const updatedQuestions = questions.filter(q => q.id !== id);
+    setQuestions(updatedQuestions);
+    saveQuestions(updatedQuestions);
   };
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <p className="text-white text-lg">Loading quiz...</p>
+      </div>
+    );
+  }
 
   if (view === 'management') {
     return (
-      <div className="h-full overflow-y-auto p-8">
+      <div className="h-full overflow-y-auto p-8 pb-12">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h2 className="text-3xl font-bold text-white mb-2">Quiz</h2>
               <p className="text-[#9ca3af]">Manage your quiz questions</p>
             </div>
-            {questions.length > 0 && (
+            {isGenerating ? (
+              <div className="px-6 py-3 bg-[#3a3a3a] rounded-lg text-[#9ca3af]">
+                Generating quiz...
+              </div>
+            ) : error ? (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={generateQuiz}
+                className="px-6 py-3 bg-[#ef4444] rounded-lg text-white font-medium hover:bg-[#dc2626] transition-colors flex items-center gap-2"
+              >
+                <HiCheck className="w-5 h-5" />
+                Retry
+              </motion.button>
+            ) : questions.length > 0 && (
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
@@ -107,6 +225,13 @@ export const QuizView: React.FC = () => {
               </motion.button>
             )}
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-500/20 border border-red-500 rounded-lg">
+              <p className="text-red-400 text-sm">{error}</p>
+            </div>
+          )}
 
           {/* Add Question Form */}
           {showAddQuestion && (
@@ -230,7 +355,7 @@ export const QuizView: React.FC = () => {
 
   if (view === 'quiz') {
   return (
-      <div className="h-full overflow-y-auto p-8">
+      <div className="h-full overflow-y-auto p-8 pb-12">
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Progress */}
       <div className="bg-[#2a2a2a] rounded-lg p-4">

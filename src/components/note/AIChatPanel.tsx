@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { HiPlus, HiPaperAirplane } from 'react-icons/hi2';
+import { useAppData } from '../../context/AppDataContext';
+import { openaiService } from '../../services/openai';
 
 interface Message {
   id: string;
@@ -22,6 +24,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
   onToggleCollapse,
   onResize,
 }) => {
+  const { selectedNoteId, notes } = useAppData();
+  const currentNote = notes.find(n => n.id === selectedNoteId);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -101,7 +105,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     };
   }, [isResizing, onResize, onToggleCollapse, width]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return;
 
     const userMessage: Message = {
@@ -112,19 +116,42 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     };
 
     setMessages([...messages, userMessage]);
+    const questionInput = input;
+    setInput('');
 
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      // Get AI response using OpenAI with context from the note
+      const context = currentNote?.content || '';
+      const aiResponse = await openaiService.chatCompletions([
+        { role: 'user', content: questionInput }
+      ], context);
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: "That's a great question! Let me help you understand that better. Would you like me to explain any specific part in more detail?",
+        content: aiResponse,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, aiMessage]);
-    }, 1000);
-
-    setInput('');
+    } catch (error) {
+      console.error('Error getting AI response:', error);
+      let errorContent = "I'm sorry, I couldn't process your request at this moment. Please try again.";
+      
+      // Check if it's a rate limit error
+      if (error instanceof Error && error.message.includes('429')) {
+        errorContent = "Rate limit reached. Please wait a moment and try again in a few seconds.";
+      } else if (error instanceof Error && error.message.includes('429')) {
+        errorContent = "Your note content is too large. Please try with a shorter question or wait a moment.";
+      }
+      
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: errorContent,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    }
   };
 
   if (isCollapsed) {
@@ -180,7 +207,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 space-y-4 pb-6">
           <AnimatePresence>
             {messages.map((message) => (
               <motion.div
@@ -206,9 +233,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         {/* Input */}
         <div className="p-6 border-t border-[#3a3a3a]">
           <div className="flex gap-2">
-            <button className="p-3 rounded-lg bg-[#1a1a1a] hover:bg-[#2a2a2a] transition-colors">
-              <HiPlus className="w-5 h-5 text-[#9ca3af]" />
-            </button>
             <input
               type="text"
               value={input}

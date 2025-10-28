@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { HiLightBulb, HiSparkles, HiXMark } from 'react-icons/hi2';
+import { openaiService } from '../../../services/openai';
+import { studyContentService } from '../../../services/supabase';
+import { useAppData } from '../../../context/AppDataContext';
 
 interface Topic {
   id: string;
@@ -15,33 +18,152 @@ interface Feedback {
   suggestions: string[];
 }
 
-export const FeynmanView: React.FC = () => {
+interface FeynmanViewProps {
+  noteContent: string;
+}
+
+export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
+  const { selectedNoteId } = useAppData();
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [explanation, setExplanation] = useState('');
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [suggestedTopics, setSuggestedTopics] = useState<Topic[]>([]);
+  const [isGeneratingTopics, setIsGeneratingTopics] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const suggestedTopics: Topic[] = [
-    {
-      id: '1',
-      title: 'Explain: React Hooks',
-      description: 'Describe how React hooks work and why they exist',
-    },
-    {
-      id: '2',
-      title: 'Explain: Virtual DOM',
-      description: 'Explain the concept of Virtual DOM and its purpose',
-    },
-    {
-      id: '3',
-      title: 'Explain: JavaScript Closures',
-      description: 'Describe what closures are in JavaScript with examples',
-    },
-    {
-      id: '4',
-      title: 'Explain: API vs REST',
-      description: 'Describe the difference between API and REST',
-    },
-  ];
+  // Load saved topics from Supabase
+  useEffect(() => {
+    const loadSavedTopics = async () => {
+      if (!selectedNoteId) return;
+      
+      try {
+        const studyContent = await studyContentService.getStudyContent(selectedNoteId);
+        
+        if (studyContent.feynmanTopics && studyContent.feynmanTopics.length > 0) {
+          setSuggestedTopics(studyContent.feynmanTopics);
+        } else if (noteContent && noteContent.trim().length >= 50) {
+          // Only generate if no saved topics and note content exists
+          generateTopics();
+        } else {
+          // Not enough content for default topics
+          setSuggestedTopics([
+            {
+              id: '1',
+              title: 'Explain the main concept',
+              description: 'Explain the main concept from your notes in simple terms',
+            },
+            {
+              id: '2',
+              title: 'Explain key terms',
+              description: 'Explain the key terms and definitions',
+            },
+            {
+              id: '3',
+              title: 'Explain how concepts relate',
+              description: 'Explain how different concepts from your notes relate to each other',
+            },
+          ]);
+        }
+      } catch (err) {
+        console.error('Error loading saved topics:', err);
+        // Still try to generate if there's an error loading
+        if (noteContent && noteContent.trim().length >= 50) {
+          generateTopics();
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSavedTopics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNoteId]);
+
+  // Save topics to Supabase
+  const saveTopics = useCallback(async (topicsToSave: Topic[]) => {
+    if (!selectedNoteId) return;
+    
+    try {
+      await studyContentService.saveStudyContent(selectedNoteId, {
+        feynmanTopics: topicsToSave,
+      });
+    } catch (err) {
+      console.error('Error saving topics:', err);
+    }
+  }, [selectedNoteId]);
+
+  // Generate topics from note content
+  const generateTopics = async () => {
+    if (!noteContent || noteContent.trim().length < 50) {
+        // Not enough content, use default topics
+      setSuggestedTopics([
+        {
+          id: '1',
+          title: 'Explain the main concept',
+          description: 'Explain the main concept from your notes in simple terms',
+        },
+        {
+          id: '2',
+          title: 'Explain key terms',
+          description: 'Explain the key terms and definitions',
+        },
+        {
+          id: '3',
+          title: 'Explain how concepts relate',
+          description: 'Explain how different concepts from your notes relate to each other',
+        },
+      ]);
+      return;
+    }
+
+    setIsGeneratingTopics(true);
+    try {
+      const prompt = `Based on this note content, generate 3-4 specific topics that a student could practice explaining using the Feynman Technique. Focus on the main concepts, terms, or ideas that would be good for teaching.\n\nNote content:\n${noteContent}\n\nReturn a JSON array of objects with "title" (short topic title starting with "Explain:") and "description" (brief description). Keep titles concise (max 50 chars).`;
+      
+      const response = await openaiService.chatCompletions(
+        [{ role: 'user', content: prompt }],
+        'You are an educational assistant helping create practice topics.'
+      );
+      
+      // Try to extract JSON from the response
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const topics = JSON.parse(jsonMatch[0]);
+        const formattedTopics = topics.map((t: any, idx: number) => ({
+          id: (idx + 1).toString(),
+          title: t.title || `Topic ${idx + 1}`,
+          description: t.description || '',
+        }));
+        setSuggestedTopics(formattedTopics);
+        
+        // Save topics to Supabase
+        await saveTopics(formattedTopics);
+      } else {
+        // Fallback topics if parsing fails
+        const fallbackTopics = [
+          {
+            id: '1',
+            title: 'Explain the main concept',
+            description: 'Explain the main concept from your notes',
+          },
+        ];
+        setSuggestedTopics(fallbackTopics);
+        await saveTopics(fallbackTopics);
+      }
+    } catch (error) {
+      console.error('Error generating topics:', error);
+      // Use default topics on error
+      setSuggestedTopics([
+        {
+          id: '1',
+          title: 'Explain the main concept',
+          description: 'Explain the main concept from your notes',
+        },
+      ]);
+    } finally {
+      setIsGeneratingTopics(false);
+    }
+  };
 
   const handleTopicSelect = (topicId: string) => {
     setSelectedTopic(topicId);
@@ -49,21 +171,46 @@ export const FeynmanView: React.FC = () => {
     setFeedback(null);
   };
 
-  const handleExplain = () => {
+  const handleExplain = async () => {
     if (!explanation.trim()) return;
 
-    // Simulate AI feedback
-    const mockFeedback: Feedback = {
-      id: Date.now().toString(),
-      score: Math.floor(Math.random() * 30) + 70, // 70-100
-      feedback: "Your explanation shows good understanding! You mentioned the key concepts clearly. However, try to simplify the technical terms a bit more - imagine explaining this to a child who's never heard of it before.",
-      suggestions: [
-        "Use more analogies to explain complex concepts",
-        "Break down the explanation into smaller, digestible parts",
-        "Avoid jargon and technical terms where possible",
-      ],
-    };
-    setFeedback(mockFeedback);
+    try {
+      // Get AI feedback using OpenAI
+      const feedbackPrompt = `Based on this note content:\n\n${noteContent}\n\nReview this student explanation and provide constructive feedback:\n\n${explanation}\n\nProvide feedback in JSON format: {"score": number (0-100), "feedback": "string", "suggestions": ["string array"]}`;
+      
+      const aiResponse = await openaiService.chatCompletions([
+        { role: 'user', content: feedbackPrompt }
+      ], 'You are a helpful teaching assistant that provides constructive feedback on student explanations using the Feynman Technique.');
+      
+      // Parse the response
+      const feedbackMatch = aiResponse.match(/\{[^}]+\}/);
+      if (feedbackMatch) {
+        const parsed = JSON.parse(feedbackMatch[0]);
+        setFeedback({
+          id: Date.now().toString(),
+          score: parsed.score || 75,
+          feedback: parsed.feedback || aiResponse,
+          suggestions: parsed.suggestions || [],
+        });
+      } else {
+        // Fallback if parsing fails
+        setFeedback({
+          id: Date.now().toString(),
+          score: 75,
+          feedback: aiResponse,
+          suggestions: [],
+        });
+      }
+    } catch (error) {
+      console.error('Error getting AI feedback:', error);
+      // Fallback feedback
+      setFeedback({
+        id: Date.now().toString(),
+        score: 75,
+        feedback: "I couldn't process your explanation at this moment. Please try again.",
+        suggestions: ["Try simplifying your explanation", "Use more examples"],
+      });
+    }
   };
 
   const handleNewTopic = () => {
@@ -72,9 +219,17 @@ export const FeynmanView: React.FC = () => {
     setFeedback(null);
   };
 
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <p className="text-white text-lg">Loading topics...</p>
+      </div>
+    );
+  }
+
   if (!selectedTopic) {
     return (
-      <div className="h-full overflow-y-auto p-8">
+      <div className="h-full overflow-y-auto p-8 pb-12">
         <div className="max-w-4xl mx-auto">
           <div className="mb-8">
             <h2 className="text-3xl font-bold text-white mb-2">Feynman Technique</h2>
@@ -83,9 +238,25 @@ export const FeynmanView: React.FC = () => {
             </p>
           </div>
 
-          {/* Suggested Topics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {suggestedTopics.map((topic) => (
+          {isGeneratingTopics ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="p-6 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a] animate-pulse">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="p-3 bg-[#3a3a3a] rounded-lg w-12 h-12"></div>
+                    <div className="flex-1">
+                      <div className="h-6 bg-[#3a3a3a] rounded w-3/4 mb-2"></div>
+                      <div className="h-4 bg-[#3a3a3a] rounded w-full"></div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              {/* Suggested Topics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {suggestedTopics.map((topic) => (
               <motion.button
                 key={topic.id}
                 whileHover={{ scale: 1.02, y: -2 }}
@@ -101,39 +272,51 @@ export const FeynmanView: React.FC = () => {
                 </div>
                 <p className="text-[#9ca3af]">{topic.description}</p>
               </motion.button>
-            ))}
-          </div>
+                ))}
+              </div>
 
-          <div className="mt-8 p-6 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a]">
-            <button
-              onClick={() => setSelectedTopic('custom')}
-              className="text-left w-full flex items-center gap-3 text-white hover:text-[#b85a3a] transition-colors"
-            >
-              <HiSparkles className="w-6 h-6" />
-              <span className="font-medium">I want to explain something else</span>
-            </button>
-          </div>
+              <div className="mt-8 p-6 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a]">
+                <button
+                  onClick={() => setSelectedTopic('custom')}
+                  className="text-left w-full flex items-center gap-3 text-white hover:text-[#b85a3a] transition-colors"
+                >
+                  <HiSparkles className="w-6 h-6" />
+                  <span className="font-medium">I want to explain something else</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col p-8">
+    <div className="h-full flex flex-col p-8 pb-12">
       <div className="max-w-3xl mx-auto w-full flex flex-col h-full">
         {/* Header */}
         <div className="mb-6 flex items-start justify-between">
-          <div>
-            <h2 className="text-3xl font-bold text-white mb-2">
+          <div className="flex-1">
+            <h2 className="text-3xl font-bold text-white mb-3">
               {selectedTopic === 'custom' ? 'Explain your concept' : suggestedTopics.find(t => t.id === selectedTopic)?.title}
             </h2>
-            <p className="text-[#9ca3af]">
-              Explain this concept as simply as possible. Imagine teaching it to a 5-year-old!
-            </p>
+            {selectedTopic !== 'custom' && suggestedTopics.find(t => t.id === selectedTopic)?.description && (
+              <div className="p-4 bg-[#1a1a1a] border border-[#b85a3a]/30 rounded-lg mb-2">
+                <p className="text-white font-medium mb-1">Your task:</p>
+                <p className="text-[#9ca3af] leading-relaxed">
+                  {suggestedTopics.find(t => t.id === selectedTopic)?.description}
+                </p>
+              </div>
+            )}
+            {(selectedTopic === 'custom' || !suggestedTopics.find(t => t.id === selectedTopic)?.description) && (
+              <p className="text-[#9ca3af]">
+                Explain this concept as simply as possible. Imagine teaching it to a 5-year-old!
+              </p>
+            )}
           </div>
           <button
             onClick={handleNewTopic}
-            className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
+            className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors ml-4"
           >
             <HiXMark className="w-6 h-6 text-[#9ca3af]" />
           </button>

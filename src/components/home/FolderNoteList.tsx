@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { HiFolder, HiChevronRight, HiMagnifyingGlass } from 'react-icons/hi2';
+import { HiFolder, HiChevronRight, HiMagnifyingGlass, HiChevronLeft } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 import { useAppData } from '../../context/AppDataContext';
 import { format } from 'date-fns';
@@ -9,13 +9,15 @@ import type { Note, Folder } from '../../types';
 // Note: createFolder logic moved to HomePage top bar
 
 export const FolderNoteList: React.FC = () => {
-  const { folders, notes, setSelectedNoteId, currentFolderId } = useAppData();
+  const { folders, notes, setSelectedNoteId, setCurrentFolderId, currentFolderId } = useAppData();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['folder-1']));
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
   const filteredFolders = folders.filter(f => f.parentId === currentFolderId);
-  const filteredNotes = notes.filter(n => n.folderId === currentFolderId);
+  const filteredNotes = searchQuery === '' 
+    ? notes.filter(n => n.folderId === currentFolderId)
+    : notes; // When searching, show all notes
 
   const filteredItems = [
     ...filteredFolders.map(f => ({ type: 'folder' as const, data: f as Folder })),
@@ -36,10 +38,54 @@ export const FolderNoteList: React.FC = () => {
     setExpandedFolders(newExpanded);
   };
 
+  // Build breadcrumb path
+  const getBreadcrumbs = () => {
+    const path: Folder[] = [];
+    let currentId = currentFolderId;
+    
+    while (currentId) {
+      const folder = folders.find(f => f.id === currentId);
+      if (folder) {
+        path.unshift(folder);
+        currentId = folder.parentId;
+      } else {
+        break;
+      }
+    }
+    
+    return path;
+  };
+
+  const breadcrumbs = getBreadcrumbs();
+
+  const handleBackToParent = () => {
+    const currentFolder = currentFolderId 
+      ? folders.find(f => f.id === currentFolderId)
+      : null;
+    
+    if (currentFolder && currentFolder.parentId !== null) {
+      // Go to parent folder
+      setCurrentFolderId(currentFolder.parentId);
+    } else {
+      // Go to root (null means root level)
+      setCurrentFolderId(null);
+    }
+  };
+
   return (
-    <div className="flex-1 p-8 space-y-4">
+    <div className="flex-1 p-8 pb-20 space-y-4">
       {/* Header */}
       <div>
+        {/* Breadcrumb */}
+        {currentFolderId && (
+          <button
+            onClick={handleBackToParent}
+            className="flex items-center gap-2 text-[#9ca3af] hover:text-white mb-4 transition-colors"
+          >
+            <HiChevronLeft className="w-5 h-5" />
+            <span>Back</span>
+          </button>
+        )}
         <h2 className="text-2xl font-bold text-white mb-6">My notes</h2>
         
         <div className="flex gap-4 mb-6">
@@ -73,7 +119,8 @@ export const FolderNoteList: React.FC = () => {
               whileTap={{ scale: 0.99 }}
               onClick={() => {
                 if (isFolder) {
-                  toggleFolder(item.data.id);
+                  // Navigate into folder instead of toggling
+                  setCurrentFolderId(item.data.id);
                 } else {
                   setSelectedNoteId(item.data.id);
                   navigate('/note');

@@ -10,9 +10,9 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ activePage }) => {
   const navItems = [
     { icon: HiHome, label: 'Home', page: 'home', path: '/home' },
-    { icon: HiLightBulb, label: 'How to use', page: 'how-to-use' },
-    { icon: HiQuestionMarkCircle, label: 'Support', page: 'support' },
-    { icon: HiCog6Tooth, label: 'Settings', page: 'settings' },
+    { icon: HiLightBulb, label: 'How to use', page: 'how-to-use', path: '/how-to-use' },
+    { icon: HiQuestionMarkCircle, label: 'Support', page: 'support', path: '/support' },
+    { icon: HiCog6Tooth, label: 'Settings', page: 'settings', path: '/settings' },
   ];
 
   return (

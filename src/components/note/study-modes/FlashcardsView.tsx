@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { HiPlus, HiPencil, HiTrash, HiCheck } from 'react-icons/hi2';
+import { openaiService } from '../../../services/openai';
+import { studyContentService } from '../../../services/supabase';
+import { useAppData } from '../../../context/AppDataContext';
+import { useSettings } from '../../../context/SettingsContext';
 
 interface Flashcard {
   id: string;
@@ -16,13 +20,100 @@ interface StudyResult {
   total: number;
 }
 
-export const FlashcardsView: React.FC = () => {
+interface FlashcardsViewProps {
+  noteContent: string;
+}
+
+export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) => {
+  const { selectedNoteId } = useAppData();
+  const { getPreference } = useSettings();
   const [view, setView] = useState<View>('management');
-  const [flashcards, setFlashcards] = useState<Flashcard[]>([
-    { id: '1', front: 'What is React?', back: 'A JavaScript library for building user interfaces, especially web applications.' },
-    { id: '2', front: 'What is JSX?', back: 'JavaScript XML - a syntax extension that allows writing HTML-like code in JavaScript.' },
-    { id: '3', front: 'What are hooks?', back: 'Functions that let you "hook into" React state and lifecycle features from functional components.' },
-  ]);
+  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const isInitialLoad = React.useRef(true);
+
+  // Load saved flashcards from Supabase
+  useEffect(() => {
+    const loadSavedFlashcards = async () => {
+      if (!selectedNoteId) return;
+      
+      try {
+        const studyContent = await studyContentService.getStudyContent(selectedNoteId);
+        
+        if (studyContent.flashcards && studyContent.flashcards.length > 0) {
+          setFlashcards(studyContent.flashcards);
+        } else if (noteContent) {
+          // Only generate if no saved flashcards and note content exists
+          generateFlashcards();
+        }
+      } catch (err) {
+        console.error('Error loading saved flashcards:', err);
+        // Still try to generate if there's an error loading
+        if (noteContent) {
+          generateFlashcards();
+        }
+      } finally {
+        setIsLoading(false);
+        isInitialLoad.current = false;
+      }
+    };
+
+    loadSavedFlashcards();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNoteId]);
+
+  // Save flashcards to Supabase whenever they change
+  const saveFlashcards = useCallback(async (flashcardsToSave: Flashcard[]) => {
+    if (!selectedNoteId) return;
+    
+    try {
+      await studyContentService.saveStudyContent(selectedNoteId, {
+        flashcards: flashcardsToSave,
+      });
+    } catch (err) {
+      console.error('Error saving flashcards:', err);
+    }
+  }, [selectedNoteId]);
+
+  // Save whenever flashcards array changes (but not during initial load)
+  // Note: We explicitly save after generation, so this mainly handles user edits
+  useEffect(() => {
+    if (!isInitialLoad.current && !isGenerating && flashcards.length > 0) {
+      saveFlashcards(flashcards);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flashcards]);
+
+  const generateFlashcards = async () => {
+    if (!noteContent.trim()) return;
+    
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const count = getPreference('flashcardsCount');
+      const generated = await openaiService.generateFlashcards(noteContent, count);
+      const newFlashcards = generated.map((card, idx) => ({
+        id: `gen-${idx}`,
+        front: card.front,
+        back: card.back,
+      }));
+      setFlashcards(newFlashcards);
+      
+      // Explicitly save after generation
+      if (selectedNoteId) {
+        await studyContentService.saveStudyContent(selectedNoteId, {
+          flashcards: newFlashcards,
+        });
+      }
+    } catch (error) {
+      console.error('Error generating flashcards:', error);
+      setError(error instanceof Error ? error.message : 'Failed to generate flashcards');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
   
   const [currentCard, setCurrentCard] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -68,26 +159,54 @@ export const FlashcardsView: React.FC = () => {
         front: newCard.front,
         back: newCard.back,
       };
-      setFlashcards([...flashcards, card]);
+      const updatedFlashcards = [...flashcards, card];
+      setFlashcards(updatedFlashcards);
+      saveFlashcards(updatedFlashcards);
       setNewCard({ front: '', back: '' });
       setShowAddCard(false);
     }
   };
 
   const handleDeleteCard = (id: string) => {
-    setFlashcards(flashcards.filter(c => c.id !== id));
+    const updatedFlashcards = flashcards.filter(c => c.id !== id);
+    setFlashcards(updatedFlashcards);
+    saveFlashcards(updatedFlashcards);
   };
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <p className="text-white text-lg">Loading flashcards...</p>
+      </div>
+    );
+  }
 
   if (view === 'management') {
     return (
-      <div className="h-full overflow-y-auto p-8">
+      <div className="h-full overflow-y-auto p-8 pb-12">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h2 className="text-3xl font-bold text-white mb-2">Flashcards</h2>
               <p className="text-[#9ca3af]">Manage your flashcards and start learning</p>
             </div>
-            {flashcards.length > 0 && (
+            {isGenerating ? (
+              <div className="px-6 py-3 bg-[#3a3a3a] rounded-lg text-[#9ca3af]">
+                Generating flashcards...
+              </div>
+            ) : error ? (
+              <>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={generateFlashcards}
+                  className="px-6 py-3 bg-[#ef4444] rounded-lg text-white font-medium hover:bg-[#dc2626] transition-colors flex items-center gap-2"
+                >
+                  <HiCheck className="w-5 h-5" />
+                  Retry
+                </motion.button>
+              </>
+            ) : flashcards.length > 0 && (
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
@@ -99,6 +218,13 @@ export const FlashcardsView: React.FC = () => {
               </motion.button>
             )}
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-500/20 border border-red-500 rounded-lg">
+              <p className="text-red-400 text-sm">{error}</p>
+            </div>
+          )}
 
           {/* Add Card Form */}
           {showAddCard && (

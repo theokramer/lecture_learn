@@ -2,10 +2,12 @@ import React from 'react';
 import { HiDocument } from 'react-icons/hi2';
 import { useAppData } from '../../context/AppDataContext';
 import { SummaryView } from './study-modes/SummaryView';
+import { TranscriptView } from './study-modes/TranscriptView';
 import { FeynmanView } from './study-modes/FeynmanView';
 import { FlashcardsView } from './study-modes/FlashcardsView';
 import { QuizView } from './study-modes/QuizView';
 import { ExercisesView } from './study-modes/ExercisesView';
+import { DocumentManagement } from './DocumentManagement';
 
 export const ContentView: React.FC = () => {
   const { currentStudyMode, selectedNoteId, notes } = useAppData();
@@ -16,14 +18,18 @@ export const ContentView: React.FC = () => {
     switch (currentStudyMode) {
       case 'summary':
         return <SummaryView />;
+      case 'transcript':
+        return <TranscriptView />;
       case 'feynman':
-        return <FeynmanView />;
+        return <FeynmanView noteContent={currentNote?.content || ''} />;
       case 'flashcards':
-        return <FlashcardsView />;
+        return <FlashcardsView noteContent={currentNote?.content || ''} />;
       case 'quiz':
-        return <QuizView />;
+        return <QuizView noteContent={currentNote?.content || ''} />;
       case 'exercises':
-        return <ExercisesView />;
+        return <ExercisesView noteContent={currentNote?.content || ''} />;
+      case 'documents':
+        return <DocumentManagement />;
       default:
         return <SummaryView />;
     }
@@ -40,7 +46,7 @@ export const ContentView: React.FC = () => {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-8">
+      <div className="flex-1 overflow-auto p-8 pb-12">
         {renderMode()}
       </div>
     </div>

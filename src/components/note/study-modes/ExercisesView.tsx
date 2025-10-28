@@ -1,35 +1,205 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../../shared/Button';
 import { TextArea } from '../../shared/Input';
 import { HiEye, HiCheck } from 'react-icons/hi2';
+import { openaiService } from '../../../services/openai';
+import { studyContentService } from '../../../services/supabase';
+import { useAppData } from '../../../context/AppDataContext';
+import { useSettings } from '../../../context/SettingsContext';
 
-export const ExercisesView: React.FC = () => {
+interface Exercise {
+  question: string;
+  solution: string;
+  notes: string;
+}
+
+interface ExercisesViewProps {
+  noteContent: string;
+}
+
+export const ExercisesView: React.FC<ExercisesViewProps> = ({ noteContent }) => {
+  const { selectedNoteId } = useAppData();
+  const { getPreference } = useSettings();
   const [currentExercise, setCurrentExercise] = useState(0);
   const [answer, setAnswer] = useState('');
   const [showSolution, setShowSolution] = useState(false);
   const [checked, setChecked] = useState(false);
+  const [aiFeedback, setAiFeedback] = useState<string | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const isInitialLoad = React.useRef(true);
 
-  const exercises = [
-    {
-      question: 'Explain the concept of closures in JavaScript with an example.',
-      solution: 'A closure is a function that has access to variables in its outer (enclosing) lexical scope, even after the outer function has returned. Example: \n\nfunction outer() {\n  let count = 0;\n  return function inner() {\n    count++;\n    return count;\n  };\n}\n\nconst increment = outer();\nconsole.log(increment()); // 1\nconsole.log(increment()); // 2',
-      notes: 'Great job! You explained closures well. Remember that closures allow functions to "remember" their lexical environment.',
-    },
-    {
-      question: 'Explain how React\'s component lifecycle works.',
-      solution: 'React components go through several lifecycle phases: 1) Mounting (component is created and inserted into DOM), 2) Updating (component re-renders due to state or prop changes), 3) Unmounting (component is removed from DOM). Use useEffect hook to handle side effects.',
-      notes: 'Good understanding of React lifecycle. Keep in mind that useEffect replaces componentDidMount, componentDidUpdate, and componentWillUnmount.',
-    },
-  ];
+  // Load saved exercises from Supabase
+  useEffect(() => {
+    const loadSavedExercises = async () => {
+      if (!selectedNoteId) return;
+      
+      try {
+        const studyContent = await studyContentService.getStudyContent(selectedNoteId);
+        
+        if (studyContent.exercises && studyContent.exercises.length > 0) {
+          setExercises(studyContent.exercises);
+        } else if (noteContent) {
+          // Only generate if no saved exercises and note content exists
+          generateExercises();
+        }
+      } catch (err) {
+        console.error('Error loading saved exercises:', err);
+        // Still try to generate if there's an error loading
+        if (noteContent) {
+          generateExercises();
+        }
+      } finally {
+        setIsLoading(false);
+        isInitialLoad.current = false;
+      }
+    };
 
-  const handleCheck = () => {
-    setChecked(true);
-    setTimeout(() => setChecked(false), 2000);
+    loadSavedExercises();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNoteId]);
+
+  // Save exercises to Supabase whenever they change
+  const saveExercises = useCallback(async (exercisesToSave: Exercise[]) => {
+    if (!selectedNoteId) return;
+    
+    try {
+      await studyContentService.saveStudyContent(selectedNoteId, {
+        exercises: exercisesToSave,
+      });
+    } catch (err) {
+      console.error('Error saving exercises:', err);
+    }
+  }, [selectedNoteId]);
+
+  // Save whenever exercises array changes (but not during initial load)
+  // Note: We explicitly save after generation, so this mainly handles user edits
+  useEffect(() => {
+    if (!isInitialLoad.current && !isGenerating && exercises.length > 0) {
+      saveExercises(exercises);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exercises]);
+
+  const generateExercises = async () => {
+    if (!noteContent.trim()) return;
+    
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const count = getPreference('exercisesCount');
+      const exerciseList = await openaiService.generateExercise(noteContent, count);
+      setExercises(exerciseList);
+      
+      // Explicitly save after generation
+      if (selectedNoteId) {
+        await studyContentService.saveStudyContent(selectedNoteId, {
+          exercises: exerciseList,
+        });
+      }
+    } catch (error) {
+      console.error('Error generating exercises:', error);
+      setError(error instanceof Error ? error.message : 'Failed to generate exercises');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
+  const handleCheck = async () => {
+    if (!answer.trim()) return;
+    
+    setIsChecking(true);
+    setChecked(true);
+    setAiFeedback(null);
+    
+    try {
+      const exercise = exercises[currentExercise];
+      const prompt = `Compare the student's answer with the correct solution and provide constructive feedback.
+
+Exercise Question: ${exercise.question}
+
+Student's Answer:
+${answer}
+
+Correct Solution:
+${exercise.solution}
+
+Provide feedback in this JSON format:
+{
+  "score": <number 0-100>,
+  "feedback": "<positive, constructive feedback about what they did well and what needs improvement>",
+  "isCorrect": <true/false>
+}
+
+Be encouraging but honest. If the answer is mostly correct, say so. If it's partially correct, explain what's right and what needs work. If it's incorrect, gently guide them to the right answer.`;
+
+      const response = await openaiService.chatCompletions(
+        [{ role: 'user', content: prompt }],
+        'You are a helpful teaching assistant that provides constructive feedback on student answers.'
+      );
+      
+      // Parse the response
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const feedback = JSON.parse(jsonMatch[0]);
+          setAiFeedback(feedback.feedback || response);
+        } catch (parseError) {
+          console.error('Error parsing feedback:', parseError);
+          setAiFeedback(response);
+        }
+      } else {
+        setAiFeedback(response);
+      }
+    } catch (error) {
+      console.error('Error getting AI feedback:', error);
+      setAiFeedback("I couldn't evaluate your answer at this moment. Please try again or check the solution.");
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="max-w-3xl mx-auto text-center py-20">
+        <p className="text-white text-lg">Loading exercises...</p>
+      </div>
+    );
+  }
+
+  if (isGenerating) {
+    return (
+      <div className="max-w-3xl mx-auto text-center py-20">
+        <p className="text-white text-lg">Generating exercises...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-3xl mx-auto text-center py-20 space-y-4">
+        <div className="p-4 bg-red-500/20 border border-red-500 rounded-lg">
+          <p className="text-red-400 text-sm">{error}</p>
+        </div>
+        <Button onClick={generateExercises}>Retry</Button>
+      </div>
+    );
+  }
+
+  if (exercises.length === 0) {
+    return (
+      <div className="max-w-3xl mx-auto text-center py-20">
+        <p className="text-white text-lg">No exercises available yet. Upload some content to generate exercises!</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6 pb-8">
       {/* Progress */}
       <div className="text-center mb-6">
         <p className="text-white text-lg">
@@ -61,9 +231,9 @@ export const ExercisesView: React.FC = () => {
 
       {/* Actions */}
       <div className="flex gap-4">
-        <Button variant="secondary" onClick={handleCheck} disabled={!answer.trim()}>
+        <Button variant="secondary" onClick={handleCheck} disabled={!answer.trim() || isChecking}>
           <HiCheck className="w-5 h-5" />
-          Check My Work
+          {isChecking ? 'Checking...' : 'Check My Work'}
         </Button>
         <Button variant="secondary" onClick={() => setShowSolution(!showSolution)}>
           <HiEye className="w-5 h-5" />
@@ -71,14 +241,14 @@ export const ExercisesView: React.FC = () => {
         </Button>
       </div>
 
-      {/* Check Feedback */}
-      {checked && (
+      {/* AI Feedback */}
+      {checked && aiFeedback && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-green-500/20 border border-green-500 rounded-lg p-4"
+          className="bg-blue-500/20 border border-blue-500 rounded-lg p-4"
         >
-          <p className="text-green-500">{exercises[currentExercise].notes}</p>
+          <p className="text-blue-300 whitespace-pre-wrap leading-relaxed">{aiFeedback}</p>
         </motion.div>
       )}
 
@@ -97,7 +267,7 @@ export const ExercisesView: React.FC = () => {
       )}
 
       {/* Navigation */}
-      <div className="flex justify-between pt-4">
+      <div className="flex justify-between pt-4 pb-4">
         <Button
           variant="secondary"
           onClick={() => {
@@ -105,6 +275,8 @@ export const ExercisesView: React.FC = () => {
               setCurrentExercise(currentExercise - 1);
               setAnswer('');
               setShowSolution(false);
+              setChecked(false);
+              setAiFeedback(null);
             }
           }}
           disabled={currentExercise === 0}
@@ -117,6 +289,8 @@ export const ExercisesView: React.FC = () => {
               setCurrentExercise(currentExercise + 1);
               setAnswer('');
               setShowSolution(false);
+              setChecked(false);
+              setAiFeedback(null);
             }
           }}
           disabled={currentExercise === exercises.length - 1}

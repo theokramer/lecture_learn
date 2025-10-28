@@ -12,9 +12,9 @@ export const HomePage: React.FC = () => {
   const [newFolderName, setNewFolderName] = useState('');
   const { createFolder, currentFolderId } = useAppData();
 
-  const handleCreateFolder = () => {
+  const handleCreateFolder = async () => {
     if (newFolderName.trim()) {
-      createFolder(newFolderName, currentFolderId);
+      await createFolder(newFolderName, currentFolderId);
       setNewFolderName('');
       setShowCreateFolder(false);
     }

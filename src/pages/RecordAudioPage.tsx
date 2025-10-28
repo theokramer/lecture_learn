@@ -1,12 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { IoStop, IoMic, IoArrowBack } from 'react-icons/io5';
+import { useAppData } from '../context/AppDataContext';
+import { storageService } from '../services/supabase';
+import { useAuth } from '../context/AuthContext';
 
 export const RecordAudioPage: React.FC = () => {
   const navigate = useNavigate();
+  const { createNote } = useAppData();
+  const { user } = useAuth();
   const [isRecording, setIsRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -24,14 +32,45 @@ export const RecordAudioPage: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleStop = () => {
-    setIsRecording(false);
-    navigate('/note-creation/processing');
+  const handleStart = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        setAudioBlob(blob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      setSeconds(0);
+      setIsRecording(true);
+      mediaRecorder.start();
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+      alert('Could not access microphone. Please check permissions.');
+    }
   };
 
-  const handleStart = () => {
-    setSeconds(0);
-    setIsRecording(true);
+  const handleStop = async () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const handleDone = async () => {
+    if (!audioBlob || !user) return;
+
+    navigate('/note-creation/processing', { state: { audioBlob, title: 'Voice Recording' } });
   };
 
   const handleCancel = () => {
@@ -39,7 +78,7 @@ export const RecordAudioPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center px-8">
+    <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center px-8 py-12 pb-20">
       <div className="w-full max-w-2xl">
         {/* Header */}
         <button
@@ -108,7 +147,7 @@ export const RecordAudioPage: React.FC = () => {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-3">
+          <div className="flex gap-3 mt-6">
             <button
               onClick={handleCancel}
               className="flex-1 px-6 py-4 bg-[#1a1a1a] hover:bg-[#2a2a2a] text-white rounded-xl transition-colors font-medium"
@@ -116,8 +155,8 @@ export const RecordAudioPage: React.FC = () => {
               Cancel
             </button>
             <button
-              onClick={handleStop}
-              disabled={!isRecording}
+              onClick={handleDone}
+              disabled={!audioBlob}
               className="flex-1 px-6 py-4 bg-[#b85a3a] hover:bg-[#a04a2a] disabled:bg-[#3a3a3a] disabled:text-[#6b7280] text-white rounded-xl transition-colors font-medium"
             >
               Done

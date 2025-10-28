@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { HiHome, HiDocument, HiMicrophone, HiRectangleStack, HiQuestionMarkCircle, HiBookOpen, HiBars3, HiFolder } from 'react-icons/hi2';
+import { HiHome, HiDocument, HiMicrophone, HiRectangleStack, HiQuestionMarkCircle, HiBookOpen, HiBars3, HiFolder, HiDocumentText } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 import type { StudyMode } from '../../types';
 
@@ -25,6 +25,7 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
     { icon: HiRectangleStack, label: 'Flashcards', mode: 'flashcards' as StudyMode },
     { icon: HiQuestionMarkCircle, label: 'Quiz', mode: 'quiz' as StudyMode },
     { icon: HiBookOpen, label: 'Exercises', mode: 'exercises' as StudyMode },
+    { icon: HiDocumentText, label: 'Transcript', mode: 'transcript' as StudyMode },
   ];
 
   if (isCollapsed) {
@@ -64,6 +65,22 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
               </motion.button>
             );
           })}
+        </div>
+
+        {/* Bottom - Documents Button */}
+        <div className="px-4 pt-4 border-t border-[#3a3a3a]">
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={() => onModeChange('documents' as StudyMode)}
+            className={`
+              w-full p-2 rounded-lg transition-colors
+              ${currentMode === 'documents' ? 'bg-[#3a3a3a]' : 'hover:bg-[#3a3a3a]'}
+            `}
+            title="Documents"
+          >
+            <HiFolder className="w-6 h-6 text-white mx-auto" />
+          </motion.button>
         </div>
       </div>
     );
@@ -130,10 +147,21 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
 
       {/* Bottom - Manage Documents */}
       <div className="p-4 border-t border-[#3a3a3a]">
-        <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white transition-colors">
+        <motion.button
+          whileHover={{ scale: 1.02, x: 4 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => onModeChange('documents' as StudyMode)}
+          className={`
+            w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
+            ${currentMode === 'documents'
+              ? 'bg-[#3a3a3a] text-white'
+              : 'text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white'
+            }
+          `}
+        >
           <HiFolder className="w-5 h-5" />
-          <span className="font-medium">Dokumente verwalten</span>
-        </button>
+          <span className="font-medium">Documents</span>
+        </motion.button>
       </div>
     </motion.div>
   );
