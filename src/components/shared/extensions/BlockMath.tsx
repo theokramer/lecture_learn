@@ -1,0 +1,70 @@
+import { Node } from '@tiptap/core';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+
+export const BlockMath = Node.create({
+  name: 'blockMath',
+
+  addOptions() {
+    return {
+      HTMLAttributes: {},
+    };
+  },
+
+  group: 'block',
+
+  atom: true,
+  isLeaf: true,
+  content: '',
+
+  addAttributes() {
+    return {
+      formula: {
+        default: '',
+      },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: 'div[data-type="block-math"]',
+        getAttrs: (node) => {
+          if (typeof node === 'string') return false;
+          const element = node as HTMLElement;
+          return {
+            formula: element.textContent || '',
+          };
+        },
+      },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    const formula = HTMLAttributes.formula || '';
+    let html = '';
+    
+    try {
+      html = katex.renderToString(formula, {
+        throwOnError: false,
+        displayMode: true,
+      });
+    } catch (error) {
+      html = `<div class="text-red-400 p-4 bg-red-900/20 rounded border border-red-500/50">Error: ${formula}</div>`;
+    }
+
+    return ['div', { class: 'block-math my-6 text-center', 'data-type': 'block-math', dangerouslySetInnerHTML: { __html: html } }];
+  },
+
+  addCommands() {
+    return {
+      setBlockMath: (attributes: { formula: string }) => ({ commands }) => {
+        return commands.insertContent({
+          type: this.name,
+          attrs: attributes,
+        });
+      },
+    };
+  },
+});
+

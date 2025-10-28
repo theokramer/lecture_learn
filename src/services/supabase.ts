@@ -460,18 +460,22 @@ export const studyContentService = {
       console.error('Error loading study content:', error);
       // Return empty data if there's an error
       return {
+        summary: '',
         flashcards: [],
         quizQuestions: [],
         exercises: [],
+        feynmanTopics: [],
       };
     }
     
     return data ? {
+      summary: data.summary || '',
       flashcards: data.flashcards || [],
       quizQuestions: data.quiz_questions || [],
       exercises: data.exercises || [],
       feynmanTopics: data.feynman_topics || [],
     } : {
+      summary: '',
       flashcards: [],
       quizQuestions: [],
       exercises: [],
@@ -486,6 +490,7 @@ export const studyContentService = {
   async saveStudyContent(
     noteId: string, 
     data: {
+      summary?: string;
       flashcards?: any[];
       quizQuestions?: any[];
       exercises?: any[];
@@ -501,6 +506,7 @@ export const studyContentService = {
 
     const contentData: any = {};
     
+    if (data.summary !== undefined) contentData.summary = data.summary;
     if (data.flashcards !== undefined) contentData.flashcards = data.flashcards;
     if (data.quizQuestions !== undefined) contentData.quiz_questions = data.quizQuestions;
     if (data.exercises !== undefined) contentData.exercises = data.exercises;
@@ -525,6 +531,10 @@ export const studyContentService = {
 
       if (error) throw error;
     }
+  },
+
+  async saveSummary(noteId: string, summary: string) {
+    return this.saveStudyContent(noteId, { summary });
   },
 };
 
