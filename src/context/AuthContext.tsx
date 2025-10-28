@@ -53,14 +53,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      console.log('🔐 Attempting login for:', email);
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
-      if (!data.user) return false;
+      if (error) {
+        console.error('❌ Login error:', error);
+        throw error;
+      }
+      
+      if (!data.user) {
+        console.error('❌ No user data returned');
+        return false;
+      }
 
+      console.log('✅ Login successful:', data.user.id);
+      
       setUser({
         id: data.user.id,
         email: data.user.email || '',
@@ -69,13 +79,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       return true;
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ Login error:', error);
       return false;
     }
   };
 
   const signUp = async (email: string, password: string, name: string): Promise<boolean> => {
     try {
+      console.log('📝 Attempting sign up for:', email, 'Name:', name);
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -86,8 +97,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         },
       });
 
-      if (error) throw error;
-      if (!data.user) return false;
+      if (error) {
+        console.error('❌ Sign up error:', error);
+        throw error;
+      }
+      
+      if (!data.user) {
+        console.error('❌ No user data returned');
+        return false;
+      }
+
+      console.log('✅ Sign up successful:', data.user.id);
 
       setUser({
         id: data.user.id,
@@ -97,7 +117,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       return true;
     } catch (error) {
-      console.error('Sign up error:', error);
+      console.error('❌ Sign up error:', error);
       return false;
     }
   };

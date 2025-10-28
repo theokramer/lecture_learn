@@ -22,6 +22,29 @@ DROP POLICY IF EXISTS "Users can upload their own files" ON storage.objects;
 DROP POLICY IF EXISTS "Users can update their own files" ON storage.objects;
 DROP POLICY IF EXISTS "Users can delete their own files" ON storage.objects;
 
+-- IMPORTANT: Enable RLS on storage.objects if not already enabled
+-- Check if RLS is enabled first (this command will error if already enabled, which is fine)
+-- If you get an error, RLS is already enabled and that's good
+
+-- Alternative simpler policies for testing (uncomment if LIKE doesn't work)
+-- These allow all authenticated users to access the documents bucket
+-- You can use these temporarily to test, then narrow down the permissions
+/*
+CREATE POLICY "Authenticated users can view files"
+ON storage.objects FOR SELECT
+USING (
+  bucket_id = 'documents' 
+  AND auth.role() = 'authenticated'
+);
+
+CREATE POLICY "Authenticated users can upload files"
+ON storage.objects FOR INSERT
+WITH CHECK (
+  bucket_id = 'documents' 
+  AND auth.role() = 'authenticated'
+);
+*/
+
 -- Policy: Allow authenticated users to view/select files in their own folders
 -- Using LIKE pattern matching for more reliable path checking
 CREATE POLICY "Users can view their own files"
