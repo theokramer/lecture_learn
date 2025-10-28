@@ -12,7 +12,6 @@ export const FolderNoteList: React.FC = () => {
   const { folders, notes, setSelectedNoteId, setCurrentFolderId, currentFolderId } = useAppData();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
   const filteredFolders = folders.filter(f => f.parentId === currentFolderId);
   const filteredNotes = searchQuery === '' 
@@ -27,36 +26,6 @@ export const FolderNoteList: React.FC = () => {
     const name = (item.data as Note).title || (item.data as Folder).name;
     return name.toLowerCase().includes(searchQuery.toLowerCase());
   });
-
-  const toggleFolder = (folderId: string) => {
-    const newExpanded = new Set(expandedFolders);
-    if (newExpanded.has(folderId)) {
-      newExpanded.delete(folderId);
-    } else {
-      newExpanded.add(folderId);
-    }
-    setExpandedFolders(newExpanded);
-  };
-
-  // Build breadcrumb path
-  const getBreadcrumbs = () => {
-    const path: Folder[] = [];
-    let currentId = currentFolderId;
-    
-    while (currentId) {
-      const folder = folders.find(f => f.id === currentId);
-      if (folder) {
-        path.unshift(folder);
-        currentId = folder.parentId;
-      } else {
-        break;
-      }
-    }
-    
-    return path;
-  };
-
-  const breadcrumbs = getBreadcrumbs();
 
   const handleBackToParent = () => {
     const currentFolder = currentFolderId 

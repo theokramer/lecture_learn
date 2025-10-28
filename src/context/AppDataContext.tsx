@@ -70,7 +70,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!user) return;
 
     try {
-      const newFolder = await folderService.createFolder(user.id, name, parentId);
+      await folderService.createFolder(user.id, name, parentId);
       await loadData();
     } catch (err) {
       console.error('Error creating folder:', err);

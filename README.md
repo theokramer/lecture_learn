@@ -70,6 +70,16 @@ Visit `http://localhost:5173` to view the app.
 npm run build
 ```
 
+### Deploy to Vercel
+
+See [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md) for detailed deployment instructions.
+
+Quick start:
+1. Push your code to GitHub
+2. Import your repository to Vercel
+3. Add environment variables in Vercel dashboard
+4. Deploy!
+
 ## Project Structure
 
 ```

@@ -121,7 +121,6 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
   const [results, setResults] = useState<StudyResult | null>(null);
   const [showAddCard, setShowAddCard] = useState(false);
   const [newCard, setNewCard] = useState({ front: '', back: '' });
-  const [editingCard, setEditingCard] = useState<string | null>(null);
 
   const handleStartLearning = () => {
     if (flashcards.length === 0) return;
@@ -303,7 +302,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setEditingCard(card.id)}
+                      onClick={() => { /* TODO: Implement edit functionality */ }}
                       className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
                     >
                       <HiPencil className="w-5 h-5 text-[#9ca3af]" />
