@@ -121,6 +121,8 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
   const [results, setResults] = useState<StudyResult | null>(null);
   const [showAddCard, setShowAddCard] = useState(false);
   const [newCard, setNewCard] = useState({ front: '', back: '' });
+  const [editingCard, setEditingCard] = useState<string | null>(null);
+  const [editCard, setEditCard] = useState({ front: '', back: '' });
 
   const handleStartLearning = () => {
     if (flashcards.length === 0) return;
@@ -170,6 +172,31 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
     const updatedFlashcards = flashcards.filter(c => c.id !== id);
     setFlashcards(updatedFlashcards);
     saveFlashcards(updatedFlashcards);
+  };
+
+  const handleEditCard = (id: string) => {
+    const card = flashcards.find(c => c.id === id);
+    if (card) {
+      setEditingCard(id);
+      setEditCard({ front: card.front, back: card.back });
+    }
+  };
+
+  const handleSaveEdit = (id: string) => {
+    if (editCard.front.trim() && editCard.back.trim()) {
+      const updatedFlashcards = flashcards.map(c =>
+        c.id === id ? { ...c, front: editCard.front, back: editCard.back } : c
+      );
+      setFlashcards(updatedFlashcards);
+      saveFlashcards(updatedFlashcards);
+      setEditingCard(null);
+      setEditCard({ front: '', back: '' });
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCard(null);
+    setEditCard({ front: '', back: '' });
   };
 
   if (isLoading) {
@@ -295,26 +322,67 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
                 animate={{ opacity: 1, y: 0 }}
                 className="p-4 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a] hover:border-[#b85a3a] transition-all"
               >
-                <div className="flex items-start gap-4">
-                  <div className="flex-1">
-                    <p className="text-white font-medium mb-2">Q: {card.front}</p>
-                    <p className="text-[#9ca3af]">A: {card.back}</p>
+                {editingCard === card.id ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-[#9ca3af] mb-2">Front</label>
+                      <textarea
+                        value={editCard.front}
+                        onChange={(e) => setEditCard({ ...editCard, front: e.target.value })}
+                        placeholder="Question or term..."
+                        className="w-full p-3 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#b85a3a] resize-none"
+                        rows={2}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[#9ca3af] mb-2">Back</label>
+                      <textarea
+                        value={editCard.back}
+                        onChange={(e) => setEditCard({ ...editCard, back: e.target.value })}
+                        placeholder="Answer or definition..."
+                        className="w-full p-3 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#b85a3a] resize-none"
+                        rows={2}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => handleSaveEdit(card.id)}
+                        className="px-4 py-2 bg-[#b85a3a] rounded-lg text-white font-medium hover:bg-[#a04a2a] transition-colors"
+                      >
+                        Save
+                      </motion.button>
+                      <button
+                        onClick={handleCancelEdit}
+                        className="px-4 py-2 bg-[#3a3a3a] rounded-lg text-white font-medium hover:bg-[#4a4a4a] transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => { /* TODO: Implement edit functionality */ }}
-                      className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
-                    >
-                      <HiPencil className="w-5 h-5 text-[#9ca3af]" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteCard(card.id)}
-                      className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
-                    >
-                      <HiTrash className="w-5 h-5 text-[#ef4444]" />
-                    </button>
+                ) : (
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1">
+                      <p className="text-white font-medium mb-2">Q: {card.front}</p>
+                      <p className="text-[#9ca3af]">A: {card.back}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEditCard(card.id)}
+                        className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
+                      >
+                        <HiPencil className="w-5 h-5 text-[#9ca3af]" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCard(card.id)}
+                        className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
+                      >
+                        <HiTrash className="w-5 h-5 text-[#ef4444]" />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </motion.div>
             ))}
           </div>

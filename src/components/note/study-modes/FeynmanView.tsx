@@ -30,6 +30,7 @@ export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
   const [suggestedTopics, setSuggestedTopics] = useState<Topic[]>([]);
   const [isGeneratingTopics, setIsGeneratingTopics] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isGettingFeedback, setIsGettingFeedback] = useState(false);
 
   // Load saved topics from Supabase
   useEffect(() => {
@@ -169,18 +170,37 @@ export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
     setSelectedTopic(topicId);
     setExplanation('');
     setFeedback(null);
+    setIsGettingFeedback(false);
   };
 
   const handleExplain = async () => {
     if (!explanation.trim()) return;
 
+    setIsGettingFeedback(true);
     try {
-      // Get AI feedback using OpenAI
-      const feedbackPrompt = `Based on this note content:\n\n${noteContent}\n\nReview this student explanation and provide constructive feedback:\n\n${explanation}\n\nProvide feedback in JSON format: {"score": number (0-100), "feedback": "string", "suggestions": ["string array"]}`;
+      // Get AI feedback using OpenAI with stricter expectations
+      const feedbackPrompt = `You are a CRITICAL but fair teacher evaluating a student's explanation using the Feynman Technique. The goal is to ensure the explanation is so simple that a 5-year-old could understand it.
+
+Note content:\n${noteContent}
+
+Student explanation to evaluate:\n${explanation}
+
+EVALUATION CRITERIA (BE STRICT):
+1. Language should be SIMPLE - no jargon, technical terms without explanation, or complex vocabulary
+2. Explanations should use ANALOGIES or real-world examples
+3. Concepts should be broken down into the SMALLEST possible pieces
+4. NO ASSUMPTIONS - the explanation should not assume prior knowledge
+5. It should be conversational and clear, like talking to a child
+
+Score harshly (20-40%) if: using jargon, technical terms without explanation, assuming knowledge, lacking analogies, too complex
+Score mediocre (50-70%) if: generally correct but could be simpler, missing key analogies, some complexity
+Score well (80-100%) if: truly simple, uses great analogies, breaks down perfectly, conversational
+
+Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback string", "suggestions": ["string array of specific improvements"]}`;
       
       const aiResponse = await openaiService.chatCompletions([
         { role: 'user', content: feedbackPrompt }
-      ], 'You are a helpful teaching assistant that provides constructive feedback on student explanations using the Feynman Technique.');
+      ], 'You are a STRICT but constructive teacher who insists on truly simple explanations. You must be critical and demand explanations suitable for a 5-year-old. Do not give high scores unless the explanation is genuinely simple, uses analogies, avoids jargon, and breaks concepts into digestible pieces.');
       
       // Parse the response
       const feedbackMatch = aiResponse.match(/\{[^}]+\}/);
@@ -188,7 +208,7 @@ export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
         const parsed = JSON.parse(feedbackMatch[0]);
         setFeedback({
           id: Date.now().toString(),
-          score: parsed.score || 75,
+          score: parsed.score || 50,
           feedback: parsed.feedback || aiResponse,
           suggestions: parsed.suggestions || [],
         });
@@ -196,7 +216,7 @@ export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
         // Fallback if parsing fails
         setFeedback({
           id: Date.now().toString(),
-          score: 75,
+          score: 50,
           feedback: aiResponse,
           suggestions: [],
         });
@@ -206,10 +226,12 @@ export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
       // Fallback feedback
       setFeedback({
         id: Date.now().toString(),
-        score: 75,
+        score: 50,
         feedback: "I couldn't process your explanation at this moment. Please try again.",
-        suggestions: ["Try simplifying your explanation", "Use more examples"],
+        suggestions: ["Try simplifying your explanation", "Use more examples and analogies"],
       });
+    } finally {
+      setIsGettingFeedback(false);
     }
   };
 
@@ -217,6 +239,7 @@ export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
     setSelectedTopic(null);
     setExplanation('');
     setFeedback(null);
+    setIsGettingFeedback(false);
   };
 
   if (isLoading) {
@@ -234,7 +257,7 @@ export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
           <div className="mb-8">
             <h2 className="text-3xl font-bold text-white mb-2">Feynman Technique</h2>
             <p className="text-[#9ca3af] text-lg">
-              Pick a topic and explain it as if you're teaching it to a child. This helps you truly understand the concept.
+              Pick a topic and explain it as if you're teaching it to a 5-year-old. Use simple language, avoid jargon, and include analogies. This helps you truly understand the concept.
             </p>
           </div>
 
@@ -310,7 +333,7 @@ export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
             )}
             {(selectedTopic === 'custom' || !suggestedTopics.find(t => t.id === selectedTopic)?.description) && (
               <p className="text-[#9ca3af]">
-                Explain this concept as simply as possible. Imagine teaching it to a 5-year-old!
+                Explain this concept as simply as possible. Imagine teaching it to a 5-year-old! Use everyday language, avoid jargon, and include analogies or real-world examples.
               </p>
             )}
           </div>
@@ -329,7 +352,7 @@ export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
               <textarea
                 value={explanation}
                 onChange={(e) => setExplanation(e.target.value)}
-                placeholder="Write your explanation here..."
+                placeholder="Explain in simple terms, like talking to a 5-year-old. Use analogies and everyday examples. Avoid jargon and technical terms..."
                 className="flex-1 p-6 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#b85a3a] transition-colors resize-none"
               />
               
@@ -338,10 +361,20 @@ export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={handleExplain}
-                  disabled={!explanation.trim()}
-                  className="px-6 py-3 bg-[#b85a3a] rounded-lg text-white font-medium hover:bg-[#a04a2a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!explanation.trim() || isGettingFeedback}
+                  className="px-6 py-3 bg-[#b85a3a] rounded-lg text-white font-medium hover:bg-[#a04a2a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Get Feedback
+                  {isGettingFeedback ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Analyzing...</span>
+                    </>
+                  ) : (
+                    'Get Feedback'
+                  )}
                 </motion.button>
               </div>
             </div>
@@ -388,7 +421,10 @@ export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => setFeedback(null)}
+                  onClick={() => {
+                    setFeedback(null);
+                    setIsGettingFeedback(false);
+                  }}
                   className="flex-1 px-6 py-3 bg-[#b85a3a] rounded-lg text-white font-medium hover:bg-[#a04a2a] transition-colors"
                 >
                   Try Again

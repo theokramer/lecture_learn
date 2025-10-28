@@ -125,6 +125,8 @@ export const QuizView: React.FC<QuizViewProps> = ({ noteContent }) => {
   const [results, setResults] = useState<QuizResult | null>(null);
   const [showAddQuestion, setShowAddQuestion] = useState(false);
   const [newQuestion, setNewQuestion] = useState({ question: '', options: ['', '', '', ''], correct: 0 });
+  const [editingQuestion, setEditingQuestion] = useState<string | null>(null);
+  const [editQuestion, setEditQuestion] = useState({ question: '', options: ['', '', '', ''], correct: 0 });
 
   const handleStartQuiz = () => {
     if (questions.length === 0) return;
@@ -180,6 +182,37 @@ export const QuizView: React.FC<QuizViewProps> = ({ noteContent }) => {
     const updatedQuestions = questions.filter(q => q.id !== id);
     setQuestions(updatedQuestions);
     saveQuestions(updatedQuestions);
+  };
+
+  const handleEditQuestion = (id: string) => {
+    const question = questions.find(q => q.id === id);
+    if (question) {
+      setEditingQuestion(id);
+      setEditQuestion({
+        question: question.question,
+        options: question.options,
+        correct: question.correct,
+      });
+    }
+  };
+
+  const handleSaveEdit = (id: string) => {
+    if (editQuestion.question.trim() && editQuestion.options.every(o => o.trim())) {
+      const updatedQuestions = questions.map(q =>
+        q.id === id
+          ? { ...q, question: editQuestion.question, options: editQuestion.options, correct: editQuestion.correct }
+          : q
+      );
+      setQuestions(updatedQuestions);
+      saveQuestions(updatedQuestions);
+      setEditingQuestion(null);
+      setEditQuestion({ question: '', options: ['', '', '', ''], correct: 0 });
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingQuestion(null);
+    setEditQuestion({ question: '', options: ['', '', '', ''], correct: 0 });
   };
 
   if (isLoading) {
@@ -317,34 +350,90 @@ export const QuizView: React.FC<QuizViewProps> = ({ noteContent }) => {
                 animate={{ opacity: 1, y: 0 }}
                 className="p-4 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a] hover:border-[#b85a3a] transition-all"
               >
-                <div className="flex items-start gap-4">
-                  <div className="flex-1">
-                    <p className="text-white font-medium mb-3">{q.question}</p>
-                    <div className="space-y-2">
-                      {q.options.map((option, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          {idx === q.correct && <HiCheck className="w-4 h-4 text-green-500" />}
-                          <span className={`text-sm ${idx === q.correct ? 'text-green-500 font-medium' : 'text-[#9ca3af]'}`}>
-                            {option}
-                          </span>
+                {editingQuestion === q.id ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-[#9ca3af] mb-2">Question</label>
+                      <textarea
+                        value={editQuestion.question}
+                        onChange={(e) => setEditQuestion({ ...editQuestion, question: e.target.value })}
+                        placeholder="Enter your question..."
+                        className="w-full p-3 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#b85a3a] resize-none"
+                        rows={2}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[#9ca3af] mb-2">Options</label>
+                      {editQuestion.options.map((option, idx) => (
+                        <div key={idx} className="flex items-center gap-3 mb-2">
+                          <input
+                            type="radio"
+                            checked={editQuestion.correct === idx}
+                            onChange={() => setEditQuestion({ ...editQuestion, correct: idx })}
+                            className="w-4 h-4"
+                          />
+                          <input
+                            type="text"
+                            value={option}
+                            onChange={(e) => {
+                              const newOptions = [...editQuestion.options];
+                              newOptions[idx] = e.target.value;
+                              setEditQuestion({ ...editQuestion, options: newOptions });
+                            }}
+                            placeholder={`Option ${idx + 1}`}
+                            className="flex-1 p-3 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#b85a3a]"
+                          />
                         </div>
                       ))}
                     </div>
+                    <div className="flex gap-2">
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => handleSaveEdit(q.id)}
+                        className="px-4 py-2 bg-[#b85a3a] rounded-lg text-white font-medium hover:bg-[#a04a2a] transition-colors"
+                      >
+                        Save
+                      </motion.button>
+                      <button
+                        onClick={handleCancelEdit}
+                        className="px-4 py-2 bg-[#3a3a3a] rounded-lg text-white font-medium hover:bg-[#4a4a4a] transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
-                    >
-                      <HiPencil className="w-5 h-5 text-[#9ca3af]" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteQuestion(q.id)}
-                      className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
-                    >
-                      <HiTrash className="w-5 h-5 text-[#ef4444]" />
-                    </button>
+                ) : (
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1">
+                      <p className="text-white font-medium mb-3">{q.question}</p>
+                      <div className="space-y-2">
+                        {q.options.map((option, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            {idx === q.correct && <HiCheck className="w-4 h-4 text-green-500" />}
+                            <span className={`text-sm ${idx === q.correct ? 'text-green-500 font-medium' : 'text-[#9ca3af]'}`}>
+                              {option}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEditQuestion(q.id)}
+                        className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
+                      >
+                        <HiPencil className="w-5 h-5 text-[#9ca3af]" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteQuestion(q.id)}
+                        className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
+                      >
+                        <HiTrash className="w-5 h-5 text-[#ef4444]" />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </motion.div>
             ))}
           </div>
