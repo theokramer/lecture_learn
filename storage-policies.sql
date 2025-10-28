@@ -1,8 +1,16 @@
 -- Supabase Storage Bucket RLS Policies for React Learning Notes App
 -- Run this in your Supabase SQL Editor to configure storage bucket security
+--
+-- UPDATED: Uses LIKE pattern matching for more reliable path checking
+-- This matches files where the path starts with the user's UUID (e.g., "user-uuid/filename.ext")
+--
+-- IMPORTANT: 
+-- 1. Make sure the 'documents' bucket exists (create via Dashboard > Storage)
+-- 2. Run this script in SQL Editor to update the policies
+-- 3. Clear browser cache after running to test changes
 
 -- Create the 'documents' storage bucket if it doesn't exist
--- Note: This bucket will be created via Supabase Dashboard if it doesn't exist
+-- Note: Create this via Supabase Dashboard if it doesn't exist
 -- Go to Storage > Create Bucket > Name: "documents" > Public: false
 
 -- Storage Bucket Policies for 'documents' bucket
@@ -15,11 +23,12 @@ DROP POLICY IF EXISTS "Users can update their own files" ON storage.objects;
 DROP POLICY IF EXISTS "Users can delete their own files" ON storage.objects;
 
 -- Policy: Allow authenticated users to view/select files in their own folders
+-- Using LIKE pattern matching for more reliable path checking
 CREATE POLICY "Users can view their own files"
 ON storage.objects FOR SELECT
 USING (
   bucket_id = 'documents' 
-  AND auth.uid()::text = (storage.foldername(name))[1]
+  AND name LIKE auth.uid()::text || '/%'
 );
 
 -- Policy: Allow authenticated users to upload files to their own folders
@@ -27,7 +36,7 @@ CREATE POLICY "Users can upload their own files"
 ON storage.objects FOR INSERT
 WITH CHECK (
   bucket_id = 'documents' 
-  AND auth.uid()::text = (storage.foldername(name))[1]
+  AND name LIKE auth.uid()::text || '/%'
 );
 
 -- Policy: Allow authenticated users to update their own files
@@ -35,11 +44,11 @@ CREATE POLICY "Users can update their own files"
 ON storage.objects FOR UPDATE
 USING (
   bucket_id = 'documents' 
-  AND auth.uid()::text = (storage.foldername(name))[1]
+  AND name LIKE auth.uid()::text || '/%'
 )
 WITH CHECK (
   bucket_id = 'documents' 
-  AND auth.uid()::text = (storage.foldername(name))[1]
+  AND name LIKE auth.uid()::text || '/%'
 );
 
 -- Policy: Allow authenticated users to delete their own files
@@ -47,7 +56,7 @@ CREATE POLICY "Users can delete their own files"
 ON storage.objects FOR DELETE
 USING (
   bucket_id = 'documents' 
-  AND auth.uid()::text = (storage.foldername(name))[1]
+  AND name LIKE auth.uid()::text || '/%'
 );
 
 -- Instructions for creating the bucket manually:
