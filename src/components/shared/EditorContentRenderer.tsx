@@ -1,5 +1,4 @@
 import React from 'react';
-import { Node as ProseMirrorNode } from 'prosemirror-model';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 

@@ -58,7 +58,7 @@ export const BlockMath = Node.create({
 
   addCommands() {
     return {
-      setBlockMath: (attributes: { formula: string }) => ({ commands }) => {
+      setBlockMath: (attributes: { formula: string }) => ({ commands }: { commands: any }) => {
         return commands.insertContent({
           type: this.name,
           attrs: attributes,

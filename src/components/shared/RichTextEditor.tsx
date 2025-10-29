@@ -8,11 +8,11 @@ const Color = TextStyle.extend({
   name: 'color',
   addAttributes() {
     return {
-      ...this.parent?.(),
+      ...(this.parent?.() || {}),
       color: {
         default: null,
-        parseHTML: element => element.style.color,
-        renderHTML: attributes => {
+        parseHTML: (element: HTMLElement) => element.style.color,
+        renderHTML: (attributes: Record<string, any>) => {
           if (!attributes.color) {
             return {};
           }
@@ -45,8 +45,6 @@ import {
 } from 'react-icons/hi2';
 import { HiCode } from 'react-icons/hi';
 import { 
-  HiMinusSm, 
-  HiCheck, 
   HiX,
   HiOutlineChevronDown,
   HiOutlineChevronUp,
