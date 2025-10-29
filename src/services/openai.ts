@@ -52,25 +52,6 @@ export const openaiService = {
     return transcription.text;
   },
 
-  async generateSummary(text: string): Promise<string> {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a helpful assistant that creates concise, well-structured summaries. Create a summary that captures the key points and main ideas.',
-        },
-        {
-          role: 'user',
-          content: `Please summarize the following text:\n\n${text}`,
-        },
-      ],
-      temperature: 0.7,
-    });
-
-    return completion.choices[0].message.content || '';
-  },
-
   async generateFlashcards(text: string, count: number = 20): Promise<Array<{ front: string; back: string }>> {
     try {
       // Truncate content to avoid rate limits

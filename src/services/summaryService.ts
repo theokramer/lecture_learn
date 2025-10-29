@@ -41,7 +41,7 @@ export const summaryService = {
 
       // Call OpenAI directly with proper message structure
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o',
         messages: [
           {
             role: 'system',
