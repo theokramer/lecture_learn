@@ -8,7 +8,6 @@ const Color = TextStyle.extend({
   name: 'color',
   addAttributes() {
     return {
-      ...(this.parent?.() || {}),
       color: {
         default: null,
         parseHTML: (element: HTMLElement) => element.style.color,
