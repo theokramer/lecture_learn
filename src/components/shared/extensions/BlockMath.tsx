@@ -1,4 +1,4 @@
-import { Node } from '@tiptap/core';
+import { Node, type RawCommands } from '@tiptap/core';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
@@ -24,7 +24,6 @@ export const BlockMath = Node.create({
   group: 'block',
 
   atom: true,
-  isLeaf: true,
   content: '',
 
   addAttributes() {
@@ -66,7 +65,7 @@ export const BlockMath = Node.create({
     return ['div', { class: 'block-math my-6 text-center', 'data-type': 'block-math', dangerouslySetInnerHTML: { __html: html } }];
   },
 
-  addCommands() {
+  addCommands(): Partial<RawCommands> {
     return {
       setBlockMath:
         (attributes: { formula: string }) =>
@@ -76,7 +75,7 @@ export const BlockMath = Node.create({
             attrs: attributes,
           });
         },
-    } as any;
+    } as Partial<RawCommands>;
   },
 });
 

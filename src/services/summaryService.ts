@@ -5,7 +5,7 @@ const openai = new OpenAI({
   apiKey,
   dangerouslyAllowBrowser: true,
 });
-import type { Note, Document } from '../types';
+import type { Document } from '../types';
 
 interface DocumentContent {
   name: string;
