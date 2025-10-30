@@ -76,7 +76,7 @@ export const BlockMath = Node.create({
             attrs: attributes,
           });
         },
-    };
+    } as any;
   },
 });
 

@@ -1,5 +1,4 @@
 import { Mark } from '@tiptap/core';
-import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
 export const InlineMath = Mark.create({
