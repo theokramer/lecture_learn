@@ -6,6 +6,7 @@ import { useAppData } from '../context/AppDataContext';
 import { useAuth } from '../context/AuthContext';
 import { openaiService } from '../services/openai';
 import { storageService, documentService, studyContentService } from '../services/supabase';
+import { summaryService } from '../services/summaryService';
 
 export const ProcessingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -44,8 +45,12 @@ export const ProcessingPage: React.FC = () => {
           const storagePath = await storageService.uploadFile(user.id, audioFile);
           setProgress(70);
 
-          // Create note with transcription
-          const noteId = await createNote(title || 'Voice Recording', transcription);
+          // Create note title from transcription
+          setCurrentTask('Generating title...');
+          const aiTitleFromAudio = await summaryService.generatePerfectTitle(transcription);
+          
+          // Create note with AI title and transcription
+          const noteId = await createNote(aiTitleFromAudio || title || 'Voice Recording', transcription);
           setProgress(85);
 
           // Save audio file as document
@@ -70,10 +75,13 @@ export const ProcessingPage: React.FC = () => {
           }, 100);
         } else if (text) {
           // Process text content
-          setCurrentTask('Creating note...');
-          setProgress(50);
+          setCurrentTask('Generating title...');
+          setProgress(45);
+          const aiTitle = await summaryService.generatePerfectTitle(text);
 
-          const noteId = await createNote(title || 'New Note', text);
+          setCurrentTask('Creating note...');
+          setProgress(55);
+          const noteId = await createNote(aiTitle || title || 'New Note', text);
           setProgress(60);
 
           // Create document records if file metadata exists

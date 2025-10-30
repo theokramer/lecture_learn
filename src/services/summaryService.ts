@@ -17,6 +17,53 @@ interface DocumentContent {
 
 export const summaryService = {
   /**
+   * Generate a concise, high-signal title from note content and optional documents.
+   * Returns a short title suitable for a note list. Falls back to a default if generation fails.
+   */
+  async generatePerfectTitle(noteContent: string, documents: Document[] = []): Promise<string> {
+    try {
+      const trimmed = (noteContent || '').trim();
+      if (!trimmed) return 'New Note';
+
+      const docNames = (documents || []).slice(0, 6).map(d => `${d.name} [${d.type}]`).join(', ');
+
+      const system = `You are an expert copywriter. Create the single best, specific, human-friendly title from provided content. 
+Rules:  
+- 4–12 words, Title Case  
+- No quotes, no punctuation at end  
+- Be specific (topic, angle, scope)  
+- No placeholders  
+- Prefer content over filenames if they conflict`;
+
+      const user = `Content:\n${trimmed}\n\nDocuments: ${docNames || 'none'}\n\nReturn ONLY the title.`;
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        temperature: 0.4,
+        max_tokens: 32,
+      });
+
+      let title = (completion.choices[0].message.content || '').trim();
+      // Strip wrapping quotes/backticks if any
+      if ((title.startsWith('"') && title.endsWith('"')) || (title.startsWith('\'') && title.endsWith('\''))) {
+        title = title.slice(1, -1).trim();
+      }
+      title = title.replace(/^`+|`+$/g, '').trim();
+
+      // Enforce short length, Title Case-ish
+      if (title.length > 90) title = title.slice(0, 90).trim();
+      if (!title) return 'New Note';
+      return title.replace(/[\.!?\s]+$/g, '');
+    } catch (err) {
+      console.error('Error generating title:', err);
+      return 'New Note';
+    }
+  },
+  /**
    * Intelligently generates a comprehensive summary by analyzing all documents
    * and their relationships (e.g., audio + slides complementing each other)
    */
