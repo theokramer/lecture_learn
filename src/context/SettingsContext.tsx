@@ -14,6 +14,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   flashcardsCount: 20,
   quizCount: 15,
   exercisesCount: 10,
+  summaryDetailLevel: 'comprehensive',
 };
 
 const MIN_VALUES = {
@@ -73,6 +74,13 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
           MAX_VALUES.exercisesCount,
           Math.max(MIN_VALUES.exercisesCount, newPreferences.exercisesCount)
         );
+      }
+
+      if (newPreferences.summaryDetailLevel !== undefined) {
+        const allowed = ['concise', 'standard', 'comprehensive'] as const;
+        updated.summaryDetailLevel = allowed.includes(newPreferences.summaryDetailLevel as any)
+          ? newPreferences.summaryDetailLevel
+          : prev.summaryDetailLevel || 'standard';
       }
       
       return updated;

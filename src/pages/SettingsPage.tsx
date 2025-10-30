@@ -20,7 +20,7 @@ export const SettingsPage: React.FC = () => {
     navigate('/login');
   };
 
-  const handlePreferenceChange = (key: keyof typeof preferences, value: number) => {
+  const handlePreferenceChange = (key: keyof typeof preferences, value: any) => {
     const newPreferences = { ...localPreferences, [key]: value };
     setLocalPreferences(newPreferences);
     setShowSaveButton(true);
@@ -167,6 +167,20 @@ export const SettingsPage: React.FC = () => {
                   value={localPreferences.exercisesCount}
                   onChange={(value) => handlePreferenceChange('exercisesCount', value)}
                 />
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-[#9ca3af]">Summary detail level</label>
+                  <select
+                    value={localPreferences.summaryDetailLevel || 'comprehensive'}
+                    onChange={(e) => handlePreferenceChange('summaryDetailLevel', e.target.value as any)}
+                    className="w-full px-3 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white text-sm"
+                  >
+                    <option value="concise">Concise</option>
+                    <option value="standard">Standard</option>
+                    <option value="comprehensive">Comprehensive (default)</option>
+                  </select>
+                  <p className="text-xs text-[#6b7280]">Controls how thorough AI summaries are. Longer summaries cost more; choose Concise for cheaper/faster output.</p>
+                </div>
               </div>
             </div>
 

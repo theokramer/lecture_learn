@@ -35,6 +35,7 @@ export interface UserPreferences {
   flashcardsCount: number;
   quizCount: number;
   exercisesCount: number;
+  summaryDetailLevel?: 'concise' | 'standard' | 'comprehensive';
 }
 
 export type StudyMode = 'summary' | 'transcript' | 'feynman' | 'flashcards' | 'quiz' | 'exercises' | 'documents';

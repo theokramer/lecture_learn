@@ -4,11 +4,13 @@ import { summaryService } from '../../../services/summaryService';
 import { studyContentService } from '../../../services/supabase';
 import { useAppData } from '../../../context/AppDataContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSettings } from '../../../context/SettingsContext';
 import { HiSparkles, HiDocumentText, HiArrowPath, HiQuestionMarkCircle } from 'react-icons/hi2';
 import 'katex/dist/katex.min.css';
 
 export const SummaryView: React.FC = () => {
   const { selectedNoteId, notes } = useAppData();
+  const { preferences } = useSettings();
   const currentNote = notes.find(n => n.id === selectedNoteId);
   
   const [summary, setSummary] = useState<string>('');
@@ -80,7 +82,8 @@ export const SummaryView: React.FC = () => {
       // Generate intelligent summary using the summary service
       const generatedSummary = await summaryService.generateIntelligentSummary(
         currentNote.content || '',
-        currentNote.documents || []
+        currentNote.documents || [],
+        { detailLevel: preferences.summaryDetailLevel || 'comprehensive' }
       );
 
       setSummary(generatedSummary);

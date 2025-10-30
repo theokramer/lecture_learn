@@ -536,6 +536,28 @@ export const studyContentService = {
   async saveSummary(noteId: string, summary: string) {
     return this.saveStudyContent(noteId, { summary });
   },
+
+  async getSummariesForNotes(noteIds: string[]) {
+    if (!noteIds || noteIds.length === 0) {
+      return {} as Record<string, string>;
+    }
+
+    const { data, error } = await supabase
+      .from('study_content')
+      .select('note_id, summary')
+      .in('note_id', noteIds);
+
+    if (error) {
+      console.error('Error loading summaries for notes:', error);
+      return {} as Record<string, string>;
+    }
+
+    const map: Record<string, string> = {};
+    (data || []).forEach((row: any) => {
+      map[row.note_id] = row.summary || '';
+    });
+    return map;
+  },
 };
 
 // User operations
