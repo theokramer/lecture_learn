@@ -30,7 +30,7 @@ export const InlineMath = Mark.create({
     ];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML() {
     return ['span', { 'data-type': 'inline-math', class: 'inline-math' }, 0];
   },
 
