@@ -163,22 +163,29 @@ export const RecordAudioPage: React.FC = () => {
         }
       };
 
-      // Handle stream errors
+      // Handle stream errors - track ended events
+      // MediaStreamTrack doesn't have onerror, so we monitor onended and readyState
       stream.getTracks().forEach(track => {
-        track.onended = () => {
-          console.warn('Audio track ended unexpectedly');
-          if (isRecording) {
-            toast.error('Audio input was interrupted. Recording stopped.');
+        // Monitor track state changes periodically
+        const stateCheckInterval = setInterval(() => {
+          if (isRecording && track.readyState === 'ended') {
+            console.error('Track ended unexpectedly');
+            clearInterval(stateCheckInterval);
+            toast.error('Audio input error. Recording stopped.');
             if (stopHandlerRef.current) {
               stopHandlerRef.current();
             }
+          } else if (!isRecording) {
+            clearInterval(stateCheckInterval);
           }
-        };
+        }, 1000);
         
-        track.onerror = (event) => {
-          console.error('Track error:', event);
+        // Handle track ended event
+        track.onended = () => {
+          console.warn('Audio track ended unexpectedly');
+          clearInterval(stateCheckInterval);
           if (isRecording) {
-            toast.error('Audio input error. Recording stopped.');
+            toast.error('Audio input was interrupted. Recording stopped.');
             if (stopHandlerRef.current) {
               stopHandlerRef.current();
             }
