@@ -206,3 +206,30 @@ CREATE TRIGGER update_study_content_updated_at
   BEFORE UPDATE ON study_content
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
+
+-- Daily AI usage table for per-user per-day generation limits
+CREATE TABLE IF NOT EXISTS daily_ai_usage (
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  usage_date DATE NOT NULL DEFAULT (CURRENT_DATE AT TIME ZONE 'utc'),
+  count INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, usage_date)
+);
+
+ALTER TABLE daily_ai_usage ENABLE ROW LEVEL SECURITY;
+
+-- RLS: users can only see and modify their own usage rows
+CREATE POLICY "Users can view their own daily ai usage"
+  ON daily_ai_usage FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create their own daily ai usage"
+  ON daily_ai_usage FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own daily ai usage"
+  ON daily_ai_usage FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- Index for quick lookups
+CREATE INDEX IF NOT EXISTS idx_daily_ai_usage_user_date ON daily_ai_usage(user_id, usage_date);

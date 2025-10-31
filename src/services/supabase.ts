@@ -375,13 +375,18 @@ async function generateAllStudyContent(noteId: string, content: string) {
 
   try {
     const { openaiService } = await import('./openai');
+    const { summaryService } = await import('./summaryService');
+
+    // Fetch documents metadata for summary context
+    const documents = await documentService.getDocuments(noteId);
 
     // Generate all study materials in parallel
-    const [flashcardsData, quizData, exercisesData, feynmanTopicsData] = await Promise.allSettled([
+    const [flashcardsData, quizData, exercisesData, feynmanTopicsData, summaryData] = await Promise.allSettled([
       openaiService.generateFlashcards(content),
       openaiService.generateQuiz(content),
       generateExercisesHelper(content),
       generateFeynmanTopicsHelper(content),
+      summaryService.generateIntelligentSummary(content, documents, { detailLevel: 'standard' }),
     ]);
 
     const flashcards = flashcardsData.status === 'fulfilled' 
@@ -405,6 +410,10 @@ async function generateAllStudyContent(noteId: string, content: string) {
       ? feynmanTopicsData.value
       : [];
 
+    const summaryHtml = summaryData.status === 'fulfilled'
+      ? summaryData.value
+      : '';
+
     // Save all study content
     // Check if study_content exists for this note
     const { data: existing } = await supabase
@@ -419,6 +428,7 @@ async function generateAllStudyContent(noteId: string, content: string) {
     contentData.quiz_questions = quizQuestions;
     contentData.exercises = exercises;
     contentData.feynman_topics = feynmanTopics;
+    if (summaryHtml) contentData.summary = summaryHtml;
 
     if (existing) {
       // Update existing
@@ -485,6 +495,19 @@ export const studyContentService = {
 
   async generateAndSaveAllStudyContent(noteId: string, content: string) {
     return generateAllStudyContent(noteId, content);
+  },
+
+  async generateAndSaveSummary(noteId: string, content: string, detailLevel: 'concise' | 'standard' | 'comprehensive' = 'standard') {
+    try {
+      const { summaryService } = await import('./summaryService');
+      const documents = await documentService.getDocuments(noteId);
+      const summary = await summaryService.generateIntelligentSummary(content, documents, { detailLevel });
+      await this.saveSummary(noteId, summary);
+      return summary;
+    } catch (error) {
+      console.error('Error generating/saving summary:', error);
+      throw error;
+    }
   },
 
   async saveStudyContent(

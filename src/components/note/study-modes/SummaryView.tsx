@@ -79,22 +79,26 @@ export const SummaryView: React.FC = () => {
 
     setIsGenerating(true);
     try {
-      // Generate intelligent summary using the summary service
-      const generatedSummary = await summaryService.generateIntelligentSummary(
+      // Generate and save in background via service (faster model under the hood)
+      const generatedSummary = await studyContentService.generateAndSaveSummary(
+        selectedNoteId,
         currentNote.content || '',
-        currentNote.documents || [],
-        { detailLevel: preferences.summaryDetailLevel || 'comprehensive' }
+        preferences.summaryDetailLevel || 'standard'
       );
 
       setSummary(generatedSummary);
       setHasSummary(true);
-      
-      // Save the generated summary
-      await studyContentService.saveSummary(selectedNoteId, generatedSummary);
       setLastSaved(new Date());
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating summary:', error);
-      alert('Failed to generate summary. Please try again.');
+      const code = error?.code || error?.name;
+      if (code === 'DAILY_LIMIT_REACHED') {
+        const resetAt = error?.resetAt ? new Date(error.resetAt) : null;
+        const when = resetAt ? ` after ${resetAt.toLocaleTimeString()}` : ' tomorrow';
+        alert(`Daily AI limit reached (15/day). Please try again${when}.`);
+      } else {
+        alert('Failed to generate summary. Please try again.');
+      }
     } finally {
       setIsGenerating(false);
     }

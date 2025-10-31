@@ -1,10 +1,4 @@
-import OpenAI from 'openai';
-
-const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-const openai = new OpenAI({
-  apiKey,
-  dangerouslyAllowBrowser: true,
-});
+import { aiGateway, DailyLimitError } from './aiGateway';
 import type { Document } from '../types';
 
 interface DocumentContent {
@@ -13,6 +7,59 @@ interface DocumentContent {
   content: string;
   hasAudio?: boolean;
   hasSlides?: boolean;
+}
+
+// Helper: Build balanced context across multiple uploaded documents found in the note content
+// It detects sections introduced by lines like "--- Document: <name> ---" or "File: <name>"
+// and allocates an equal share of the word budget to each document so later uploads receive equal weight.
+function buildBalancedContext(content: string, maxWords: number = 1500): string {
+  const lines = (content || '').split(/\n+/);
+  const sections: Array<{ title: string; text: string }> = [];
+  let currentTitle = 'Document';
+  let currentBuffer: string[] = [];
+
+  const pushSection = () => {
+    const text = currentBuffer.join('\n').trim();
+    if (text) sections.push({ title: currentTitle, text });
+    currentBuffer = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const docHeaderMatch = line.match(/^---\s*Document:\s*(.+?)\s*---$/i);
+    const fileHeaderMatch = line.match(/^File:\s*(.+)$/i);
+    if (docHeaderMatch || fileHeaderMatch) {
+      pushSection();
+      currentTitle = `Document: ${docHeaderMatch ? docHeaderMatch[1] : (fileHeaderMatch ? fileHeaderMatch[1] : 'Unknown')}`;
+      continue;
+    }
+    currentBuffer.push(rawLine);
+  }
+  pushSection();
+
+  if (sections.length === 0) return content || '';
+
+  const perSectionBase = Math.floor(maxWords / sections.length) || 1;
+  let remainder = maxWords - perSectionBase * sections.length;
+
+  const pickFromSection = (text: string, wordsToTake: number): string => {
+    const words = text.split(/\s+/).filter(Boolean);
+    if (words.length <= wordsToTake) return text.trim();
+    return words.slice(0, wordsToTake).join(' ') + '\n[truncated]';
+  };
+
+  const balancedParts: string[] = [];
+  for (const section of sections) {
+    let allocation = perSectionBase;
+    if (remainder > 0) {
+      allocation += 1;
+      remainder -= 1;
+    }
+    const picked = pickFromSection(section.text, allocation);
+    balancedParts.push(`${section.title}\n${picked}`.trim());
+  }
+
+  return balancedParts.join('\n\n');
 }
 
 export const summaryService = {
@@ -37,17 +84,12 @@ Rules:
 
       const user = `Content:\n${trimmed}\n\nDocuments: ${docNames || 'none'}\n\nReturn ONLY the title.`;
 
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-        temperature: 0.4,
-        max_tokens: 32,
-      });
+      const content = await aiGateway.chatCompletion([
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ], { model: 'gpt-4o-mini', temperature: 0.4 });
 
-      let title = (completion.choices[0].message.content || '').trim();
+      let title = (content || '').trim();
       // Strip wrapping quotes/backticks if any
       if ((title.startsWith('"') && title.endsWith('"')) || (title.startsWith('\'') && title.endsWith('\''))) {
         title = title.slice(1, -1).trim();
@@ -76,12 +118,22 @@ Rules:
       // Analyze document types and their relationships
       const docAnalysis = this.analyzeDocumentTypes(documents);
       
+      // Build balanced note content to ensure equal representation across uploads
+      const chunkWordLimits: Record<string, number> = {
+        concise: 900,
+        standard: 1300,
+        comprehensive: 1700,
+      };
+      const detail = options?.detailLevel || 'comprehensive';
+      const chunkSize = chunkWordLimits[detail] || 1300;
+      const balancedNoteContent = buildBalancedContext(noteContent, chunkSize * 2);
+      
       // Build context for AI
       const context = {
-        noteContent,
+        noteContent: balancedNoteContent,
         documents: docAnalysis,
         hasAudioSlidesCombo: docAnalysis.hasAudio && docAnalysis.hasSlides,
-        detailLevel: options?.detailLevel || 'comprehensive',
+        detailLevel: detail,
       };
 
       // Create intelligent prompt based on document types
@@ -89,15 +141,10 @@ Rules:
 
       // Determine chunk size based on detail level (cost effective):
       // concise: smaller chunks, standard: medium, comprehensive: larger
-      const chunkWordLimits: Record<string, number> = {
-        concise: 900,
-        standard: 1300,
-        comprehensive: 1700,
-      };
-      const chunkSize = chunkWordLimits[context.detailLevel] || 1300;
+      // (already computed above)
 
       // If the note content is very long, summarize in chunks and then merge
-      const chunks = this.splitIntoChunksByWords(noteContent, chunkSize);
+      const chunks = this.splitIntoChunksByWords(context.noteContent, chunkSize);
 
       if (chunks.length > 1) {
         const partialSummaries: string[] = [];
@@ -108,49 +155,30 @@ Rules:
             partInfo: { index: i + 1, total: chunks.length },
           });
 
-          const partCompletion = await openai.chat.completions.create({
-            // Cost-effective: cheaper model for part summaries
-            model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: partPrompt },
-            ],
-            temperature: 0.7,
-          });
-
-          const partRaw = partCompletion.choices[0].message.content || '';
+          const partRaw = await aiGateway.chatCompletion([
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: partPrompt },
+          ], { model: 'gpt-4o-mini', temperature: 0.7 });
           partialSummaries.push(this.sanitizeHtmlOutput(partRaw));
         }
 
         // Merge partial summaries into a single comprehensive summary
         const mergePrompt = this.generateMergePrompt(partialSummaries);
-        const mergeCompletion = await openai.chat.completions.create({
-          // Higher quality model for the final merge for coherence
-          model: 'gpt-4o',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: mergePrompt },
-          ],
-          temperature: 0.5,
-        });
-
-        const mergedRaw = mergeCompletion.choices[0].message.content || '';
+        const mergedRaw = await aiGateway.chatCompletion([
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: mergePrompt },
+        ], { model: 'gpt-4o-mini', temperature: 0.5 });
         return this.sanitizeHtmlOutput(mergedRaw);
       } else {
         const userPrompt = this.generateUserPrompt(context);
-        const completion = await openai.chat.completions.create({
-          model: context.detailLevel === 'concise' ? 'gpt-4o-mini' : 'gpt-4o',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          temperature: 0.7,
-        });
-
-        const raw = completion.choices[0].message.content || '';
+        const raw = await aiGateway.chatCompletion([
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ], { model: 'gpt-4o-mini', temperature: 0.7 });
         return this.sanitizeHtmlOutput(raw);
       }
     } catch (error) {
+      if (error instanceof DailyLimitError) throw error;
       console.error('Error generating summary:', error);
       throw new Error('Failed to generate summary');
     }
@@ -283,21 +311,23 @@ Rules:
 CRITICAL: You MUST output ONLY valid HTML that can be used directly in a TipTap rich text editor. Use HTML tags for all formatting. Do NOT wrap the entire response in quotes.
 
 IMPORTANT GUIDELINES FOR HTML OUTPUT:
-1. Use the voice recording/audio as the PRIMARY source of information
-2. Use slides or supplementary materials to clarify and supplement information from the audio
-3. If information differs between sources, explain ALL perspectives and mark them clearly
-4. Include EVERY important concept - nothing should be left out
-5. Use proper HTML heading tags: <h1> for main title, <h2> for major sections, <h3> for subsections
-6. Create HTML tables using <table>, <thead>, <tbody>, <tr>, <th>, <td> tags when presenting data in tabular format
-7. Use <ul> and <li> for unordered lists, <ol> and <li> for ordered lists
-8. Use <strong> for bold text, <em> for italic, <mark> for highlighting; to add color emphasis, you MAY use inline styles such as <span style="color:#10b981">correct</span> or <span style="color:#ef4444">warning</span> ONLY when semantically appropriate.
-9. Use <blockquote> for important quotations or citations
-10. For mathematical formulas, use inline LaTeX with $...$ and block LaTeX with $$...$$
-11. Include definitions, explanations, and context for all important terms
-12. Cite specific sources (e.g., "As mentioned in the lecture..." or "According to the slides...")
-13. Avoid any non-HTML wrappers such as markdown fences or JSON.
-14. NEVER include instructional headings or example-only sections (like "Visual Emphasis") in the output. Only include real content derived from the sources.
-15. Replace all placeholders with actual content, and OMIT any section that has no content to fill.`;
+1. Give EQUAL coverage to all uploaded documents; avoid over-representing the first sections
+2. Where multiple documents state the same information, COMBINE and clarify (do not duplicate)
+3. Use the voice recording/audio as the PRIMARY source of information when present
+4. Use slides or supplementary materials to clarify and supplement information from the audio
+5. If information differs between sources, explain ALL perspectives and mark them clearly
+6. Include EVERY important concept - nothing should be left out
+7. Use proper HTML heading tags: <h1> for main title, <h2> for major sections, <h3> for subsections
+8. Create HTML tables using <table>, <thead>, <tbody>, <tr>, <th>, <td> tags when presenting data in tabular format
+9. Use <ul> and <li> for unordered lists, <ol> and <li> for ordered lists
+10. Use <strong> for bold text, <em> for italic, <mark> for highlighting; to add color emphasis, you MAY use inline styles such as <span style="color:#10b981">correct</span> or <span style="color:#ef4444">warning</span> ONLY when semantically appropriate.
+11. Use <blockquote> for important quotations or citations
+12. For mathematical formulas, use inline LaTeX with $...$ and block LaTeX with $$...$$
+13. Include definitions, explanations, and context for all important terms
+14. Cite specific sources (e.g., "As mentioned in the lecture..." or "According to the slides...")
+15. Avoid any non-HTML wrappers such as markdown fences or JSON.
+16. NEVER include instructional headings or example-only sections (like "Visual Emphasis") in the output. Only include real content derived from the sources.
+17. Replace all placeholders with actual content, and OMIT any section that has no content to fill.`;
 
     if (context.hasAudioSlidesCombo) {
       prompt += `
@@ -375,23 +405,24 @@ Target length: approximately ${targetWords.min}-${targetWords.max} words (adapt 
 
 ---
 
-SOURCE MATERIALS:
+SOURCE MATERIALS (balanced excerpts across documents):
 ${context.noteContent}
 
-DOCUMENTS PROVIDED:
+DOCUMENTS PROVIDED (types only):
 ${JSON.stringify(context.documents, null, 2)}
 
 CRITICAL REQUIREMENTS:
 1. Output ONLY valid HTML - no markdown syntax
-2. Use proper HTML tags: <h1>, <h2>, <h3>, <p>, <ul>, <ol>, <li>, <table>, <strong>, <em>, <blockquote>
-3. Include HTML tables when data would benefit from tabular presentation
-4. Use LaTeX for all mathematical notation: $inline$ and $$block$$
-5. Make sure your summary includes EVERY concept mentioned in the source materials
-6. Include explicit citations for sources
-7. Structure the content naturally with proper semantic HTML tags
-8. NO markdown syntax (no #, ##, **, -, etc.) - use HTML tags only
-9. Do NOT wrap the entire response in quotes or backticks; return pure HTML only
-10. Target length: approximately ${targetWords.min}-${targetWords.max} words for this ${context.partInfo ? 'part' : 'summary'}, adjusted as needed by content fidelity.`;
+2. Give EQUAL coverage to all uploaded documents; avoid over-representing the first sections
+3. Merge overlapping information across documents; avoid duplicates and prefer clear phrasing
+4. Use proper HTML tags: <h1>, <h2>, <h3>, <p>, <ul>, <ol>, <li>, <table>, <strong>, <em>, <blockquote>
+5. Include HTML tables when data would benefit from tabular presentation
+6. Use LaTeX for all mathematical notation: $inline$ and $$block$$
+7. Include explicit citations for sources
+8. Structure the content naturally with proper semantic HTML tags
+9. NO markdown syntax (no #, ##, **, -, etc.) - use HTML tags only
+10. Do NOT wrap the entire response in quotes or backticks; return pure HTML only
+11. Target length: approximately ${targetWords.min}-${targetWords.max} words for this ${context.partInfo ? 'part' : 'summary'}, adjusted as needed by content fidelity.`;
 
     return prompt;
   },

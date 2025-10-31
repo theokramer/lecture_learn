@@ -5,7 +5,7 @@ import type { UserPreferences } from '../types';
 interface SettingsContextType {
   preferences: UserPreferences;
   updatePreferences: (newPreferences: Partial<UserPreferences>) => void;
-  getPreference: (key: keyof UserPreferences) => number;
+  getPreference: (key: 'flashcardsCount' | 'quizCount' | 'exercisesCount') => number;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -87,7 +87,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     });
   };
 
-  const getPreference = (key: keyof UserPreferences): number => {
+  const getPreference = (key: 'flashcardsCount' | 'quizCount' | 'exercisesCount'): number => {
     return preferences[key];
   };
 
