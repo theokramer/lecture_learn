@@ -6,6 +6,7 @@ import { documentProcessor } from '../services/documentProcessor';
 import { useAuth } from '../context/AuthContext';
 import { openaiService } from '../services/openai';
 import { storageService } from '../services/supabase';
+import toast from 'react-hot-toast';
 
 export const UploadPage: React.FC = () => {
   const navigate = useNavigate();
@@ -90,7 +91,7 @@ export const UploadPage: React.FC = () => {
       });
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Failed to upload files. Please try again.');
+      toast.error('Failed to upload files. Please try again.');
       setUploading(false);
     }
   };

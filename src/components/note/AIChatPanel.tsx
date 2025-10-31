@@ -388,7 +388,7 @@ ${content.substring(0, 2000)}`;
                       <MarkdownRenderer content={message.content} />
                     </div>
                   ) : (
-                    <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                  <p className="whitespace-pre-wrap text-sm">{message.content}</p>
                   )}
                 </div>
               </motion.div>

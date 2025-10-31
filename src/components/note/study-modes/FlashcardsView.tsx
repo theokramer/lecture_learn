@@ -327,13 +327,13 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
                     Review Due ({reviewCards.length})
                   </motion.button>
                 )}
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleStartLearning}
-                  className="px-6 py-3 bg-[#b85a3a] rounded-lg text-white font-medium hover:bg-[#a04a2a] transition-colors flex items-center gap-2"
-                >
-                  <HiCheck className="w-5 h-5" />
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleStartLearning}
+                className="px-6 py-3 bg-[#b85a3a] rounded-lg text-white font-medium hover:bg-[#a04a2a] transition-colors flex items-center gap-2"
+              >
+                <HiCheck className="w-5 h-5" />
                   Study All
                 </motion.button>
                 <motion.button
@@ -345,7 +345,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
                 >
                   <HiArrowDownTray className="w-5 h-5" />
                   Export
-                </motion.button>
+              </motion.button>
               </div>
             )}
           </div>
@@ -588,14 +588,14 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
               className="space-y-3"
             >
               <div className="flex gap-3">
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                   onClick={() => handleAnswer(false)}
-                  className="flex-1 px-6 py-4 bg-[#ef4444] rounded-lg text-white font-medium hover:bg-[#dc2626] transition-colors"
-                >
-                  ❌ Wrong
-                </motion.button>
+                className="flex-1 px-6 py-4 bg-[#ef4444] rounded-lg text-white font-medium hover:bg-[#dc2626] transition-colors"
+              >
+                ❌ Wrong
+              </motion.button>
               </div>
               <div className="flex gap-3">
                 <motion.button
@@ -606,12 +606,12 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
                 >
                   🔶 Hard
                 </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                   onClick={() => handleAnswer(true, 'normal')}
-                  className="flex-1 px-6 py-4 bg-[#10b981] rounded-lg text-white font-medium hover:bg-[#059669] transition-colors"
-                >
+                className="flex-1 px-6 py-4 bg-[#10b981] rounded-lg text-white font-medium hover:bg-[#059669] transition-colors"
+              >
                   ✅ Good
                 </motion.button>
                 <motion.button
@@ -621,7 +621,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
                   className="flex-1 px-6 py-4 bg-[#3b82f6] rounded-lg text-white font-medium hover:bg-[#2563eb] transition-colors"
                 >
                   ⭐ Easy
-                </motion.button>
+              </motion.button>
               </div>
             </motion.div>
           )}

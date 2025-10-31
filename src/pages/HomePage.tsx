@@ -1,16 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/home/Sidebar';
 import { FolderNoteList } from '../components/home/FolderNoteList';
 import { Button } from '../components/shared/Button';
 import { HiPlus, HiFolder } from 'react-icons/hi2';
 import { useAppData } from '../context/AppDataContext';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsModal } from '../components/shared/KeyboardShortcutsModal';
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const [showCreateFolder, setShowCreateFolder] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const { createFolder, currentFolderId } = useAppData();
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleCreateFolder = async () => {
     if (newFolderName.trim()) {
@@ -23,6 +27,21 @@ export const HomePage: React.FC = () => {
   const handleNewNote = () => {
     navigate('/note-creation');
   };
+
+  const handleFocusSearch = () => {
+    searchInputRef.current?.focus();
+  };
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onNewNote: handleNewNote,
+    onSearch: handleFocusSearch,
+    onHelp: () => setShowShortcuts(true),
+    onClose: () => {
+      if (showCreateFolder) setShowCreateFolder(false);
+      if (showShortcuts) setShowShortcuts(false);
+    },
+  });
 
   return (
     <div className="flex h-screen bg-[#1a1a1a]">
@@ -54,7 +73,7 @@ export const HomePage: React.FC = () => {
         </div>
 
         {/* Content */}
-        <FolderNoteList />
+        <FolderNoteList searchInputRef={searchInputRef} />
       </div>
 
       {/* Create Folder Modal */}
@@ -68,7 +87,10 @@ export const HomePage: React.FC = () => {
                 placeholder="Folder name"
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleCreateFolder()}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') handleCreateFolder();
+                  if (e.key === 'Escape') setShowCreateFolder(false);
+                }}
                 className="flex-1 px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white focus:outline-none focus:border-[#b85a3a]"
                 autoFocus
               />
@@ -88,6 +110,9 @@ export const HomePage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Keyboard Shortcuts Modal */}
+      <KeyboardShortcutsModal isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </div>
   );
 };

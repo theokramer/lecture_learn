@@ -15,6 +15,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   quizCount: 15,
   exercisesCount: 10,
   summaryDetailLevel: 'comprehensive',
+  theme: 'dark',
 };
 
 const MIN_VALUES = {
@@ -44,6 +45,16 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
       }
     }
   }, []);
+
+  // Apply theme to document
+  useEffect(() => {
+    const theme = preferences.theme || 'dark';
+    if (theme === 'light') {
+      document.documentElement.classList.remove('dark');
+    } else {
+      document.documentElement.classList.add('dark');
+    }
+  }, [preferences.theme]);
 
   // Save preferences to localStorage whenever they change
   useEffect(() => {
@@ -81,6 +92,13 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         updated.summaryDetailLevel = allowed.includes(newPreferences.summaryDetailLevel as any)
           ? newPreferences.summaryDetailLevel
           : prev.summaryDetailLevel || 'standard';
+      }
+
+      if (newPreferences.theme !== undefined) {
+        const allowed = ['light', 'dark'] as const;
+        updated.theme = allowed.includes(newPreferences.theme as any)
+          ? newPreferences.theme
+          : prev.theme || 'dark';
       }
       
       return updated;

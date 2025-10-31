@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { IoStop, IoMic, IoArrowBack } from 'react-icons/io5';
 import { useAppData } from '../context/AppDataContext';
 import { useAuth } from '../context/AuthContext';
+import toast from 'react-hot-toast';
 
 export const RecordAudioPage: React.FC = () => {
   const navigate = useNavigate();
@@ -55,7 +56,7 @@ export const RecordAudioPage: React.FC = () => {
       mediaRecorder.start();
     } catch (error) {
       console.error('Error accessing microphone:', error);
-      alert('Could not access microphone. Please check permissions.');
+      toast.error('Could not access microphone. Please check permissions.');
     }
   };
 

@@ -11,9 +11,10 @@ export const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { preferences, updatePreferences } = useSettings();
-  const [darkMode] = useState(true);
   const [localPreferences, setLocalPreferences] = useState(preferences);
   const [showSaveButton, setShowSaveButton] = useState(false);
+  
+  const isDarkMode = (localPreferences.theme || preferences.theme || 'dark') === 'dark';
 
   const handleLogout = () => {
     logout();
@@ -193,16 +194,25 @@ export const SettingsPage: React.FC = () => {
 
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white font-medium">Dark Mode</p>
-                  <p className="text-sm text-[#9ca3af]">Currently using dark theme</p>
+                  <p className="text-white font-medium">Theme</p>
+                  <p className="text-sm text-[#9ca3af]">
+                    Currently using {isDarkMode ? 'dark' : 'light'} theme
+                  </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <HiSun className="w-5 h-5 text-[#9ca3af]" />
-                  <div className={`relative w-12 h-6 rounded-full transition-colors ${darkMode ? 'bg-[#b85a3a]' : 'bg-[#3a3a3a]'}`}>
-                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${darkMode ? 'translate-x-6' : ''}`} />
+                <button
+                  onClick={() => {
+                    const newTheme = isDarkMode ? 'light' : 'dark';
+                    handlePreferenceChange('theme', newTheme);
+                    updatePreferences({ theme: newTheme });
+                  }}
+                  className="flex items-center gap-2 cursor-pointer"
+                >
+                  <HiSun className={`w-5 h-5 transition-colors ${!isDarkMode ? 'text-[#b85a3a]' : 'text-[#9ca3af]'}`} />
+                  <div className={`relative w-12 h-6 rounded-full transition-colors ${isDarkMode ? 'bg-[#b85a3a]' : 'bg-[#3a3a3a]'}`}>
+                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${isDarkMode ? 'translate-x-6' : ''}`} />
                   </div>
-                  <HiMoon className="w-5 h-5 text-[#b85a3a]" />
-                </div>
+                  <HiMoon className={`w-5 h-5 transition-colors ${isDarkMode ? 'text-[#b85a3a]' : 'text-[#9ca3af]'}`} />
+                </button>
               </div>
             </div>
 

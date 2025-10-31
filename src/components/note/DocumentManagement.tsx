@@ -6,6 +6,8 @@ import { Button } from '../shared/Button';
 import { storageService, studyContentService, documentService } from '../../services/supabase';
 import { AudioPlayer } from '../audio/AudioPlayer';
 import { DocumentPreview } from './DocumentPreview';
+import { EmptyState } from '../shared/EmptyState';
+import toast from 'react-hot-toast';
 
 export const DocumentManagement: React.FC = () => {
   const { notes, selectedNoteId, uploadDocumentToNote, refreshData } = useAppData();
@@ -54,7 +56,7 @@ export const DocumentManagement: React.FC = () => {
       }
     } catch (error) {
       console.error('Error uploading documents:', error);
-      alert('Failed to upload documents');
+      toast.error('Failed to upload documents');
     }
 
     // Reset input
@@ -101,7 +103,7 @@ export const DocumentManagement: React.FC = () => {
       window.URL.revokeObjectURL(link.href);
     } catch (error) {
       console.error('Error downloading document:', error);
-      alert('Failed to download document');
+      toast.error('Failed to download document');
     }
   };
 
@@ -111,10 +113,10 @@ export const DocumentManagement: React.FC = () => {
     setIsRegenerating(true);
     try {
       await studyContentService.generateAndSaveAllStudyContent(selectedNoteId, currentNote.content);
-      alert('Study content regenerated successfully!');
+      toast.success('Study content regenerated successfully!');
     } catch (error) {
       console.error('Error regenerating study content:', error);
-      alert('Failed to regenerate study content');
+      toast.error('Failed to regenerate study content');
     } finally {
       setIsRegenerating(false);
     }
@@ -144,7 +146,7 @@ export const DocumentManagement: React.FC = () => {
       await refreshData();
     } catch (error) {
       console.error('Error renaming document:', error);
-      alert('Failed to rename document');
+      toast.error('Failed to rename document');
     }
   };
 
@@ -197,7 +199,7 @@ export const DocumentManagement: React.FC = () => {
       await refreshData();
     } catch (error) {
       console.error('Error reordering document:', error);
-      alert('Failed to reorder document');
+      toast.error('Failed to reorder document');
     } finally {
       setDraggedId(null);
       setDraggedOverId(null);
@@ -250,10 +252,10 @@ export const DocumentManagement: React.FC = () => {
                   className={`flex items-center justify-between p-4 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a] hover:bg-[#323232] hover:border-[#4a4a4a] transition-all cursor-move ${
                     isDraggedOver ? 'border-[#b85a3a] bg-[#323232]' : ''
                   } ${draggedId === doc.id ? 'opacity-50' : ''}`}
-                >
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <span className="text-3xl flex-shrink-0">{getDocumentIcon(doc.type)}</span>
-                    <div className="flex-1 min-w-0">
+            >
+              <div className="flex items-center gap-4 flex-1 min-w-0">
+                <span className="text-3xl flex-shrink-0">{getDocumentIcon(doc.type)}</span>
+                <div className="flex-1 min-w-0">
                       {isRenaming ? (
                         <div className="flex items-center gap-2">
                           <input
@@ -284,16 +286,16 @@ export const DocumentManagement: React.FC = () => {
                         </div>
                       ) : (
                         <>
-                          <p className="text-white text-base font-medium truncate">{doc.name}</p>
-                          <div className="flex items-center gap-3 text-sm text-[#9ca3af] mt-1">
-                            <span className="capitalize">{doc.type}</span>
-                            <span>•</span>
-                            <span>{formatFileSize(doc.size)}</span>
-                          </div>
+                  <p className="text-white text-base font-medium truncate">{doc.name}</p>
+                  <div className="flex items-center gap-3 text-sm text-[#9ca3af] mt-1">
+                    <span className="capitalize">{doc.type}</span>
+                    <span>•</span>
+                    <span>{formatFileSize(doc.size)}</span>
+                  </div>
                         </>
                       )}
-                    </div>
-                  </div>
+                </div>
+              </div>
                   <div className="flex items-center gap-2 ml-4">
                     {canPreview && !isRenaming && (
                       <button
@@ -313,14 +315,14 @@ export const DocumentManagement: React.FC = () => {
                         <IoPencil className="w-5 h-5" />
                       </button>
                     )}
-                    <button
-                      onClick={() => handleDownload(doc)}
+              <button
+                onClick={() => handleDownload(doc)}
                       className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors text-[#9ca3af] hover:text-white"
-                      title="Download document"
-                    >
+                title="Download document"
+              >
                       <IoDownloadOutline className="w-5 h-5" />
-                    </button>
-                  </div>
+              </button>
+            </div>
                 </div>
                 
                 {/* Audio Player for audio/video files */}
@@ -351,12 +353,16 @@ export const DocumentManagement: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="text-center py-16">
-          <HiDocument className="w-16 h-16 mx-auto mb-4 text-[#9ca3af]" />
-          <p className="text-base text-[#9ca3af]">
-            No documents attached. Click "Add Document" to upload files.
-          </p>
-        </div>
+        <EmptyState
+          icon={HiDocument}
+          title="No Documents Yet"
+          description="Upload PDFs, audio files, videos, or text documents to enhance your notes. Documents help AI generate better summaries and study materials."
+          action={{
+            label: 'Add Document',
+            onClick: handleBrowseClick,
+            variant: 'primary',
+          }}
+        />
       )}
 
       {previewDocument && (

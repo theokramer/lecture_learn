@@ -4,7 +4,10 @@ import { studyContentService } from '../../../services/supabase';
 import { useAppData } from '../../../context/AppDataContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSettings } from '../../../context/SettingsContext';
-import { HiSparkles, HiDocumentText, HiArrowPath, HiQuestionMarkCircle } from 'react-icons/hi2';
+import { HiSparkles, HiDocumentText, HiArrowPath, HiQuestionMarkCircle, HiArrowDownTray } from 'react-icons/hi2';
+import { exportService } from '../../../services/exportService';
+import toast from 'react-hot-toast';
+import { ContentSkeleton } from '../../shared/SkeletonLoader';
 import 'katex/dist/katex.min.css';
 
 export const SummaryView: React.FC = () => {
@@ -94,9 +97,9 @@ export const SummaryView: React.FC = () => {
       if (code === 'DAILY_LIMIT_REACHED') {
         const resetAt = error?.resetAt ? new Date(error.resetAt) : null;
         const when = resetAt ? ` after ${resetAt.toLocaleTimeString()}` : ' tomorrow';
-        alert(`Daily AI limit reached (15/day). Please try again${when}.`);
+        toast.error(`Daily AI limit reached (15/day). Please try again${when}.`);
       } else {
-        alert('Failed to generate summary. Please try again.');
+        toast.error('Failed to generate summary. Please try again.');
       }
     } finally {
       setIsGenerating(false);
@@ -146,11 +149,8 @@ export const SummaryView: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#b85a3a] mx-auto mb-4"></div>
-          <p className="text-white">Loading summary...</p>
-        </div>
+      <div className="max-w-3xl mx-auto">
+        <ContentSkeleton />
       </div>
     );
   }
@@ -239,6 +239,26 @@ export const SummaryView: React.FC = () => {
             <span className="text-sm text-gray-400">
               Saved {lastSaved.toLocaleTimeString()}
             </span>
+          )}
+          
+          {hasSummary && summary && (
+            <button
+              onClick={async () => {
+                if (!currentNote || !summary) return;
+                try {
+                  await exportService.exportNoteToMarkdown(currentNote.title, '', summary);
+                  toast.success('Summary exported to Markdown successfully');
+                } catch (error) {
+                  console.error('Error exporting summary:', error);
+                  toast.error('Failed to export summary');
+                }
+              }}
+              className="px-4 py-2 bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white rounded-lg text-sm font-medium transition-all flex items-center gap-2"
+              title="Export summary to Markdown"
+            >
+              <HiArrowDownTray className="w-4 h-4" />
+              <span className="hidden md:inline">Export</span>
+            </button>
           )}
           
           <button

@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../../shared/Button';
 import { TextArea } from '../../shared/Input';
-import { HiEye, HiCheck } from 'react-icons/hi2';
+import { HiEye, HiCheck, HiAcademicCap } from 'react-icons/hi2';
 import { openaiService } from '../../../services/openai';
 import { studyContentService } from '../../../services/supabase';
 import { useAppData } from '../../../context/AppDataContext';
 import { useSettings } from '../../../context/SettingsContext';
+import { EmptyState } from '../../shared/EmptyState';
 
 interface Exercise {
   question: string;
@@ -192,8 +193,17 @@ Be encouraging but honest. If the answer is mostly correct, say so. If it's part
 
   if (exercises.length === 0) {
     return (
-      <div className="max-w-3xl mx-auto text-center py-20">
-        <p className="text-white text-lg">No exercises available yet. Upload some content to generate exercises!</p>
+      <div className="max-w-3xl mx-auto">
+        <EmptyState
+          icon={HiAcademicCap}
+          title="No Exercises Yet"
+          description="Generate practice exercises from your note content. Exercises help you apply what you've learned through problem-solving and critical thinking."
+          action={{
+            label: 'Generate Exercises',
+            onClick: generateExercises,
+            variant: 'primary',
+          }}
+        />
       </div>
     );
   }

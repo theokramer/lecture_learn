@@ -36,6 +36,7 @@ export interface UserPreferences {
   quizCount: number;
   exercisesCount: number;
   summaryDetailLevel?: 'concise' | 'standard' | 'comprehensive';
+  theme?: 'light' | 'dark';
 }
 
 export type StudyMode = 'summary' | 'transcript' | 'feynman' | 'flashcards' | 'quiz' | 'exercises' | 'documents' | 'ai-chat';

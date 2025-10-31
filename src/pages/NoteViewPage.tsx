@@ -7,6 +7,8 @@ import { AIChatPanel } from '../components/note/AIChatPanel';
 import { useAppData } from '../context/AppDataContext';
 import { studyContentService } from '../services/supabase';
 import type { StudyMode } from '../types';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsModal } from '../components/shared/KeyboardShortcutsModal';
 
 export const NoteViewPage: React.FC = () => {
   const appData = useAppData();
@@ -14,7 +16,9 @@ export const NoteViewPage: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [chatWidth, setChatWidth] = useState(450);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const hasCheckedSummaryRef = useRef<string | null>(null);
+  const saveHandlerRef = useRef<(() => void) | null>(null);
 
   // Set the selected note from URL parameter
   useEffect(() => {
@@ -91,6 +95,20 @@ export const NoteViewPage: React.FC = () => {
     appData.setCurrentStudyMode(mode);
   };
 
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onSave: () => {
+      // Trigger save if there's a save handler (e.g., from SummaryView)
+      if (saveHandlerRef.current) {
+        saveHandlerRef.current();
+      }
+    },
+    onHelp: () => setShowShortcuts(true),
+    onClose: () => {
+      if (showShortcuts) setShowShortcuts(false);
+    },
+  });
+
   return (
     <div className="flex h-screen bg-[#1a1a1a]">
       {/* Left Sidebar */}
@@ -114,6 +132,9 @@ export const NoteViewPage: React.FC = () => {
           onResize={setChatWidth}
         />
       </AnimatePresence>
+
+      {/* Keyboard Shortcuts Modal */}
+      <KeyboardShortcutsModal isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </div>
   );
 };

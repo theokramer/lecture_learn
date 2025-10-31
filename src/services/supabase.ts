@@ -304,10 +304,10 @@ export const storageService = {
 
     if (error) {
       // Fallback to public URL if download fails (for public buckets)
-      const urlData = supabase.storage
-        .from('documents')
-        .getPublicUrl(path);
-      return urlData.data.publicUrl;
+    const urlData = supabase.storage
+      .from('documents')
+      .getPublicUrl(path);
+    return urlData.data.publicUrl;
     }
 
     // Create a blob URL that can be used by PDF.js
@@ -401,9 +401,9 @@ IMPORTANT: Return ONLY valid JSON array. Escape all special characters properly.
         const errorPos = parseInt(errorMatch[1], 10);
         console.error('Error at position:', errorPos);
         console.error('Context around error:', jsonString.substring(Math.max(0, errorPos - 50), Math.min(jsonString.length, errorPos + 50)));
-      }
+    }
       
-      return [];
+    return [];
     }
   } catch (error) {
     console.error('Error generating exercises:', error);

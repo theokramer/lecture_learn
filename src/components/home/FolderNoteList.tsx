@@ -1,19 +1,29 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { HiFolder, HiChevronRight, HiMagnifyingGlass, HiChevronLeft, HiAcademicCap } from 'react-icons/hi2';
+import { HiFolder, HiChevronRight, HiMagnifyingGlass, HiChevronLeft, HiAcademicCap, HiDocumentPlus, HiTrash } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 import { useAppData } from '../../context/AppDataContext';
 import { format } from 'date-fns';
 import type { Note, Folder } from '../../types';
 import { studyContentService } from '../../services/supabase';
+import { NoteListSkeleton } from '../shared/SkeletonLoader';
+import { EmptyState } from '../shared/EmptyState';
+import { ConfirmModal } from '../shared/ConfirmModal';
+import toast from 'react-hot-toast';
 
 // Note: createFolder logic moved to HomePage top bar
 
-export const FolderNoteList: React.FC = () => {
-  const { folders, notes, setSelectedNoteId, setCurrentFolderId, currentFolderId } = useAppData();
+interface FolderNoteListProps {
+  searchInputRef?: React.RefObject<HTMLInputElement | null>;
+}
+
+export const FolderNoteList: React.FC<FolderNoteListProps> = ({ searchInputRef }) => {
+  const { folders, notes, setSelectedNoteId, setCurrentFolderId, currentFolderId, selectedNoteId, loading, createFolder, deleteNote, deleteFolder } = useAppData();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [summariesByNoteId, setSummariesByNoteId] = useState<Record<string, string>>({});
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const [itemToDelete, setItemToDelete] = useState<{ type: 'note' | 'folder'; id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (notes.length === 0) return;
@@ -150,10 +160,32 @@ export const FolderNoteList: React.FC = () => {
           <div className="flex-1 relative">
             <HiMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#9ca3af]" />
             <input
+              ref={searchInputRef}
               type="text"
               placeholder="Search any note"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setSelectedIndex(-1); // Reset selection when searching
+              }}
+              onKeyDown={(e) => {
+                const items = filteredItems;
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setSelectedIndex(prev => (prev < items.length - 1 ? prev + 1 : prev));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setSelectedIndex(prev => (prev > 0 ? prev - 1 : -1));
+                } else if (e.key === 'Enter' && selectedIndex >= 0 && items[selectedIndex]) {
+                  e.preventDefault();
+                  const item = items[selectedIndex];
+                  if (item.type === 'note') {
+                    navigate(`/note?id=${item.data.id}`);
+                  } else if (item.type === 'folder') {
+                    setCurrentFolderId(item.data.id);
+                  }
+                }
+              }}
               className="w-full pl-10 pr-4 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder:text-[#9ca3af] focus:outline-none focus:border-[#b85a3a]"
             />
           </div>
@@ -165,15 +197,55 @@ export const FolderNoteList: React.FC = () => {
 
       {/* Items List */}
       <div className="space-y-2">
-
-        {filteredItems.map((item) => {
+        {loading ? (
+          <NoteListSkeleton />
+        ) : filteredItems.length === 0 ? (
+          searchQuery.trim() ? (
+            <EmptyState
+              icon={HiMagnifyingGlass}
+              title="No Results Found"
+              description={`No notes or folders match "${searchQuery}". Try adjusting your search terms or create a new note.`}
+              action={{
+                label: 'Create New Note',
+                onClick: () => navigate('/note-creation'),
+                variant: 'primary',
+              }}
+            />
+          ) : (
+            <EmptyState
+              icon={HiDocumentPlus}
+              title="Get Started"
+              description="Create your first note or folder to organize your learning materials. You can record audio, upload documents, or add text directly."
+              action={{
+                label: 'Create New Note',
+                onClick: () => navigate('/note-creation'),
+                variant: 'primary',
+              }}
+              secondaryAction={{
+                label: 'Create Folder',
+                onClick: async () => {
+                  const folderName = prompt('Folder name:');
+                  if (folderName && folderName.trim()) {
+                    await createFolder(folderName.trim(), currentFolderId);
+                  }
+                },
+              }}
+            />
+          )
+        ) : (
+          filteredItems.map((item, index) => {
           const isFolder = item.type === 'folder';
           const Icon = isFolder ? HiFolder : HiChevronRight;
+          const isSelected = selectedIndex === index;
           
           return (
             <div
               key={item.data.id}
-              className="w-full p-4 bg-[#2a2a2a] rounded-lg hover:bg-[#3a3a3a] transition-colors"
+              className={`w-full p-4 rounded-lg transition-colors ${
+                isSelected 
+                  ? 'bg-[#3a3a3a] border-2 border-[#b85a3a]' 
+                  : 'bg-[#2a2a2a] hover:bg-[#3a3a3a] border-2 border-transparent'
+              }`}
             >
               <motion.button
                 whileHover={{ scale: 1.01, x: 4 }}
@@ -215,8 +287,10 @@ export const FolderNoteList: React.FC = () => {
                   </div>
                 </div>
               </motion.button>
-              {isFolder && (
-                <div className="mt-2 ml-12">
+              
+              {/* Actions */}
+              <div className="flex items-center gap-2 mt-2 ml-12">
+                {isFolder && (
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
@@ -229,12 +303,64 @@ export const FolderNoteList: React.FC = () => {
                     <HiAcademicCap className="w-4 h-4" />
                     Learn Flashcards
                   </motion.button>
-                </div>
-              )}
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setItemToDelete({
+                      type: isFolder ? 'folder' : 'note',
+                      id: item.data.id,
+                      name: (item.data as Note).title || (item.data as Folder).name,
+                    });
+                  }}
+                  className="p-2 rounded-lg hover:bg-[#3a3a3a] hover:text-red-400 transition-colors text-[#9ca3af]"
+                  title={`Delete ${isFolder ? 'folder' : 'note'}`}
+                >
+                  <HiTrash className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           );
-        })}
+          })
+        )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!itemToDelete}
+        onClose={() => setItemToDelete(null)}
+        onConfirm={async () => {
+          if (!itemToDelete) return;
+          
+          try {
+            if (itemToDelete.type === 'folder') {
+              await deleteFolder(itemToDelete.id);
+              toast.success('Folder deleted successfully');
+            } else {
+              await deleteNote(itemToDelete.id);
+              toast.success('Note deleted successfully');
+              // Navigate away if we deleted the currently selected note
+              if (itemToDelete.id === selectedNoteId) {
+                navigate('/home');
+              }
+            }
+          } catch (error) {
+            console.error(`Error deleting ${itemToDelete.type}:`, error);
+            toast.error(`Failed to delete ${itemToDelete.type}`);
+          } finally {
+            setItemToDelete(null);
+          }
+        }}
+        title={`Delete ${itemToDelete?.type === 'folder' ? 'Folder' : 'Note'}`}
+        message={
+          itemToDelete?.type === 'folder'
+            ? `Are you sure you want to delete the folder "${itemToDelete.name}"? This will also delete all notes inside it. This action cannot be undone.`
+            : `Are you sure you want to delete the note "${itemToDelete?.name}"? This action cannot be undone.`
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+      />
     </div>
   );
 };

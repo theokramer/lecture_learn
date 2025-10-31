@@ -161,10 +161,16 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   const deleteFolder = async (id: string) => {
     try {
       await folderService.deleteFolder(id);
+      // If we deleted the current folder, navigate to parent
+      if (currentFolderId === id) {
+        const folder = folders.find(f => f.id === id);
+        setCurrentFolderId(folder?.parentId || null);
+      }
       await loadData();
     } catch (err) {
       console.error('Error deleting folder:', err);
       setError('Failed to delete folder');
+      throw err; // Re-throw to let calling component handle toast
     }
   };
 
@@ -178,6 +184,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch (err) {
       console.error('Error deleting note:', err);
       setError('Failed to delete note');
+      throw err; // Re-throw to let calling component handle toast
     }
   };
 

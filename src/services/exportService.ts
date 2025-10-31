@@ -1,71 +1,27 @@
+import TurndownService from 'turndown';
 import type { SpacedRepetitionCard } from './spacedRepetitionService';
 
 /**
- * Export flashcards to Anki-compatible CSV format
- * CSV format: front;back (Anki expects semicolon-separated for basic cards)
- */
-export function exportFlashcardsToAnkiCSV(cards: SpacedRepetitionCard[]): string {
-  // Anki CSV format: front;back (semicolon-separated)
-  // First line is header (optional, Anki will handle it)
-  const csvLines = ['#separator:semicolon', '#html:true'];
-  
-  cards.forEach((card) => {
-    // Escape quotes and HTML
-    const front = escapeCSVField(card.front);
-    const back = escapeCSVField(card.back);
-    csvLines.push(`${front};${back}`);
-  });
-  
-  return csvLines.join('\n');
-}
-
-/**
- * Export flashcards to Anki-compatible TSV format (alternative)
- * TSV format is also commonly used by Anki
- */
-export function exportFlashcardsToAnkiTSV(cards: SpacedRepetitionCard[]): string {
-  // Anki TSV format: front\tback
-  const tsvLines: string[] = [];
-  
-  cards.forEach((card) => {
-    const front = escapeTSVField(card.front);
-    const back = escapeTSVField(card.back);
-    tsvLines.push(`${front}\t${back}`);
-  });
-  
-  return tsvLines.join('\n');
-}
-
-/**
- * Escape special characters for CSV
+ * Escape a field for CSV format
  */
 function escapeCSVField(field: string): string {
-  // Replace newlines with <br>
-  let escaped = field.replace(/\n/g, '<br>');
-  
-  // If field contains semicolon or quotes, wrap in quotes and escape quotes
-  if (escaped.includes(';') || escaped.includes('"') || escaped.includes('\n')) {
-    escaped = `"${escaped.replace(/"/g, '""')}"`;
+  if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+    return `"${field.replace(/"/g, '""')}"`;
   }
-  
-  return escaped;
+  return field;
 }
 
 /**
- * Escape special characters for TSV
+ * Escape a field for TSV format
  */
 function escapeTSVField(field: string): string {
-  // Replace tabs with spaces, newlines with <br>
-  return field
-    .replace(/\t/g, ' ')
-    .replace(/\n/g, '<br>')
-    .replace(/\r/g, '');
+  return field.replace(/\t/g, ' ').replace(/\n/g, '<br>');
 }
 
 /**
- * Download file with given content and filename
+ * Download a file with the given content
  */
-export function downloadFile(content: string, filename: string, mimeType: string = 'text/plain'): void {
+function downloadFile(content: string, filename: string, mimeType: string): void {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -77,24 +33,75 @@ export function downloadFile(content: string, filename: string, mimeType: string
   URL.revokeObjectURL(url);
 }
 
-/**
- * Export flashcards for Anki import
- */
-export function exportToAnki(cards: SpacedRepetitionCard[], format: 'csv' | 'tsv' = 'csv'): void {
-  const content = format === 'csv' 
-    ? exportFlashcardsToAnkiCSV(cards)
-    : exportFlashcardsToAnkiTSV(cards);
-  
-  const extension = format === 'csv' ? 'csv' : 'txt';
-  const mimeType = format === 'csv' ? 'text/csv' : 'text/tab-separated-values';
-  
-  downloadFile(content, `anki-flashcards-${Date.now()}.${extension}`, mimeType);
-}
-
 export const exportService = {
-  exportFlashcardsToAnkiCSV,
-  exportFlashcardsToAnkiTSV,
-  exportToAnki,
-  downloadFile,
-};
+  /**
+   * Export flashcards to Anki format (CSV or TSV)
+   */
+  exportToAnki(cards: SpacedRepetitionCard[], format: 'csv' | 'tsv' = 'csv'): void {
+    if (cards.length === 0) {
+      alert('No flashcards to export');
+      return;
+    }
 
+    if (format === 'csv') {
+      const csvRows = cards.map(card => {
+        const front = escapeCSVField(card.front);
+        const back = escapeCSVField(card.back);
+        return `${front},${back}`;
+      });
+
+      const csvContent = csvRows.join('\n');
+      downloadFile(csvContent, 'flashcards.csv', 'text/csv');
+    } else {
+      const tsvRows = cards.map(card => {
+        const front = escapeTSVField(card.front);
+        const back = escapeTSVField(card.back);
+        return `${front}\t${back}`;
+      });
+
+      const tsvContent = tsvRows.join('\n');
+      downloadFile(tsvContent, 'flashcards.tsv', 'text/tab-separated-values');
+    }
+  },
+
+
+  /**
+   * Export note as Markdown
+   */
+  async exportNoteToMarkdown(noteTitle: string, noteContent: string, summary?: string): Promise<void> {
+    try {
+      const turndown = new TurndownService({
+        headingStyle: 'atx',
+        codeBlockStyle: 'fenced',
+      });
+
+      let markdown = `# ${noteTitle}\n\n`;
+
+      // Only export summary if provided
+      if (summary && summary.trim()) {
+        markdown += turndown.turndown(summary);
+        markdown += '\n';
+      } else {
+        // If no summary, but noteContent is provided, export that
+        if (noteContent && noteContent.trim()) {
+          markdown += turndown.turndown(noteContent);
+          markdown += '\n';
+        }
+      }
+
+      downloadFile(markdown, `${noteTitle.replace(/[^a-z0-9]/gi, '_')}.md`, 'text/markdown;charset=utf-8');
+    } catch (error) {
+      console.error('Error exporting to Markdown:', error);
+      throw new Error('Failed to export note to Markdown');
+    }
+  },
+
+  /**
+   * Strip HTML tags from text (simple version)
+   */
+  stripHTML(html: string): string {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || '';
+  },
+};
