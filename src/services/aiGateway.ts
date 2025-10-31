@@ -79,17 +79,50 @@ export const aiGateway = {
               storagePath: finalStoragePath,
             },
           } as any);
+          
+          console.log('Transcription invoke result:', { 
+            hasData: !!result.data, 
+            hasError: !!result.error,
+            dataKeys: result.data ? Object.keys(result.data) : [],
+            errorType: typeof result.error
+          });
+          
           data = result.data;
           error = result.error;
+          
+          // Check if data contains an error object (function returned error in JSON body)
+          // Supabase functions.invoke might parse error responses into data instead of error
+          if (data && typeof data === 'object') {
+            if ((data as any)?.error && !error) {
+              console.log('Found error in data:', (data as any).error);
+              error = { message: (data as any).error, context: data };
+            }
+            // Also check if the entire data object is just an error message
+            if (!(data as any)?.text && !(data as any)?.content && Object.keys(data).length === 1 && (data as any)?.error) {
+              console.log('Data object is error response:', data);
+              error = { message: (data as any).error, context: data };
+            }
+          }
+          
+          // Also check if error is a string (might be the error message directly)
+          if (error && typeof error === 'string') {
+            error = { message: error };
+          }
         } catch (invokeError: any) {
           const errorMessage = invokeError?.message || String(invokeError);
+          console.error('Invoke error:', invokeError);
+          
+          // Handle JSON parse errors (function might have returned HTML error page)
           if (errorMessage.includes('text/html') || 
-              errorMessage.includes('JSON') && errorMessage.includes('parse')) {
+              (errorMessage.includes('JSON') && errorMessage.includes('parse')) ||
+              errorMessage.includes('Unexpected token')) {
             throw new Error(
-              'Failed to transcribe audio from storage. Please try again.'
+              'Failed to transcribe audio from storage. The service may be temporarily unavailable. Please try again.'
             );
           }
-          throw invokeError;
+          
+          // Re-throw with better context
+          throw new Error(`Transcription service error: ${errorMessage}`);
         }
       } else {
         // Use direct base64 only for small files when no storage path is provided
@@ -109,13 +142,41 @@ export const aiGateway = {
               mimeType,
             },
           } as any);
+          
+          console.log('Transcription invoke result (base64):', { 
+            hasData: !!result.data, 
+            hasError: !!result.error,
+            dataKeys: result.data ? Object.keys(result.data) : [],
+            errorType: typeof result.error
+          });
+          
           data = result.data;
           error = result.error;
+          
+          // Check if data contains an error object (function returned error in JSON body)
+          // Supabase functions.invoke might parse error responses into data instead of error
+          if (data && typeof data === 'object') {
+            if ((data as any)?.error && !error) {
+              console.log('Found error in data:', (data as any).error);
+              error = { message: (data as any).error, context: data };
+            }
+            // Also check if the entire data object is just an error message
+            if (!(data as any)?.text && !(data as any)?.content && Object.keys(data).length === 1 && (data as any)?.error) {
+              console.log('Data object is error response:', data);
+              error = { message: (data as any).error, context: data };
+            }
+          }
+          
+          // Also check if error is a string (might be the error message directly)
+          if (error && typeof error === 'string') {
+            error = { message: error };
+          }
         } catch (invokeError: any) {
           const errorMessage = invokeError?.message || String(invokeError);
+          console.error('Invoke error:', invokeError);
           
           if (errorMessage.includes('text/html') || 
-              errorMessage.includes('JSON') && errorMessage.includes('parse') ||
+              (errorMessage.includes('JSON') && errorMessage.includes('parse')) ||
               errorMessage.includes('Unexpected token')) {
             // Fallback to storage-based approach if direct upload fails
             console.log('Direct base64 transcription failed, falling back to storage-based approach');
@@ -130,24 +191,71 @@ export const aiGateway = {
             });
             const fallbackStoragePath = await storageService.uploadFile(userId, audioFile);
             
-            const retryResult = await supabase.functions.invoke('ai-generate', {
-              body: {
-                type: 'transcription',
-                storagePath: fallbackStoragePath,
-              },
-            } as any);
-            data = retryResult.data;
-            error = retryResult.error;
+            try {
+              const retryResult = await supabase.functions.invoke('ai-generate', {
+                body: {
+                  type: 'transcription',
+                  storagePath: fallbackStoragePath,
+                },
+              } as any);
+              
+              console.log('Retry transcription invoke result:', { 
+                hasData: !!retryResult.data, 
+                hasError: !!retryResult.error,
+                dataKeys: retryResult.data ? Object.keys(retryResult.data) : [],
+                errorType: typeof retryResult.error
+              });
+              
+              data = retryResult.data;
+              error = retryResult.error;
+              
+              // Check if retry result also contains error
+              if (data && typeof data === 'object' && (data as any)?.error && !error) {
+                console.log('Found error in retry data:', (data as any).error);
+                error = { message: (data as any).error, context: data };
+              }
+              
+              // Also check if error is a string
+              if (error && typeof error === 'string') {
+                error = { message: error };
+              }
+            } catch (retryError: any) {
+              console.error('Retry also failed:', retryError);
+              throw new Error(`Transcription service error: ${retryError?.message || String(retryError)}`);
+            }
           } else {
-            throw invokeError;
+            throw new Error(`Transcription service error: ${errorMessage}`);
           }
         }
       }
 
       if (error) {
-        const errBody: any = (error as any)?.context || {};
+        // Try to parse error from different possible formats
+        let errBody: any = {};
+        let errorMessage = '';
         
-        if (errBody?.code === 'DAILY_LIMIT_REACHED') {
+        // Supabase function errors can come in different formats:
+        // 1. error.context (Supabase wrapped error)
+        // 2. error itself is an object with error property
+        // 3. error.message (standard Error)
+        // 4. data might contain error object even when error is set
+        
+        if ((error as any)?.context) {
+          errBody = (error as any).context;
+        } else if (typeof error === 'object' && (error as any)?.error) {
+          errBody = (error as any).error;
+        } else if (data && typeof data === 'object' && (data as any)?.error) {
+          errBody = (data as any).error;
+        }
+        
+        // Try to extract error message from various locations
+        errorMessage = errBody?.error || 
+                      errBody?.message || 
+                      (error as any)?.message || 
+                      (typeof error === 'string' ? error : String(error));
+        
+        // Check for daily limit
+        if (errBody?.code === 'DAILY_LIMIT_REACHED' || errorMessage.includes('DAILY_LIMIT')) {
           throw new DailyLimitError(errBody?.message || 'Daily limit reached', {
             limit: errBody.limit ?? 15,
             remaining: errBody.remaining ?? 0,
@@ -156,21 +264,41 @@ export const aiGateway = {
           });
         }
         
-        const errorMessage = (error as any)?.message || String(error);
+        // Check for timeout errors
         if (errorMessage.includes('timeout') || errorMessage.includes('504')) {
           throw new Error(
             'Transcription request timed out. Please try again.'
           );
         }
         
-        throw error;
+        // Check for file size errors
+        if (errorMessage.includes('too large') || errorMessage.includes('413') || errorMessage.includes('25MB') || errorMessage.includes('6 MB')) {
+          throw new Error(
+            'Audio file is too large. Please record a shorter audio (under 2 minutes recommended).'
+          );
+        }
+        
+        // Throw with extracted error message
+        throw new Error(errorMessage || 'Transcription failed');
       }
 
+      // Validate that we have transcription data
+      if (!data || (typeof data === 'object' && !(data as any)?.text)) {
+        console.error('No transcription data received:', data);
+        throw new Error('Transcription service returned no data. Please try again.');
+      }
+      
       const transcriptionText = (data as any)?.text ?? '';
       
       // Log transcription details for debugging
       console.log(`Transcription received: ${transcriptionText.length} characters, ${transcriptionText.split(/\s+/).length} words`);
-      if (transcriptionText.length < 100) {
+      
+      if (!transcriptionText || transcriptionText.trim().length === 0) {
+        console.error('Empty transcription received');
+        throw new Error('Transcription returned empty text. The audio may be too quiet, contain no speech, or the service may be experiencing issues. Please try again.');
+      }
+      
+      if (transcriptionText.length < 10) {
         console.warn('Warning: Transcription seems unusually short. Expected longer text for recording.');
       }
       
