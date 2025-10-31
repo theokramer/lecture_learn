@@ -150,6 +150,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         heading: {
           levels: [1, 2, 3],
         },
+        // Disable extensions we're adding separately to avoid duplicates
+        link: false,
+        underline: false,
       }),
       Placeholder.configure({
         placeholder,

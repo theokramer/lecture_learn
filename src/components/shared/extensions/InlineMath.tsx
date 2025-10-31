@@ -1,4 +1,6 @@
-import { Mark, type RawCommands, InputRule } from '@tiptap/core';
+import { Node, type RawCommands, InputRule } from '@tiptap/core';
+import { ReactNodeViewRenderer } from '@tiptap/react';
+import { InlineMathNodeView } from './InlineMathNodeView';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
@@ -7,26 +9,27 @@ declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     inlineMath: {
       setInlineMath: (attributes: { formula: string }) => ReturnType;
-      toggleInlineMath: (attributes: { formula: string }) => ReturnType;
     };
   }
 }
 
-export const InlineMath = Mark.create({
+export const InlineMath = Node.create({
   name: 'inlineMath',
+  
+  group: 'inline',
+  
+  inline: true,
+  
+  atom: true,
+  
+  addNodeView() {
+    return ReactNodeViewRenderer(InlineMathNodeView);
+  },
 
   addAttributes() {
     return {
       formula: {
         default: '',
-        parseHTML: (element: HTMLElement) => {
-          return element.getAttribute('data-formula') || element.textContent || '';
-        },
-        renderHTML: (attributes: { formula: string }) => {
-          return {
-            'data-formula': attributes.formula,
-          };
-        },
       },
     };
   },
@@ -38,8 +41,9 @@ export const InlineMath = Mark.create({
         getAttrs: (node) => {
           if (typeof node === 'string') return false;
           const element = node as HTMLElement;
-          const formula = element.getAttribute('data-formula') || element.textContent || '';
-          return { formula };
+          return {
+            formula: element.getAttribute('data-formula') || element.textContent || '',
+          };
         },
       },
     ];
@@ -47,22 +51,11 @@ export const InlineMath = Mark.create({
 
   renderHTML({ HTMLAttributes }) {
     const formula = HTMLAttributes.formula || '';
-    let html = '';
-    
-    try {
-      html = katex.renderToString(formula, {
-        throwOnError: false,
-        displayMode: false,
-      });
-    } catch (error) {
-      html = `<span class="text-red-400">Error: ${formula}</span>`;
-    }
-
+    // Return minimal HTML since React component will handle rendering
     return ['span', { 
       'data-type': 'inline-math', 
       class: 'inline-math',
-      'data-formula': formula,
-      dangerouslySetInnerHTML: { __html: html }
+      'data-formula': formula
     }];
   },
 
@@ -78,14 +71,12 @@ export const InlineMath = Mark.create({
           
           if (!formula) return null;
           
-          // Replace the $...$ with the formula text and apply the mark
+          // Replace with inline math node
           const tr = state.tr
             .delete(from, to)
-            .insertText(formula, from);
-          
-          // Apply the inline math mark to the inserted text
-          const mark = this.type.create({ formula });
-          tr.addMark(from, from + formula.length, mark);
+            .insert(
+              state.schema.nodes.inlineMath.create({ formula })
+            );
           
           return tr;
         },
@@ -96,10 +87,10 @@ export const InlineMath = Mark.create({
   addCommands(): Partial<RawCommands> {
     return {
       setInlineMath: (attributes: { formula: string }) => ({ commands }: { commands: any }) => {
-        return commands.setMark(this.name, attributes);
-      },
-      toggleInlineMath: (attributes: { formula: string }) => ({ commands }: { commands: any }) => {
-        return commands.toggleMark(this.name, attributes);
+        return commands.insertContent({
+          type: this.name,
+          attrs: attributes,
+        });
       },
     } as Partial<RawCommands>;
   },

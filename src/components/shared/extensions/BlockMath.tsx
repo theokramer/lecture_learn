@@ -1,4 +1,6 @@
 import { Node, type RawCommands, InputRule } from '@tiptap/core';
+import { ReactNodeViewRenderer } from '@tiptap/react';
+import { BlockMathNodeView } from './BlockMathNodeView';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
@@ -25,6 +27,10 @@ export const BlockMath = Node.create({
 
   atom: true,
   content: '',
+  
+  addNodeView() {
+    return ReactNodeViewRenderer(BlockMathNodeView);
+  },
 
   addAttributes() {
     return {
@@ -51,22 +57,11 @@ export const BlockMath = Node.create({
 
   renderHTML({ HTMLAttributes }) {
     const formula = HTMLAttributes.formula || '';
-    let html = '';
-    
-    try {
-      html = katex.renderToString(formula, {
-        throwOnError: false,
-        displayMode: true,
-      });
-    } catch (error) {
-      html = `<div class="text-red-400 p-4 bg-red-900/20 rounded border border-red-500/50">Error: ${formula}</div>`;
-    }
-
+    // Return minimal HTML since React component will handle rendering
     return ['div', { 
-      class: 'block-math my-6 text-center', 
+      class: 'block-math', 
       'data-type': 'block-math',
-      'data-formula': formula,
-      dangerouslySetInnerHTML: { __html: html } 
+      'data-formula': formula
     }];
   },
 
