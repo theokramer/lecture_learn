@@ -1,8 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import type { Folder, Note, StudyMode } from '../types';
 import { folderService, noteService, storageService, documentService } from '../services/supabase';
 import { useAuth } from './AuthContext';
+import { handleError } from '../utils/errorHandler';
+import toast from 'react-hot-toast';
 
 interface AppDataContextType {
   folders: Folder[];
@@ -36,7 +38,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!user) {
       setLoading(false);
       return;
@@ -53,128 +55,115 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       setNotes(notesData);
       setError(null);
     } catch (err) {
-      console.error('Error loading data:', err);
+      handleError(err, 'AppDataContext: Loading data', toast.error);
       setError('Failed to load data');
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, currentFolderId]);
 
   useEffect(() => {
     if (user) {
       loadData();
+    } else {
+      setLoading(false);
     }
-  }, [user, currentFolderId]);
+  }, [user, currentFolderId, loadData]);
 
-  const createFolder = async (name: string, parentId: string | null = null) => {
+  const refreshData = useCallback(async () => {
+    await loadData();
+  }, [loadData]);
+
+  // Memoize functions to prevent unnecessary re-renders
+  const createFolder = useCallback(async (name: string, parentId: string | null = null) => {
     if (!user) return;
-
     try {
       await folderService.createFolder(user.id, name, parentId);
       await loadData();
     } catch (err) {
-      console.error('Error creating folder:', err);
+      handleError(err, 'AppDataContext: Creating folder', toast.error);
       setError('Failed to create folder');
+      throw err;
     }
-  };
+  }, [user, loadData]);
 
-  const createNote = async (title: string, content: string = ''): Promise<string> => {
+  const createNote = useCallback(async (title: string, content: string = ''): Promise<string> => {
     if (!user) throw new Error('User not authenticated');
-
     try {
       const newNote = await noteService.createNote(user.id, title, currentFolderId, content);
       await loadData();
       return newNote.id;
     } catch (err) {
-      console.error('Error creating note:', err);
+      handleError(err, 'AppDataContext: Creating note', toast.error);
       setError('Failed to create note');
       throw err;
     }
-  };
+  }, [user, currentFolderId, loadData]);
 
-  const uploadDocumentToNote = async (noteId: string, file: File): Promise<void> => {
+  const uploadDocumentToNote = useCallback(async (noteId: string, file: File): Promise<void> => {
     if (!user) throw new Error('User not authenticated');
-
     try {
-      // Upload file to storage first
       const storagePath = await storageService.uploadFile(user.id, file);
-      
-      // Create document record
       await documentService.createDocument(noteId, file, storagePath);
-      
-      // Extract content from document and append to note
       try {
         const { documentProcessor } = await import('../services/documentProcessor');
         const { openaiService } = await import('../services/openai');
-        
         let extractedContent = '';
-        
-        // Re-read the file as a fresh File object for processing
         const fileForProcessing = file;
-        
         if (documentProcessor.isAudioFile(fileForProcessing.type)) {
-          // Transcribe audio
           const blob = new Blob([fileForProcessing], { type: fileForProcessing.type });
           const transcription = await openaiService.transcribeAudio(blob);
           extractedContent = `\n\n--- Document: ${fileForProcessing.name} ---\n${transcription}`;
         } else if (documentProcessor.isVideoFile(fileForProcessing.type)) {
-          // Extract audio from video and transcribe
           const audioBlob = await documentProcessor.extractAudioFromVideo(fileForProcessing);
           const transcription = await openaiService.transcribeAudio(audioBlob);
           extractedContent = `\n\n--- Document: ${fileForProcessing.name} ---\n${transcription}`;
         } else {
-          // Extract text from document (PDF, DOC, TXT, etc.)
           const { text } = await documentProcessor.processDocument(fileForProcessing);
           extractedContent = `\n\n--- Document: ${fileForProcessing.name} ---\n${text}`;
         }
-        
-        // Update note with extracted content
         const currentNote = notes.find(n => n.id === noteId);
         if (currentNote) {
           const updatedContent = currentNote.content + extractedContent;
           await noteService.updateNote(noteId, { content: updatedContent });
         }
       } catch (contentError) {
-        console.error('Error extracting document content:', contentError);
-        // Don't fail the upload if content extraction fails
+        handleError(contentError, 'AppDataContext: Extracting document content', toast.error);
       }
-      
-      // Refresh data to update documents list
       await loadData();
     } catch (err) {
-      console.error('Error uploading document:', err);
+      handleError(err, 'AppDataContext: Uploading document', toast.error);
       setError('Failed to upload document');
       throw err;
     }
-  };
+  }, [user, notes, loadData]);
 
-  const updateNote = async (id: string, updates: Partial<Note>) => {
+  const updateNote = useCallback(async (id: string, updates: Partial<Note>) => {
     try {
       await noteService.updateNote(id, updates);
       await loadData();
     } catch (err) {
-      console.error('Error updating note:', err);
+      handleError(err, 'AppDataContext: Updating note', toast.error);
       setError('Failed to update note');
     }
-  };
+  }, [loadData]);
 
-  const deleteFolder = async (id: string) => {
+  const deleteFolder = useCallback(async (id: string) => {
     try {
       await folderService.deleteFolder(id);
-      // If we deleted the current folder, navigate to parent
       if (currentFolderId === id) {
         const folder = folders.find(f => f.id === id);
         setCurrentFolderId(folder?.parentId || null);
       }
       await loadData();
     } catch (err) {
-      console.error('Error deleting folder:', err);
+      handleError(err, 'AppDataContext: Deleting folder', toast.error);
       setError('Failed to delete folder');
-      throw err; // Re-throw to let calling component handle toast
+      throw err;
     }
-  };
+  }, [currentFolderId, folders, loadData]);
 
-  const deleteNote = async (id: string) => {
+  const deleteNote = useCallback(async (id: string) => {
     try {
       await noteService.deleteNote(id);
       await loadData();
@@ -182,38 +171,52 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         setSelectedNoteId(null);
       }
     } catch (err) {
-      console.error('Error deleting note:', err);
+      handleError(err, 'AppDataContext: Deleting note', toast.error);
       setError('Failed to delete note');
-      throw err; // Re-throw to let calling component handle toast
+      throw err;
     }
-  };
+  }, [selectedNoteId, loadData]);
 
-  const refreshData = async () => {
-    await loadData();
-  };
+  const contextValue = useMemo(
+    () => ({
+      folders,
+      notes,
+      currentFolderId,
+      selectedNoteId,
+      currentStudyMode,
+      loading,
+      error,
+      setCurrentFolderId,
+      setSelectedNoteId,
+      setCurrentStudyMode,
+      createFolder,
+      createNote,
+      uploadDocumentToNote,
+      updateNote,
+      deleteFolder,
+      deleteNote,
+      refreshData,
+    }),
+    [
+      folders,
+      notes,
+      currentFolderId,
+      selectedNoteId,
+      currentStudyMode,
+      loading,
+      error,
+      createFolder,
+      createNote,
+      uploadDocumentToNote,
+      updateNote,
+      deleteFolder,
+      deleteNote,
+      refreshData,
+    ]
+  );
 
   return (
-    <AppDataContext.Provider
-      value={{
-        folders,
-        notes,
-        currentFolderId,
-        selectedNoteId,
-        currentStudyMode,
-        loading,
-        error,
-        setCurrentFolderId,
-        setSelectedNoteId,
-        setCurrentStudyMode,
-        createFolder,
-        createNote,
-        uploadDocumentToNote,
-        updateNote,
-        deleteFolder,
-        deleteNote,
-        refreshData,
-      }}
-    >
+    <AppDataContext.Provider value={contextValue}>
       {children}
     </AppDataContext.Provider>
   );

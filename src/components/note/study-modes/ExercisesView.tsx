@@ -19,7 +19,7 @@ interface ExercisesViewProps {
   noteContent: string;
 }
 
-export const ExercisesView: React.FC<ExercisesViewProps> = ({ noteContent }) => {
+export const ExercisesView: React.FC<ExercisesViewProps> = React.memo(function ExercisesView({ noteContent }) {
   const { selectedNoteId } = useAppData();
   const { getPreference } = useSettings();
   const [currentExercise, setCurrentExercise] = useState(0);
@@ -310,4 +310,4 @@ Be encouraging but honest. If the answer is mostly correct, say so. If it's part
       </div>
     </div>
   );
-};
+});

@@ -5,6 +5,7 @@ import { IoMic, IoLink, IoCloudUpload } from 'react-icons/io5';
 import { HiDocumentText } from 'react-icons/hi2';
 import { Modal } from '../components/shared/Modal';
 import toast from 'react-hot-toast';
+import { handleError } from '../utils/errorHandler';
 
 export const NoteCreationPage: React.FC = () => {
   const navigate = useNavigate();
@@ -29,8 +30,7 @@ export const NoteCreationPage: React.FC = () => {
         } 
       });
     } catch (error) {
-      console.error('Error processing web link:', error);
-      toast.error('Failed to process web link. Please try again.');
+      handleError(error, 'NoteCreationPage: Processing web link', toast.error);
     } finally {
       setProcessingWebLink(false);
     }

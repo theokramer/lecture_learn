@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { HiFolder, HiChevronRight, HiMagnifyingGlass, HiChevronLeft, HiAcademicCap, HiDocumentPlus, HiTrash } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 import { useAppData } from '../../context/AppDataContext';
+import { useSettings } from '../../context/SettingsContext';
 import { format } from 'date-fns';
 import type { Note, Folder } from '../../types';
 import { studyContentService } from '../../services/supabase';
@@ -10,6 +11,7 @@ import { NoteListSkeleton } from '../shared/SkeletonLoader';
 import { EmptyState } from '../shared/EmptyState';
 import { ConfirmModal } from '../shared/ConfirmModal';
 import toast from 'react-hot-toast';
+import { useDebounce } from '../../hooks/useDebounce';
 
 // Note: createFolder logic moved to HomePage top bar
 
@@ -17,13 +19,17 @@ interface FolderNoteListProps {
   searchInputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
-export const FolderNoteList: React.FC<FolderNoteListProps> = ({ searchInputRef }) => {
+export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searchInputRef }) => {
   const { folders, notes, setSelectedNoteId, setCurrentFolderId, currentFolderId, selectedNoteId, loading, createFolder, deleteNote, deleteFolder } = useAppData();
+  const { preferences } = useSettings();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [summariesByNoteId, setSummariesByNoteId] = useState<Record<string, string>>({});
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [itemToDelete, setItemToDelete] = useState<{ type: 'note' | 'folder'; id: string; name: string } | null>(null);
+  
+  const isCompact = preferences.noteListDensity === 'compact';
 
   useEffect(() => {
     if (notes.length === 0) return;
@@ -64,26 +70,26 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = ({ searchInputRef }
   };
 
   const filteredFolders = folders.filter(f => f.parentId === currentFolderId);
-  const filteredNotes = searchQuery === '' 
+  const filteredNotes = debouncedSearchQuery === '' 
     ? notes.filter(n => n.folderId === currentFolderId)
     : notes; // When searching, show all notes
 
   const searchResults = useMemo(() => {
-    if (searchQuery.trim() === '') return [] as Array<{
+    if (debouncedSearchQuery.trim() === '') return [] as Array<{
       note: Note;
       matchField: 'title' | 'summary' | 'transcript';
       snippetHtml: string;
       priority: number;
     }>;
 
-    const q = normalize(searchQuery);
+    const q = normalize(debouncedSearchQuery);
     const results: Array<{ note: Note; matchField: 'title' | 'summary' | 'transcript'; snippetHtml: string; priority: number; }> = [];
 
     for (const n of filteredNotes) {
       // Title match has highest priority
       if (normalize(n.title).includes(q)) {
-        const snip = getSnippet(n.title, searchQuery) || { snippet: n.title, index: 0 };
-        results.push({ note: n, matchField: 'title', snippetHtml: highlight(snip.snippet, searchQuery), priority: 0 });
+        const snip = getSnippet(n.title, debouncedSearchQuery) || { snippet: n.title, index: 0 };
+        results.push({ note: n, matchField: 'title', snippetHtml: highlight(snip.snippet, debouncedSearchQuery), priority: 0 });
         continue;
       }
 
@@ -91,9 +97,9 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = ({ searchInputRef }
       const rawSummary = summariesByNoteId[n.id] || '';
       const summaryText = rawSummary ? stripHtml(rawSummary) : '';
       if (summaryText && normalize(summaryText).includes(q)) {
-        const snip = getSnippet(summaryText, searchQuery);
+        const snip = getSnippet(summaryText, debouncedSearchQuery);
         if (snip) {
-          results.push({ note: n, matchField: 'summary', snippetHtml: highlight(snip.snippet, searchQuery), priority: 1 });
+          results.push({ note: n, matchField: 'summary', snippetHtml: highlight(snip.snippet, debouncedSearchQuery), priority: 1 });
           continue;
         }
       }
@@ -101,9 +107,9 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = ({ searchInputRef }
       // Transcript/content
       const transcript = n.content || '';
       if (transcript && normalize(transcript).includes(q)) {
-        const snip = getSnippet(transcript, searchQuery);
+        const snip = getSnippet(transcript, debouncedSearchQuery);
         if (snip) {
-          results.push({ note: n, matchField: 'transcript', snippetHtml: highlight(snip.snippet, searchQuery), priority: 2 });
+          results.push({ note: n, matchField: 'transcript', snippetHtml: highlight(snip.snippet, debouncedSearchQuery), priority: 2 });
           continue;
         }
       }
@@ -114,17 +120,17 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = ({ searchInputRef }
       return b.note.createdAt.getTime() - a.note.createdAt.getTime();
     });
     return results;
-  }, [searchQuery, filteredNotes, summariesByNoteId]);
+  }, [debouncedSearchQuery, filteredNotes, summariesByNoteId]);
 
   const filteredItems = useMemo(() => {
-    if (searchQuery.trim() !== '') {
+    if (debouncedSearchQuery.trim() !== '') {
       return searchResults.map(r => ({ type: 'note' as const, data: r.note, meta: r }));
     }
     return [
       ...filteredFolders.map(f => ({ type: 'folder' as const, data: f as Folder })),
       ...filteredNotes.map(n => ({ type: 'note' as const, data: n as Note })),
     ];
-  }, [searchQuery, searchResults, filteredFolders, filteredNotes]);
+  }, [debouncedSearchQuery, searchResults, filteredFolders, filteredNotes]);
 
   const handleBackToParent = () => {
     const currentFolder = currentFolderId 
@@ -200,11 +206,11 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = ({ searchInputRef }
         {loading ? (
           <NoteListSkeleton />
         ) : filteredItems.length === 0 ? (
-          searchQuery.trim() ? (
+          debouncedSearchQuery.trim() ? (
             <EmptyState
               icon={HiMagnifyingGlass}
               title="No Results Found"
-              description={`No notes or folders match "${searchQuery}". Try adjusting your search terms or create a new note.`}
+              description={`No notes or folders match "${debouncedSearchQuery}". Try adjusting your search terms or create a new note.`}
               action={{
                 label: 'Create New Note',
                 onClick: () => navigate('/note-creation'),
@@ -241,55 +247,58 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = ({ searchInputRef }
           return (
             <div
               key={item.data.id}
-              className={`w-full p-4 rounded-lg transition-colors ${
+              className={`w-full ${isCompact ? 'p-2' : 'p-4'} rounded-lg transition-colors ${
                 isSelected 
                   ? 'bg-[#3a3a3a] border-2 border-[#b85a3a]' 
                   : 'bg-[#2a2a2a] hover:bg-[#3a3a3a] border-2 border-transparent'
               }`}
             >
               <motion.button
-                whileHover={{ scale: 1.01, x: 4 }}
-                whileTap={{ scale: 0.99 }}
-                onClick={() => {
-                  if (isFolder) {
-                    // Navigate into folder instead of toggling
-                    setCurrentFolderId(item.data.id);
-                  } else {
-                    setSelectedNoteId(item.data.id);
-                    navigate('/note');
-                  }
-                }}
+              whileHover={{ scale: 1.01, x: 4 }}
+              whileTap={{ scale: 0.99 }}
+              onClick={() => {
+                if (isFolder) {
+                  // Navigate into folder instead of toggling
+                  setCurrentFolderId(item.data.id);
+                } else {
+                  setSelectedNoteId(item.data.id);
+                  navigate('/note');
+                }
+              }}
                 className="w-full text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 flex items-center justify-center">
-                    {isFolder ? (
-                      <HiFolder className="w-6 h-6 text-[#b85a3a]" />
-                    ) : (
-                      <Icon className="w-5 h-5 text-[#9ca3af]" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-white">
-                      {(item.data as Note).title || (item.data as Folder).name}
-                    </p>
-                    {!isFolder && 'createdAt' in item.data && (
-                      <p className="text-sm text-[#9ca3af]">
-                        {format((item.data as Note).createdAt, 'MMM d, yyyy')}
-                      </p>
-                    )}
-                    {searchQuery.trim() !== '' && !isFolder && (item as any).meta && (
-                      <div
-                        className="mt-1 text-sm text-gray-300 line-clamp-1"
-                        dangerouslySetInnerHTML={{ __html: (item as any).meta.snippetHtml }}
-                      />
-                    )}
-                  </div>
+            >
+              <div className={`flex items-center ${isCompact ? 'gap-2' : 'gap-3'}`}>
+                <div className={`${isCompact ? 'w-6 h-6' : 'w-10 h-10'} flex items-center justify-center`}>
+                  {isFolder ? (
+                    <HiFolder className={`${isCompact ? 'w-4 h-4' : 'w-6 h-6'} text-[#b85a3a]`} />
+                  ) : (
+                    <Icon className={`${isCompact ? 'w-4 h-4' : 'w-5 h-5'} text-[#9ca3af]`} />
+                  )}
                 </div>
-              </motion.button>
+                <div className="flex-1 min-w-0">
+                  <p className={`font-medium text-white ${isCompact ? 'text-sm' : ''} truncate`}>
+                    {(item.data as Note).title || (item.data as Folder).name}
+                  </p>
+                  {!isFolder && 'createdAt' in item.data && (
+                    <p className={`${isCompact ? 'text-xs' : 'text-sm'} text-[#9ca3af]`}>
+                      {isCompact 
+                        ? format((item.data as Note).createdAt, 'MMM d')
+                        : format((item.data as Note).createdAt, 'MMM d, yyyy')
+                      }
+                    </p>
+                  )}
+                  {!isCompact && debouncedSearchQuery.trim() !== '' && !isFolder && (item as any).meta && (
+                    <div
+                      className="mt-1 text-sm text-gray-300 line-clamp-1"
+                      dangerouslySetInnerHTML={{ __html: (item as any).meta.snippetHtml }}
+                    />
+                  )}
+                </div>
+              </div>
+            </motion.button>
               
               {/* Actions */}
-              <div className="flex items-center gap-2 mt-2 ml-12">
+              <div className={`flex items-center gap-2 ${isCompact ? 'mt-1 ml-8' : 'mt-2 ml-12'}`}>
                 {isFolder && (
                   <motion.button
                     whileHover={{ scale: 1.02 }}
@@ -363,4 +372,8 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = ({ searchInputRef }
       />
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison - only re-render if searchInputRef changes
+  return prevProps.searchInputRef === nextProps.searchInputRef;
+});
+FolderNoteList.displayName = 'FolderNoteList';

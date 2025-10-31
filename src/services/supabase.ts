@@ -280,59 +280,8 @@ export const documentService = {
   },
 };
 
-// File upload operations
-export const storageService = {
-  async uploadFile(userId: string, file: File): Promise<string> {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${userId}/${Date.now()}.${fileExt}`;
-
-    const { error } = await supabase.storage
-      .from('documents')
-      .upload(fileName, file);
-
-    if (error) throw error;
-
-    return fileName;
-  },
-
-  async getFileUrl(path: string): Promise<string> {
-    // For private buckets, download the file and create a blob URL
-    // This allows PDF.js and other libraries to access the file
-    const { data, error } = await supabase.storage
-      .from('documents')
-      .download(path);
-
-    if (error) {
-      // Fallback to public URL if download fails (for public buckets)
-    const urlData = supabase.storage
-      .from('documents')
-      .getPublicUrl(path);
-    return urlData.data.publicUrl;
-    }
-
-    // Create a blob URL that can be used by PDF.js
-    const blob = data;
-    return URL.createObjectURL(blob);
-  },
-
-  async downloadFile(path: string): Promise<Blob> {
-    const { data, error } = await supabase.storage
-      .from('documents')
-      .download(path);
-
-    if (error) throw error;
-
-    return data;
-  },
-
-  async deleteFile(path: string): Promise<void> {
-    const { error } = await supabase.storage
-      .from('documents')
-      .remove([path]);
-
-    if (error) throw error;
-  },
-};
+// File upload operations - re-export from enhanced storageService
+export { storageService } from './storageService';
 
 // Helper functions for generating study content
 async function generateExercisesHelper(content: string) {

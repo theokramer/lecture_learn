@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import type { UserPreferences } from '../types';
+import type { UserPreferences, StudyMode } from '../types';
+import { applyAccentColor, applyFontSize, applyEditorFont } from '../utils/themeUtils';
 
 interface SettingsContextType {
   preferences: UserPreferences;
@@ -16,6 +17,15 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   exercisesCount: 10,
   summaryDetailLevel: 'comprehensive',
   theme: 'dark',
+  accentColor: '#b85a3a',
+  fontSize: 1.0,
+  editorFont: 'default',
+  noteListDensity: 'detailed',
+  defaultStudyMode: 'summary',
+  autoSaveInterval: 2000,
+  notificationsEnabled: false,
+  language: 'en',
+  aiModel: '',
 };
 
 const MIN_VALUES = {
@@ -55,6 +65,26 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
       document.documentElement.classList.add('dark');
     }
   }, [preferences.theme]);
+
+  // Apply accent color
+  useEffect(() => {
+    const accentColor = preferences.accentColor || DEFAULT_PREFERENCES.accentColor;
+    if (accentColor) {
+      applyAccentColor(accentColor);
+    }
+  }, [preferences.accentColor]);
+
+  // Apply font size
+  useEffect(() => {
+    const fontSize = preferences.fontSize ?? DEFAULT_PREFERENCES.fontSize ?? 1.0;
+    applyFontSize(fontSize);
+  }, [preferences.fontSize]);
+
+  // Apply editor font
+  useEffect(() => {
+    const editorFont = preferences.editorFont || DEFAULT_PREFERENCES.editorFont || 'default';
+    applyEditorFont(editorFont);
+  }, [preferences.editorFont]);
 
   // Save preferences to localStorage whenever they change
   useEffect(() => {
@@ -99,6 +129,55 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         updated.theme = allowed.includes(newPreferences.theme as any)
           ? newPreferences.theme
           : prev.theme || 'dark';
+      }
+
+      if (newPreferences.accentColor !== undefined) {
+        // Validate hex color format
+        const hexPattern = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
+        if (hexPattern.test(newPreferences.accentColor)) {
+          updated.accentColor = newPreferences.accentColor;
+        }
+      }
+
+      if (newPreferences.fontSize !== undefined) {
+        updated.fontSize = Math.min(2.0, Math.max(0.75, newPreferences.fontSize));
+      }
+
+      if (newPreferences.editorFont !== undefined) {
+        const allowed = ['default', 'monospace'] as const;
+        updated.editorFont = allowed.includes(newPreferences.editorFont as any)
+          ? newPreferences.editorFont
+          : prev.editorFont || 'default';
+      }
+
+      if (newPreferences.noteListDensity !== undefined) {
+        const allowed = ['compact', 'detailed'] as const;
+        updated.noteListDensity = allowed.includes(newPreferences.noteListDensity as any)
+          ? newPreferences.noteListDensity
+          : prev.noteListDensity || 'detailed';
+      }
+
+      if (newPreferences.defaultStudyMode !== undefined) {
+        const allowed: StudyMode[] = ['summary', 'transcript', 'feynman', 'flashcards', 'quiz', 'exercises', 'documents', 'ai-chat'];
+        updated.defaultStudyMode = allowed.includes(newPreferences.defaultStudyMode)
+          ? newPreferences.defaultStudyMode
+          : prev.defaultStudyMode || 'summary';
+      }
+
+      if (newPreferences.autoSaveInterval !== undefined) {
+        updated.autoSaveInterval = Math.min(60000, Math.max(1000, newPreferences.autoSaveInterval));
+      }
+
+      if (newPreferences.notificationsEnabled !== undefined) {
+        updated.notificationsEnabled = Boolean(newPreferences.notificationsEnabled);
+      }
+
+      if (newPreferences.language !== undefined) {
+        updated.language = newPreferences.language || 'en';
+      }
+
+      if (newPreferences.aiModel !== undefined) {
+        updated.aiModel = newPreferences.aiModel || '';
       }
       
       return updated;

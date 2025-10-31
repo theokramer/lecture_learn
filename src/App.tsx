@@ -19,6 +19,7 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { LearnFlashcardsPage } from './pages/LearnFlashcardsPage';
 import { useGlobalKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
+import { OfflineIndicator } from './components/shared/OfflineIndicator';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
@@ -34,12 +35,13 @@ const GlobalShortcutsHandler: React.FC<{ children: React.ReactNode }> = ({ child
 function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <SettingsProvider>
-          <AppDataProvider>
+    <AuthProvider>
+      <SettingsProvider>
+        <AppDataProvider>
             <PdfSelectionProvider>
-              <Router>
+          <Router>
                 <GlobalShortcutsHandler>
+                  <OfflineIndicator />
                   <Toaster
                     position="top-right"
                     toastOptions={{
@@ -64,7 +66,7 @@ function App() {
                       },
                     }}
                   />
-                  <Routes>
+          <Routes>
             <Route path="/login" element={<LoginScreen />} />
             <Route
               path="/home"
@@ -154,14 +156,14 @@ function App() {
                 </PrivateRoute>
               }
             />
-                    <Route path="/" element={<Navigate to="/home" />} />
-                  </Routes>
+            <Route path="/" element={<Navigate to="/home" />} />
+          </Routes>
                 </GlobalShortcutsHandler>
-              </Router>
+        </Router>
             </PdfSelectionProvider>
-          </AppDataProvider>
-        </SettingsProvider>
-      </AuthProvider>
+        </AppDataProvider>
+      </SettingsProvider>
+    </AuthProvider>
     </ErrorBoundary>
   );
 }

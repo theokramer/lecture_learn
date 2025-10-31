@@ -4,7 +4,7 @@ import { studyContentService } from '../../../services/supabase';
 import { useAppData } from '../../../context/AppDataContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSettings } from '../../../context/SettingsContext';
-import { HiSparkles, HiDocumentText, HiArrowPath, HiQuestionMarkCircle, HiArrowDownTray } from 'react-icons/hi2';
+import { HiSparkles, HiDocumentText, HiQuestionMarkCircle, HiArrowDownTray } from 'react-icons/hi2';
 import { exportService } from '../../../services/exportService';
 import toast from 'react-hot-toast';
 import { ContentSkeleton } from '../../shared/SkeletonLoader';
@@ -13,7 +13,7 @@ import 'katex/dist/katex.min.css';
 export const SummaryView: React.FC = () => {
   const { selectedNoteId, notes, currentStudyMode } = useAppData();
   const { preferences } = useSettings();
-  const currentNote = notes.find(n => n.id === selectedNoteId);
+  const currentNote = notes?.find(n => n.id === selectedNoteId) || null;
   
   const [summary, setSummary] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -140,12 +140,13 @@ export const SummaryView: React.FC = () => {
   useEffect(() => {
     if (!hasSummary && summary === '') return;
     
+    const autoSaveInterval = preferences.autoSaveInterval || 2000;
     const timeoutId = setTimeout(() => {
       saveSummary(summary);
-    }, 2000); // 2 second debounce
+    }, autoSaveInterval);
 
     return () => clearTimeout(timeoutId);
-  }, [summary, saveSummary, hasSummary]);
+  }, [summary, saveSummary, hasSummary, preferences.autoSaveInterval]);
 
   if (isLoading) {
     return (
@@ -260,15 +261,6 @@ export const SummaryView: React.FC = () => {
               <span className="hidden md:inline">Export</span>
             </button>
           )}
-          
-          <button
-            onClick={generateSummary}
-            disabled={isGenerating || isSaving}
-            className="px-4 py-2 bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            <HiArrowPath className="w-4 h-4" />
-            Regenerate
-          </button>
         </div>
       </div>
 

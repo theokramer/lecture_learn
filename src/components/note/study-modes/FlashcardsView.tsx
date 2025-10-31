@@ -23,7 +23,7 @@ interface FlashcardsViewProps {
   noteContent: string;
 }
 
-export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) => {
+export const FlashcardsView: React.FC<FlashcardsViewProps> = React.memo(function FlashcardsView({ noteContent }) {
   const { selectedNoteId, notes } = useAppData();
   const { getPreference } = useSettings();
   const [view, setView] = useState<View>('management');
@@ -685,4 +685,4 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
       </motion.div>
     </div>
   );
-};
+});

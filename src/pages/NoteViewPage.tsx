@@ -5,6 +5,7 @@ import { NoteSidebar } from '../components/note/NoteSidebar';
 import { ContentView } from '../components/note/ContentView';
 import { AIChatPanel } from '../components/note/AIChatPanel';
 import { useAppData } from '../context/AppDataContext';
+import { useSettings } from '../context/SettingsContext';
 import { studyContentService } from '../services/supabase';
 import type { StudyMode } from '../types';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -12,12 +13,14 @@ import { KeyboardShortcutsModal } from '../components/shared/KeyboardShortcutsMo
 
 export const NoteViewPage: React.FC = () => {
   const appData = useAppData();
+  const { preferences } = useSettings();
   const [searchParams] = useSearchParams();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [chatWidth, setChatWidth] = useState(450);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const hasCheckedSummaryRef = useRef<string | null>(null);
+  const hasSetDefaultModeRef = useRef<string | null>(null);
   const saveHandlerRef = useRef<(() => void) | null>(null);
 
   // Set the selected note from URL parameter
@@ -26,15 +29,40 @@ export const NoteViewPage: React.FC = () => {
     if (noteId && noteId !== appData.selectedNoteId) {
       appData.setSelectedNoteId(noteId);
       hasCheckedSummaryRef.current = null; // Reset check for new note
+      hasSetDefaultModeRef.current = null; // Reset default mode for new note
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // Set default study mode when opening a note (if no explicit mode is set)
+  useEffect(() => {
+    const noteId = appData.selectedNoteId;
+    const modeParam = searchParams.get('mode') as StudyMode | null;
+    
+    // Only set default if:
+    // 1. We have a note selected
+    // 2. No explicit mode in URL
+    // 3. We haven't set default mode for this note yet
+    if (noteId && !modeParam && hasSetDefaultModeRef.current !== noteId) {
+      const defaultMode = preferences.defaultStudyMode || 'summary';
+      if (appData.currentStudyMode !== defaultMode) {
+        appData.setCurrentStudyMode(defaultMode);
+      }
+      hasSetDefaultModeRef.current = noteId;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appData.selectedNoteId, searchParams, preferences.defaultStudyMode]);
+
   // Check if summary is available when note changes and auto-switch to summary view
+  // (Only if default mode is summary or if we're already on summary)
   useEffect(() => {
     const checkAndSwitchToSummary = async () => {
       const noteId = appData.selectedNoteId;
       if (!noteId || hasCheckedSummaryRef.current === noteId) return;
+
+      // Only auto-switch to summary if default mode is summary
+      const defaultMode = preferences.defaultStudyMode || 'summary';
+      if (defaultMode !== 'summary') return;
 
       try {
         const studyContent = await studyContentService.getStudyContent(noteId);
@@ -53,12 +81,16 @@ export const NoteViewPage: React.FC = () => {
 
     checkAndSwitchToSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appData.selectedNoteId, appData.currentStudyMode]);
+  }, [appData.selectedNoteId, appData.currentStudyMode, preferences.defaultStudyMode]);
 
   // Poll for newly generated summaries (when they finish generating in background)
+  // Only if default mode is summary
   useEffect(() => {
     const noteId = appData.selectedNoteId;
     if (!noteId || hasCheckedSummaryRef.current === noteId) return;
+
+    const defaultMode = preferences.defaultStudyMode || 'summary';
+    if (defaultMode !== 'summary') return; // Don't auto-switch if default isn't summary
 
     // Poll every 3 seconds to check if a summary was generated in the background
     const pollInterval = setInterval(async () => {
@@ -89,7 +121,7 @@ export const NoteViewPage: React.FC = () => {
       clearTimeout(timeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appData.selectedNoteId]);
+  }, [appData.selectedNoteId, preferences.defaultStudyMode]);
 
   const handleModeChange = (mode: StudyMode) => {
     appData.setCurrentStudyMode(mode);

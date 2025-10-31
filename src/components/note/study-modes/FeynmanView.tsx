@@ -22,7 +22,7 @@ interface FeynmanViewProps {
   noteContent: string;
 }
 
-export const FeynmanView: React.FC<FeynmanViewProps> = ({ noteContent }) => {
+export const FeynmanView: React.FC<FeynmanViewProps> = React.memo(function FeynmanView({ noteContent }) {
   const { selectedNoteId } = useAppData();
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [explanation, setExplanation] = useState('');
@@ -436,4 +436,4 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
       </div>
     </div>
   );
-};
+});

@@ -28,7 +28,7 @@ interface QuizViewProps {
   noteContent: string;
 }
 
-export const QuizView: React.FC<QuizViewProps> = ({ noteContent }) => {
+export const QuizView: React.FC<QuizViewProps> = React.memo(function QuizView({ noteContent }) {
   const { selectedNoteId } = useAppData();
   const { getPreference } = useSettings();
   const { user } = useAuth();
@@ -595,4 +595,4 @@ export const QuizView: React.FC<QuizViewProps> = ({ noteContent }) => {
       </motion.div>
     </div>
   );
-};
+});

@@ -3,14 +3,17 @@ import { IoAdd, IoDownloadOutline, IoRefresh, IoEyeOutline, IoPencil, IoCheckmar
 import { HiDocument } from 'react-icons/hi2';
 import { useAppData } from '../../context/AppDataContext';
 import { Button } from '../shared/Button';
-import { storageService, studyContentService, documentService } from '../../services/supabase';
+import { storageService, studyContentService, documentService, supabase } from '../../services/supabase';
+import { useAuth } from '../../context/AuthContext';
 import { AudioPlayer } from '../audio/AudioPlayer';
 import { DocumentPreview } from './DocumentPreview';
 import { EmptyState } from '../shared/EmptyState';
 import toast from 'react-hot-toast';
+import { handleError } from '../../utils/errorHandler';
 
-export const DocumentManagement: React.FC = () => {
+export const DocumentManagement: React.FC = React.memo(() => {
   const { notes, selectedNoteId, uploadDocumentToNote, refreshData } = useAppData();
+  const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
@@ -19,9 +22,33 @@ export const DocumentManagement: React.FC = () => {
   const [renameValue, setRenameValue] = useState('');
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [draggedOverId, setDraggedOverId] = useState<string | null>(null);
+  const [initialContentHash, setInitialContentHash] = useState<string>('');
+  const previousNoteIdRef = useRef<string | null>(null);
 
   const currentNote = notes.find(n => n.id === selectedNoteId);
   const documents = currentNote?.documents || [];
+
+  // Track initial content to detect modifications
+  // Reset initial content hash when note changes
+  useEffect(() => {
+    // If note ID changed, reset the initial content hash
+    if (selectedNoteId !== previousNoteIdRef.current) {
+      previousNoteIdRef.current = selectedNoteId;
+      // Find the note from the current notes array
+      const note = notes.find(n => n.id === selectedNoteId);
+      if (note?.content !== undefined) {
+        setInitialContentHash(note.content || '');
+      } else {
+        setInitialContentHash('');
+      }
+    }
+  }, [selectedNoteId, notes]);
+
+  // Check if content has been modified (compare current content with initial content)
+  const hasContentChanged = currentNote?.content !== undefined && 
+                            currentNote.content !== initialContentHash && 
+                            initialContentHash !== '' &&
+                            currentNote.content !== '';
 
   // Load audio URLs for audio documents
   useEffect(() => {
@@ -34,7 +61,7 @@ export const DocumentManagement: React.FC = () => {
           const url = await storageService.getFileUrl(doc.url);
           urlMap[doc.id] = url;
         } catch (error) {
-          console.error(`Error loading audio URL for ${doc.id}:`, error);
+          handleError(error, `DocumentManagement: Loading audio URL for ${doc.id}`, toast.error);
         }
       }
 
@@ -55,8 +82,7 @@ export const DocumentManagement: React.FC = () => {
         await uploadDocumentToNote(currentNote.id, file);
       }
     } catch (error) {
-      console.error('Error uploading documents:', error);
-      toast.error('Failed to upload documents');
+      handleError(error, 'DocumentManagement: Uploading documents', toast.error);
     }
 
     // Reset input
@@ -102,21 +128,41 @@ export const DocumentManagement: React.FC = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(link.href);
     } catch (error) {
-      console.error('Error downloading document:', error);
-      toast.error('Failed to download document');
+      handleError(error, 'DocumentManagement: Downloading document', toast.error);
     }
   };
 
   const handleRegenerate = async () => {
-    if (!currentNote || !selectedNoteId) return;
+    if (!currentNote || !selectedNoteId || !user) return;
 
     setIsRegenerating(true);
     try {
-      await studyContentService.generateAndSaveAllStudyContent(selectedNoteId, currentNote.content);
+      // Fetch the latest note content directly from the database to ensure we have the most up-to-date content
+      const { data: noteData, error: noteError } = await supabase
+        .from('notes')
+        .select('content')
+        .eq('id', selectedNoteId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (noteError || !noteData) {
+        toast.error('Failed to fetch latest note content');
+        return;
+      }
+
+      const latestContent = noteData.content || '';
+
+      await studyContentService.generateAndSaveAllStudyContent(selectedNoteId, latestContent);
+      
+      // Update initial content hash to reflect that we've regenerated
+      setInitialContentHash(latestContent);
+      
+      // Refresh data to update the UI
+      await refreshData();
+      
       toast.success('Study content regenerated successfully!');
     } catch (error) {
-      console.error('Error regenerating study content:', error);
-      toast.error('Failed to regenerate study content');
+      handleError(error, 'DocumentManagement: Regenerating study content', toast.error);
     } finally {
       setIsRegenerating(false);
     }
@@ -145,8 +191,7 @@ export const DocumentManagement: React.FC = () => {
       setRenamingId(null);
       await refreshData();
     } catch (error) {
-      console.error('Error renaming document:', error);
-      toast.error('Failed to rename document');
+      handleError(error, 'DocumentManagement: Renaming document', toast.error);
     }
   };
 
@@ -198,8 +243,7 @@ export const DocumentManagement: React.FC = () => {
       await documentService.updateDocumentOrder(draggedId, newDate);
       await refreshData();
     } catch (error) {
-      console.error('Error reordering document:', error);
-      toast.error('Failed to reorder document');
+      handleError(error, 'DocumentManagement: Reordering document', toast.error);
     } finally {
       setDraggedId(null);
       setDraggedOverId(null);
@@ -340,17 +384,19 @@ export const DocumentManagement: React.FC = () => {
             );
           })}
           
-          {/* Regenerate Button */}
-          <div className="mt-8 pt-6 border-t border-[#3a3a3a]">
-            <Button
-              onClick={handleRegenerate}
-              disabled={isRegenerating}
-              className="w-full flex items-center justify-center gap-2"
-            >
-              <IoRefresh className={`w-5 h-5 ${isRegenerating ? 'animate-spin' : ''}`} />
-              {isRegenerating ? 'Regenerating Study Content...' : 'Regenerate Study Content'}
-            </Button>
-          </div>
+          {/* Regenerate Button - Only show if content has been modified */}
+          {hasContentChanged && (
+            <div className="mt-8 pt-6 border-t border-[#3a3a3a]">
+              <Button
+                onClick={handleRegenerate}
+                disabled={isRegenerating}
+                className="w-full flex items-center justify-center gap-2"
+              >
+                <IoRefresh className={`w-5 h-5 ${isRegenerating ? 'animate-spin' : ''}`} />
+                {isRegenerating ? 'Regenerating Study Content...' : 'Regenerate Study Content'}
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <EmptyState
@@ -373,5 +419,6 @@ export const DocumentManagement: React.FC = () => {
       )}
     </div>
   );
-};
+});
+DocumentManagement.displayName = 'DocumentManagement';
 

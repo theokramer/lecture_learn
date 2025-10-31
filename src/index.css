@@ -6,6 +6,14 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Default theme variables */
+    --accent-color: #b85a3a;
+    --accent-gradient-start: #b85a3a;
+    --accent-gradient-end: #d4a944;
+    --font-size-multiplier: 1;
+  }
+
   * {
     margin: 0;
     padding: 0;
@@ -19,7 +27,7 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     background-color: #1a1a1a;
     color: #ffffff;
-    font-size: 16px;
+    font-size: calc(16px * var(--font-size-multiplier, 1));
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -85,4 +93,18 @@
 
 .rotate-y-180 {
   transform: rotateY(180deg);
+}
+
+/* Editor font customization */
+.editor-monospace .ProseMirror,
+.editor-monospace [contenteditable="true"] {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+}
+
+/* Use CSS variables for accent colors in text gradients */
+.text-gradient {
+  background: linear-gradient(to right, var(--accent-gradient-start, #b85a3a), var(--accent-gradient-end, #d4a944));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }

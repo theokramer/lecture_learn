@@ -37,6 +37,15 @@ export interface UserPreferences {
   exercisesCount: number;
   summaryDetailLevel?: 'concise' | 'standard' | 'comprehensive';
   theme?: 'light' | 'dark';
+  accentColor?: string;
+  fontSize?: number;
+  editorFont?: 'default' | 'monospace';
+  noteListDensity?: 'compact' | 'detailed';
+  defaultStudyMode?: StudyMode;
+  autoSaveInterval?: number;
+  notificationsEnabled?: boolean;
+  language?: string;
+  aiModel?: string;
 }
 
 export type StudyMode = 'summary' | 'transcript' | 'feynman' | 'flashcards' | 'quiz' | 'exercises' | 'documents' | 'ai-chat';

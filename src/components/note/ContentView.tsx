@@ -1,15 +1,42 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { HiDocument } from 'react-icons/hi2';
 import { useAppData } from '../../context/AppDataContext';
 import { useStudySession } from '../../hooks/useStudySession';
-import { SummaryView } from './study-modes/SummaryView';
-import { TranscriptView } from './study-modes/TranscriptView';
-import { FeynmanView } from './study-modes/FeynmanView';
-import { FlashcardsView } from './study-modes/FlashcardsView';
-import { QuizView } from './study-modes/QuizView';
-import { ExercisesView } from './study-modes/ExercisesView';
-import { DocumentManagement } from './DocumentManagement';
-import { AIChatView } from './study-modes/AIChatView';
+
+// Lazy load all study mode components for consistency
+const SummaryView = lazy(() => 
+  import('./study-modes/SummaryView').then(module => ({ default: module.SummaryView }))
+);
+const TranscriptView = lazy(() => 
+  import('./study-modes/TranscriptView').then(module => ({ default: module.TranscriptView }))
+);
+const FeynmanView = lazy(() => 
+  import('./study-modes/FeynmanView').then(module => ({ default: module.FeynmanView }))
+);
+const FlashcardsView = lazy(() => 
+  import('./study-modes/FlashcardsView').then(module => ({ default: module.FlashcardsView }))
+);
+const QuizView = lazy(() => 
+  import('./study-modes/QuizView').then(module => ({ default: module.QuizView }))
+);
+const ExercisesView = lazy(() => 
+  import('./study-modes/ExercisesView').then(module => ({ default: module.ExercisesView }))
+);
+const AIChatView = lazy(() => 
+  import('./study-modes/AIChatView').then(module => ({ default: module.AIChatView }))
+);
+const DocumentManagement = lazy(() => 
+  import('./DocumentManagement').then(module => ({ default: module.DocumentManagement }))
+);
+
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center h-full min-h-[400px]">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+      <p className="text-[#9ca3af]">Loading study mode...</p>
+    </div>
+  </div>
+);
 
 export const ContentView: React.FC = () => {
   const { currentStudyMode, selectedNoteId, notes } = useAppData();
@@ -54,7 +81,9 @@ export const ContentView: React.FC = () => {
 
       {/* Content */}
       <div className={`flex-1 overflow-hidden ${currentStudyMode === 'ai-chat' ? 'p-0' : 'overflow-auto p-8 pb-12'}`}>
-        {renderMode()}
+        <Suspense fallback={<LoadingFallback />}>
+          {renderMode()}
+        </Suspense>
       </div>
     </div>
   );

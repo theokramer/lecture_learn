@@ -2,29 +2,35 @@ import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { HiExclamationTriangle } from 'react-icons/hi2';
 import { motion } from 'framer-motion';
+import { logError, getUserFriendlyErrorMessage } from '../../utils/errorHandler';
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  context?: string;
 }
 
 interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  retryCount: number;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
+  private retryTimeoutId: number | null = null;
+
   constructor(props: Props) {
     super(props);
     this.state = {
       hasError: false,
       error: null,
       errorInfo: null,
+      retryCount: 0,
     };
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return {
       hasError: true,
       error,
@@ -33,7 +39,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    logError(error, this.props.context || 'ErrorBoundary');
     this.setState({
       error,
       errorInfo,
@@ -45,8 +51,39 @@ export class ErrorBoundary extends Component<Props, State> {
       hasError: false,
       error: null,
       errorInfo: null,
+      retryCount: 0,
     });
   };
+
+  handleRetry = () => {
+    const { retryCount } = this.state;
+    const maxRetries = 3;
+    
+    if (retryCount >= maxRetries) {
+      // Reset after max retries
+      this.handleReset();
+      return;
+    }
+
+    // Exponential backoff: 1s, 2s, 4s
+    const delay = Math.pow(2, retryCount) * 1000;
+    
+    this.retryTimeoutId = window.setTimeout(() => {
+      this.setState({
+        hasError: false,
+        error: null,
+        errorInfo: null,
+        retryCount: retryCount + 1,
+      });
+      this.retryTimeoutId = null;
+    }, delay);
+  };
+
+  componentWillUnmount() {
+    if (this.retryTimeoutId !== null) {
+      clearTimeout(this.retryTimeoutId);
+    }
+  }
 
   render() {
     if (this.state.hasError) {
@@ -75,18 +112,28 @@ export class ErrorBoundary extends Component<Props, State> {
 
             {this.state.error && (
               <div className="bg-[#1a1a1a] rounded-lg p-4 mb-4">
-                <p className="text-red-400 font-mono text-sm">
-                  {this.state.error.message || 'Unknown error'}
+                <p className="text-red-400 text-sm mb-2">
+                  {getUserFriendlyErrorMessage(this.state.error)}
                 </p>
+                {import.meta.env.DEV && (
+                  <p className="text-red-400/60 font-mono text-xs mt-2">
+                    {this.state.error.message}
+                  </p>
+                )}
               </div>
             )}
 
             <div className="flex gap-3">
               <button
-                onClick={this.handleReset}
+                onClick={this.handleRetry}
                 className="px-4 py-2 bg-[#b85a3a] hover:bg-[#a04a2a] text-white rounded-lg transition-colors"
               >
                 Try Again
+                {this.state.retryCount > 0 && (
+                  <span className="ml-2 text-xs opacity-75">
+                    ({this.state.retryCount}/3)
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => window.location.reload()}
