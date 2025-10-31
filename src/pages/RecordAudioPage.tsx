@@ -87,12 +87,28 @@ export const RecordAudioPage: React.FC = () => {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
 
+      // Request microphone with constraints optimized for long recordings
+      // Note: Some browsers have autostop features, but these shouldn't trigger for active recordings
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          // Explicitly request sample rate and channel count for compatibility
+          sampleRate: 48000,
+          channelCount: 1, // Mono is fine for voice and reduces file size
         } 
+      });
+      
+      // Log stream info for debugging
+      stream.getAudioTracks().forEach(track => {
+        console.log('Audio track initialized:', {
+          label: track.label,
+          enabled: track.enabled,
+          muted: track.muted,
+          readyState: track.readyState,
+          settings: track.getSettings()
+        });
       });
       streamRef.current = stream;
 
@@ -152,8 +168,19 @@ export const RecordAudioPage: React.FC = () => {
 
       // Handle recording errors
       mediaRecorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event);
-        toast.error('Recording error occurred. Please try again.');
+        console.error('MediaRecorder error event:', event);
+        console.error('MediaRecorder error details:', (event as any).error);
+        
+        // Clear health check interval
+        if ((mediaRecorder as any)._healthCheckInterval) {
+          clearInterval((mediaRecorder as any)._healthCheckInterval);
+        }
+        
+        const error = (event as any).error;
+        const errorMessage = error?.message || 'Unknown recording error';
+        console.error('Recording error:', errorMessage);
+        
+        toast.error(`Recording error: ${errorMessage}. Please try again.`);
         setIsRecording(false);
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
@@ -162,6 +189,11 @@ export const RecordAudioPage: React.FC = () => {
 
       // Handle recording stop
       mediaRecorder.onstop = () => {
+        // Clear health check interval
+        if ((mediaRecorder as any)._healthCheckInterval) {
+          clearInterval((mediaRecorder as any)._healthCheckInterval);
+        }
+        
         try {
           // Calculate expected blob size based on recording duration
           // At 96kbps, expected size = (bitrate * duration_in_seconds) / 8
@@ -212,31 +244,50 @@ export const RecordAudioPage: React.FC = () => {
       };
 
       // Handle stream errors - track ended events
-      // MediaStreamTrack doesn't have onerror, so we monitor onended and readyState
+      // Note: We only stop recording if the track truly ends (user revokes permission, hardware issue)
+      // Not due to browser autostop which shouldn't happen for active recordings
       stream.getTracks().forEach(track => {
-        // Monitor track state changes periodically
-        const stateCheckInterval = setInterval(() => {
-          if (isRecording && track.readyState === 'ended') {
-            console.error('Track ended unexpectedly');
-            clearInterval(stateCheckInterval);
-            toast.error('Audio input error. Recording stopped.');
-            if (stopHandlerRef.current) {
-              stopHandlerRef.current();
-            }
-          } else if (!isRecording) {
-            clearInterval(stateCheckInterval);
-          }
-        }, 1000);
+        // Store the initial state to detect actual interruptions
+        const initialReadyState = track.readyState;
+        let lastCheckedState = initialReadyState;
         
-        // Handle track ended event
-        track.onended = () => {
-          console.warn('Audio track ended unexpectedly');
-          clearInterval(stateCheckInterval);
-          if (isRecording) {
+        // Monitor track state changes periodically (less aggressive - every 5 seconds)
+        const stateCheckInterval = setInterval(() => {
+          // Only check if we're actually recording
+          if (!isRecording) {
+            clearInterval(stateCheckInterval);
+            return;
+          }
+          
+          const currentState = track.readyState;
+          
+          // Only trigger if track actually changed to ended (not just checking)
+          if (currentState === 'ended' && lastCheckedState === 'live') {
+            console.error('Track ended unexpectedly - state changed from live to ended');
+            clearInterval(stateCheckInterval);
             toast.error('Audio input was interrupted. Recording stopped.');
             if (stopHandlerRef.current) {
               stopHandlerRef.current();
             }
+          }
+          
+          lastCheckedState = currentState;
+        }, 5000); // Check every 5 seconds instead of every second
+        
+        // Handle track ended event - but only if recording is actually active
+        track.onended = () => {
+          console.warn('Audio track onended event fired');
+          clearInterval(stateCheckInterval);
+          
+          // Only stop if we're actually recording and this isn't during cleanup
+          if (isRecording && mediaRecorderRef.current?.state === 'recording') {
+            console.error('Audio track ended during active recording - likely permission revoked or hardware issue');
+            toast.error('Audio input was interrupted. Recording stopped.');
+            if (stopHandlerRef.current) {
+              stopHandlerRef.current();
+            }
+          } else {
+            console.log('Track ended event received but recording is not active (likely cleanup)');
           }
         };
       });
@@ -247,9 +298,51 @@ export const RecordAudioPage: React.FC = () => {
       // Start recording with timeslice to get periodic data chunks
       // This ensures chunks are delivered every second, preventing memory issues
       // and allowing the recorder to handle long recordings better
+      // Using timeslice of 1000ms (1 second) for efficient chunking
       mediaRecorder.start(1000); // Get chunks every 1 second
       
       console.log('Recording started with mimeType:', selectedMimeType || 'default');
+      console.log('MediaRecorder state:', mediaRecorder.state);
+      console.log('Max recording duration:', MAX_RECORDING_DURATION, 'seconds (2 hours)');
+      
+      // Verify recording started successfully
+      if (mediaRecorder.state !== 'recording') {
+        throw new Error('MediaRecorder failed to start. State: ' + mediaRecorder.state);
+      }
+      
+      // Add periodic health check to ensure recording continues
+      // Some browsers may stop recording due to inactivity or other reasons
+      let healthCheckCount = 0;
+      const healthCheckInterval = setInterval(() => {
+        if (!isRecording || !mediaRecorderRef.current) {
+          clearInterval(healthCheckInterval);
+          return;
+        }
+        
+        const recorder = mediaRecorderRef.current;
+        const currentState = recorder.state;
+        healthCheckCount++;
+        
+        // Log health check every 10 checks (every 20 seconds since we check every 2 seconds)
+        if (healthCheckCount % 10 === 0) {
+          console.log(`Recording health check #${healthCheckCount}: state=${currentState}, chunks=${chunksRef.current.length}, totalSize=${chunksRef.current.reduce((sum, c) => sum + c.size, 0)} bytes`);
+        }
+        
+        // If recorder stopped unexpectedly, alert user
+        if (currentState === 'inactive' && isRecording) {
+          console.error('MediaRecorder stopped unexpectedly! State:', currentState);
+          console.error('This may indicate a browser autostop, permission issue, or hardware problem');
+          clearInterval(healthCheckInterval);
+          toast.error('Recording stopped unexpectedly. Please check your microphone permissions and try again.');
+          setIsRecording(false);
+          if (stopHandlerRef.current) {
+            stopHandlerRef.current();
+          }
+        }
+      }, 2000); // Check every 2 seconds
+      
+      // Store interval for cleanup
+      (mediaRecorder as any)._healthCheckInterval = healthCheckInterval;
     } catch (error) {
       console.error('Error accessing microphone:', error);
       toast.error('Could not access microphone. Please check permissions.');

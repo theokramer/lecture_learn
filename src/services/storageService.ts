@@ -347,22 +347,34 @@ export async function uploadFile(userId: string, file: File): Promise<string> {
 }
 
 /**
- * Get file URL
+ * Get file URL for playback/display
+ * Creates a signed URL that works for audio/video streaming
  */
 export async function getFileUrl(path: string): Promise<string> {
-  const { data, error } = await supabase.storage
-    .from('documents')
-    .download(path);
+  try {
+    // Create a signed URL that expires in 1 hour (good for playback)
+    const { data, error } = await supabase.storage
+      .from('documents')
+      .createSignedUrl(path, 3600); // 1 hour expiry
 
-  if (error) {
-    // Fallback to public URL if download fails
+    if (error || !data) {
+      console.warn('Failed to create signed URL, trying public URL:', error);
+      // Fallback to public URL if signed URL fails
+      const urlData = supabase.storage
+        .from('documents')
+        .getPublicUrl(path);
+      return urlData.data.publicUrl;
+    }
+
+    return data.signedUrl;
+  } catch (err) {
+    console.error('Error creating file URL:', err);
+    // Final fallback to public URL
     const urlData = supabase.storage
       .from('documents')
       .getPublicUrl(path);
     return urlData.data.publicUrl;
   }
-
-  return URL.createObjectURL(data);
 }
 
 /**

@@ -166,13 +166,22 @@ export const aiGateway = {
         throw error;
       }
 
-      return (data as any)?.text ?? '';
+      const transcriptionText = (data as any)?.text ?? '';
+      
+      // Log transcription details for debugging
+      console.log(`Transcription received: ${transcriptionText.length} characters, ${transcriptionText.split(/\s+/).length} words`);
+      if (transcriptionText.length < 100) {
+        console.warn('Warning: Transcription seems unusually short. Expected longer text for recording.');
+      }
+      
+      return transcriptionText;
     } catch (error) {
       if (error instanceof DailyLimitError) {
         throw error;
       }
       
       const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Transcription error:', errorMessage);
       throw new Error(`Failed to transcribe audio: ${errorMessage}`);
     }
   },

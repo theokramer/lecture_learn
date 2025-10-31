@@ -45,7 +45,9 @@ export const ProcessingPage: React.FC = () => {
           // Transcribe audio (will use storage path for large files)
           setCurrentTask('Transcribing audio...');
           setProgress(35);
+          console.log(`Starting transcription. Blob size: ${audioBlob.size} bytes, Duration: ${(audioBlob.size / (96000 / 8)).toFixed(1)}s estimated`);
           const transcription = await openaiService.transcribeAudio(audioBlob, storagePath, user.id);
+          console.log(`Transcription completed. Length: ${transcription.length} characters, ${transcription.split(/\s+/).length} words`);
           setProgress(60);
 
           // Create note title from transcription

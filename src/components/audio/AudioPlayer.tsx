@@ -20,30 +20,57 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, title, class
     const audio = audioRef.current;
     if (!audio) return;
 
+    // Update audio source when URL changes
+    if (audio.src !== audioUrl) {
+      audio.src = audioUrl;
+      console.log('Audio URL set:', audioUrl);
+    }
+
     const updateTime = () => setCurrentTime(audio.currentTime);
     const updateDuration = () => {
-      setDuration(audio.duration);
+      const dur = audio.duration;
+      if (!isNaN(dur) && dur > 0) {
+        setDuration(dur);
+        console.log('Audio duration loaded:', dur);
+      }
     };
     const handleEnded = () => {
       setIsPlaying(false);
       setCurrentTime(0);
     };
     const handleLoadedMetadata = () => {
-      setDuration(audio.duration);
+      const dur = audio.duration;
+      if (!isNaN(dur) && dur > 0) {
+        setDuration(dur);
+        console.log('Audio metadata loaded, duration:', dur);
+      }
+    };
+    const handleError = (e: Event) => {
+      console.error('Audio playback error:', e);
+      console.error('Audio src:', audio.src);
+      console.error('Audio error code:', (audio as any).error?.code);
+      setIsPlaying(false);
+    };
+    const handleCanPlay = () => {
+      console.log('Audio can play, duration:', audio.duration);
     };
 
     audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('durationchange', updateDuration);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
+    audio.addEventListener('canplay', handleCanPlay);
 
     return () => {
       audio.removeEventListener('timeupdate', updateTime);
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('durationchange', updateDuration);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
+      audio.removeEventListener('canplay', handleCanPlay);
     };
-  }, []);
+  }, [audioUrl]);
 
   useEffect(() => {
     const audio = audioRef.current;
