@@ -147,7 +147,7 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
   };
 
   return (
-    <div className="flex-1 p-8 pb-20 space-y-4">
+    <div className="min-h-full p-4 sm:p-6 lg:p-8 pb-20 space-y-4">
       {/* Header */}
       <div>
         {/* Breadcrumb */}

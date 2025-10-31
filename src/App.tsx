@@ -19,7 +19,6 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { LearnFlashcardsPage } from './pages/LearnFlashcardsPage';
 import { useGlobalKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
-import { OfflineIndicator } from './components/shared/OfflineIndicator';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
@@ -41,7 +40,6 @@ function App() {
             <PdfSelectionProvider>
           <Router>
                 <GlobalShortcutsHandler>
-                  <OfflineIndicator />
                   <Toaster
                     position="top-right"
                     toastOptions={{
