@@ -1,7 +1,6 @@
 /**
  * Offline sync service using IndexedDB for caching and action queuing
  */
-import { supabase } from './supabase';
 import type { Note, Folder } from '../types';
 
 const DB_NAME = 'ReactLearningNotes';
@@ -251,4 +250,5 @@ export async function clearCache(): Promise<void> {
     })
   );
 }
+
 

@@ -39,7 +39,7 @@ async function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promis
   }
 
   try {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const img = new Image();
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
@@ -138,7 +138,7 @@ async function uploadChunk(
   chunk: Blob,
   chunkIndex: number,
   storagePath: string,
-  options: UploadOptions
+  _options: UploadOptions
 ): Promise<void> {
   const chunkPath = `${storagePath}.chunk.${chunkIndex}`;
   
@@ -159,7 +159,7 @@ async function uploadChunk(
 async function combineChunks(
   storagePath: string,
   totalChunks: number,
-  userId: string
+  _userId: string
 ): Promise<void> {
   // For Supabase, we need to read all chunks and combine them
   // This is a simplified version - in production, you might want server-side chunking
@@ -215,8 +215,6 @@ export async function uploadFileWithProgress(
   const storagePath = `${userId}/${Date.now()}.${fileExt}`;
   
   const startTime = Date.now();
-  let lastLoaded = 0;
-  let lastTime = startTime;
 
   // Check for existing upload state (resume)
   let uploadState = getUploadState(fileId);
