@@ -20,25 +20,37 @@ export const BlockMathNodeView: React.FC<BlockMathNodeViewProps> = ({
   selected,
 }) => {
   const [formula, setFormula] = useState(node.attrs.formula || '');
+  const [isEditing, setIsEditing] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const renderRef = useRef<HTMLDivElement>(null);
 
   // Update local state when node attributes change
   useEffect(() => {
-    setFormula(node.attrs.formula || '');
+    const newFormula = node.attrs.formula || '';
+    setFormula(newFormula);
+    // If formula is empty, enter edit mode automatically
+    if (!newFormula.trim()) {
+      setIsEditing(true);
+    }
   }, [node.attrs.formula]);
 
-  // Enter edit mode when selected
+  // Enter edit mode when selected or when clicking on rendered math
   useEffect(() => {
     if (selected && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+      setIsEditing(true);
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.setSelectionRange(0, inputRef.current.value.length);
+        }
+      }, 10);
     }
   }, [selected]);
 
-  // Render katex when not selected
+  // Render katex when not editing
   useEffect(() => {
-    if (!selected && renderRef.current) {
+    if (!isEditing && renderRef.current) {
       // Clear previous content
       renderRef.current.innerHTML = '';
       
@@ -53,30 +65,33 @@ export const BlockMathNodeView: React.FC<BlockMathNodeViewProps> = ({
         }
       }
     }
-  }, [selected, formula]);
+  }, [isEditing, formula]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newFormula = e.target.value;
     setFormula(newFormula);
     updateAttributes({ formula: newFormula });
+    // Stay in edit mode while typing
+    setIsEditing(true);
   };
 
   const handleBlur = () => {
-    // Save on blur
-    updateAttributes({ formula });
+    // Only exit edit mode on blur if we have content
+    if (formula.trim()) {
+      setIsEditing(false);
+      updateAttributes({ formula });
+    }
+    // If empty, keep in edit mode (node will stay editable)
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Allow Shift+Enter for newlines
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      inputRef.current?.blur();
-    }
+    // Don't exit on Enter - only on blur
+    // Allow normal text editing behavior
   };
 
   return (
     <NodeViewWrapper className="block-math-wrapper my-6">
-      {selected ? (
+      {isEditing ? (
         <div
           className="block-math-edit"
           onMouseDown={(e) => e.stopPropagation()}
@@ -100,6 +115,7 @@ export const BlockMathNodeView: React.FC<BlockMathNodeViewProps> = ({
           ref={renderRef}
           className="block-math my-6 text-center overflow-x-auto cursor-pointer hover:bg-[#2a2a2a]/50 rounded-lg p-2 transition-colors"
           title="Click to edit"
+          onClick={() => setIsEditing(true)}
           style={{
             minHeight: '60px',
             display: 'flex',

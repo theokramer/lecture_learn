@@ -19,25 +19,37 @@ export const InlineMathNodeView: React.FC<InlineMathNodeViewProps> = ({
   selected,
 }) => {
   const [formula, setFormula] = useState(node.attrs.formula || '');
+  const [isEditing, setIsEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const renderRef = useRef<HTMLSpanElement>(null);
 
   // Update local state when node attributes change
   useEffect(() => {
-    setFormula(node.attrs.formula || '');
+    const newFormula = node.attrs.formula || '';
+    setFormula(newFormula);
+    // If formula is empty, enter edit mode automatically
+    if (!newFormula.trim()) {
+      setIsEditing(true);
+    }
   }, [node.attrs.formula]);
 
-  // Enter edit mode when selected
+  // Enter edit mode when selected or when clicking on rendered math
   useEffect(() => {
     if (selected && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+      setIsEditing(true);
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.select();
+        }
+      }, 10);
     }
   }, [selected]);
 
-  // Render katex when not selected
+  // Render katex when not editing
   useEffect(() => {
-    if (!selected && renderRef.current) {
+    if (!isEditing && renderRef.current) {
       // Clear previous content
       renderRef.current.innerHTML = '';
       
@@ -52,30 +64,33 @@ export const InlineMathNodeView: React.FC<InlineMathNodeViewProps> = ({
         }
       }
     }
-  }, [selected, formula]);
+  }, [isEditing, formula]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newFormula = e.target.value;
     setFormula(newFormula);
     updateAttributes({ formula: newFormula });
+    // Stay in edit mode while typing
+    setIsEditing(true);
   };
 
   const handleBlur = () => {
-    // Save on blur
-    updateAttributes({ formula });
+    // Only exit edit mode on blur if we have content
+    if (formula.trim()) {
+      setIsEditing(false);
+      updateAttributes({ formula });
+    }
+    // If empty, keep in edit mode (node will stay editable)
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Save on Enter
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      inputRef.current?.blur();
-    }
+    // Don't exit on Enter - only on blur
+    // Allow normal text editing behavior
   };
 
   return (
     <NodeViewWrapper as="span" className="inline-math-wrapper" style={{ display: 'inline-block' }}>
-      {selected ? (
+      {isEditing ? (
         <span
           className="inline-math-edit"
           onMouseDown={(e) => e.stopPropagation()}
@@ -98,6 +113,7 @@ export const InlineMathNodeView: React.FC<InlineMathNodeViewProps> = ({
           ref={renderRef}
           className="inline-math cursor-pointer hover:bg-[#2a2a2a]/50 rounded px-1 transition-colors"
           title="Click to edit"
+          onClick={() => setIsEditing(true)}
           style={{ display: 'inline-block', verticalAlign: 'baseline' }}
         />
       )}

@@ -67,19 +67,36 @@ export const BlockMath = Node.create({
 
   addInputRules() {
     return [
-      // Block math: $$formula$$
-      // Triggered when user types $$...$$ and presses Enter or Space
+      // Block math: $$formula$$ (trigger on space/enter after closing $$)
       new InputRule({
-        find: /\$\$([^$]+?)\$\$$/,
+        find: /\$\$([^$]+?)\$\$\s/,
         handler: ({ state, range, match }) => {
           const formula = match[1].trim();
           const { from, to } = range;
           
-          state.tr
+          const node = state.schema.nodes.blockMath.create({ formula });
+          const tr = state.tr
+            .delete(from, to - 1) // -1 to keep the space
+            .insert(from, node);
+          
+          // Select the newly created node so it enters edit mode
+          tr.setSelection(state.doc.resolve(from).textAfter ? undefined : undefined);
+          return tr;
+        },
+      }),
+      // Block math: $$formula$$ (trigger on enter/newline after closing $$)
+      new InputRule({
+        find: /\$\$([^$]+?)\$\$$/,
+        handler: ({ state, range, match, chain }) => {
+          const formula = match[1].trim();
+          const { from, to } = range;
+          
+          const node = state.schema.nodes.blockMath.create({ formula });
+          const tr = state.tr
             .delete(from, to)
-            .insert(
-              state.schema.nodes.blockMath.create({ formula })
-            );
+            .insert(from, node);
+          
+          return tr;
         },
       }),
     ];

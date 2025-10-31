@@ -61,8 +61,28 @@ export const InlineMath = Node.create({
 
   addInputRules() {
     return [
-      // Inline math: $formula$
-      // This regex matches $...$ but not $$...$$
+      // Inline math: $formula$ (trigger on space after closing $)
+      new InputRule({
+        find: /\$([^$\n]+?)\$\s/,
+        handler: ({ state, range, match }) => {
+          const formula = match[1].trim();
+          const { from, to } = range;
+          
+          if (!formula) return null;
+          
+          // Check if it's part of $$ (block math) - if so, don't match
+          const beforeText = state.doc.textBetween(Math.max(0, from - 2), from);
+          if (beforeText === '$') return null;
+          
+          const node = state.schema.nodes.inlineMath.create({ formula });
+          const tr = state.tr
+            .delete(from, to - 1) // -1 to keep the space
+            .insert(from, node);
+          
+          return tr;
+        },
+      }),
+      // Inline math: $formula$ (trigger on punctuation or end of line)
       new InputRule({
         find: /\$([^$\n]+?)\$$/,
         handler: ({ state, range, match }) => {
@@ -71,12 +91,14 @@ export const InlineMath = Node.create({
           
           if (!formula) return null;
           
-          // Replace with inline math node
+          // Check if it's part of $$ (block math) - if so, don't match
+          const beforeText = state.doc.textBetween(Math.max(0, from - 2), from);
+          if (beforeText === '$') return null;
+          
+          const node = state.schema.nodes.inlineMath.create({ formula });
           const tr = state.tr
             .delete(from, to)
-            .insert(
-              state.schema.nodes.inlineMath.create({ formula })
-            );
+            .insert(from, node);
           
           return tr;
         },
