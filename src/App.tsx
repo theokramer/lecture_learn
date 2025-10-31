@@ -13,6 +13,8 @@ import { UploadPage } from './pages/UploadPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { HowToUsePage } from './pages/HowToUsePage';
 import { SupportPage } from './pages/SupportPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
+import { LearnFlashcardsPage } from './pages/LearnFlashcardsPage';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
@@ -72,6 +74,22 @@ function App() {
               element={
                 <PrivateRoute>
                   <UploadPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/analytics"
+              element={
+                <PrivateRoute>
+                  <AnalyticsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/learn-flashcards"
+              element={
+                <PrivateRoute>
+                  <LearnFlashcardsPage />
                 </PrivateRoute>
               }
             />

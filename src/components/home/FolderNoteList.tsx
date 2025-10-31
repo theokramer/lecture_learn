@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { HiFolder, HiChevronRight, HiMagnifyingGlass, HiChevronLeft } from 'react-icons/hi2';
+import { HiFolder, HiChevronRight, HiMagnifyingGlass, HiChevronLeft, HiAcademicCap } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 import { useAppData } from '../../context/AppDataContext';
 import { format } from 'date-fns';
@@ -171,47 +171,67 @@ export const FolderNoteList: React.FC = () => {
           const Icon = isFolder ? HiFolder : HiChevronRight;
           
           return (
-            <motion.button
+            <div
               key={item.data.id}
-              whileHover={{ scale: 1.01, x: 4 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => {
-                if (isFolder) {
-                  // Navigate into folder instead of toggling
-                  setCurrentFolderId(item.data.id);
-                } else {
-                  setSelectedNoteId(item.data.id);
-                  navigate('/note');
-                }
-              }}
-              className="w-full p-4 bg-[#2a2a2a] rounded-lg hover:bg-[#3a3a3a] transition-colors text-left"
+              className="w-full p-4 bg-[#2a2a2a] rounded-lg hover:bg-[#3a3a3a] transition-colors"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 flex items-center justify-center">
-                  {isFolder ? (
-                    <HiFolder className="w-6 h-6 text-[#b85a3a]" />
-                  ) : (
-                    <Icon className="w-5 h-5 text-[#9ca3af]" />
-                  )}
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-white">
-                    {(item.data as Note).title || (item.data as Folder).name}
-                  </p>
-                  {!isFolder && 'createdAt' in item.data && (
-                    <p className="text-sm text-[#9ca3af]">
-                      {format((item.data as Note).createdAt, 'MMM d, yyyy')}
+              <motion.button
+                whileHover={{ scale: 1.01, x: 4 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => {
+                  if (isFolder) {
+                    // Navigate into folder instead of toggling
+                    setCurrentFolderId(item.data.id);
+                  } else {
+                    setSelectedNoteId(item.data.id);
+                    navigate('/note');
+                  }
+                }}
+                className="w-full text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 flex items-center justify-center">
+                    {isFolder ? (
+                      <HiFolder className="w-6 h-6 text-[#b85a3a]" />
+                    ) : (
+                      <Icon className="w-5 h-5 text-[#9ca3af]" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-white">
+                      {(item.data as Note).title || (item.data as Folder).name}
                     </p>
-                  )}
-                  {searchQuery.trim() !== '' && !isFolder && (item as any).meta && (
-                    <div
-                      className="mt-1 text-sm text-gray-300 line-clamp-1"
-                      dangerouslySetInnerHTML={{ __html: (item as any).meta.snippetHtml }}
-                    />
-                  )}
+                    {!isFolder && 'createdAt' in item.data && (
+                      <p className="text-sm text-[#9ca3af]">
+                        {format((item.data as Note).createdAt, 'MMM d, yyyy')}
+                      </p>
+                    )}
+                    {searchQuery.trim() !== '' && !isFolder && (item as any).meta && (
+                      <div
+                        className="mt-1 text-sm text-gray-300 line-clamp-1"
+                        dangerouslySetInnerHTML={{ __html: (item as any).meta.snippetHtml }}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
-            </motion.button>
+              </motion.button>
+              {isFolder && (
+                <div className="mt-2 ml-12">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/learn-flashcards?folder=${item.data.id}`);
+                    }}
+                    className="px-3 py-1.5 bg-[#10b981] hover:bg-[#059669] rounded-lg text-white text-sm font-medium flex items-center gap-2 transition-colors"
+                  >
+                    <HiAcademicCap className="w-4 h-4" />
+                    Learn Flashcards
+                  </motion.button>
+                </div>
+              )}
+            </div>
           );
         })}
       </div>

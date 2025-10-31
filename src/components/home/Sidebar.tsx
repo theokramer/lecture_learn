@@ -1,5 +1,5 @@
 import React from 'react';
-import { HiHome, HiQuestionMarkCircle, HiCog6Tooth } from 'react-icons/hi2';
+import { HiHome, HiQuestionMarkCircle, HiCog6Tooth, HiChartBar, HiAcademicCap } from 'react-icons/hi2';
 import { HiLightBulb } from 'react-icons/hi2';
 import { Link } from 'react-router-dom';
 
@@ -10,6 +10,8 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ activePage }) => {
   const navItems = [
     { icon: HiHome, label: 'Home', page: 'home', path: '/home' },
+    { icon: HiAcademicCap, label: 'Learn Flashcards', page: 'learn-flashcards', path: '/learn-flashcards' },
+    { icon: HiChartBar, label: 'Analytics', page: 'analytics', path: '/analytics' },
     { icon: HiLightBulb, label: 'How to use', page: 'how-to-use', path: '/how-to-use' },
     { icon: HiQuestionMarkCircle, label: 'Support', page: 'support', path: '/support' },
     { icon: HiCog6Tooth, label: 'Settings', page: 'settings', path: '/settings' },

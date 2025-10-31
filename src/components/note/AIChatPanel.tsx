@@ -1,15 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { HiPlus, HiPaperAirplane } from 'react-icons/hi2';
+import { HiPlus, HiPaperAirplane, HiSparkles, HiLightBulb } from 'react-icons/hi2';
 import { useAppData } from '../../context/AppDataContext';
+import { useAuth } from '../../context/AuthContext';
 import { openaiService } from '../../services/openai';
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
+import { chatHistoryService, type ChatMessage } from '../../services/chatHistoryService';
+import { MarkdownRenderer } from '../shared/MarkdownRenderer';
 
 interface AIChatPanelProps {
   width: number;
@@ -18,6 +14,14 @@ interface AIChatPanelProps {
   onResize: (width: number) => void;
 }
 
+const CHAT_TEMPLATES = [
+  { id: 'explain', label: 'Explain this concept', prompt: 'Explain the key concepts in simple terms with examples.' },
+  { id: 'summarize', label: 'Summarize', prompt: 'Provide a concise summary of the main points.' },
+  { id: 'examples', label: 'Give examples', prompt: 'Provide real-world examples and applications.' },
+  { id: 'questions', label: 'Generate study questions', prompt: 'Generate practice questions based on this content.' },
+  { id: 'connect', label: 'Connect ideas', prompt: 'How do the different concepts in this content relate to each other?' },
+];
+
 export const AIChatPanel: React.FC<AIChatPanelProps> = ({
   width,
   isCollapsed,
@@ -25,44 +29,115 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
   onResize,
 }) => {
   const { selectedNoteId, notes } = useAppData();
+  const { user } = useAuth();
   const currentNote = notes.find(n => n.id === selectedNoteId);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: "I can work with you on your docs and answer any questions!",
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(true);
   const [isResizing, setIsResizing] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevWidthRef = useRef(width);
   const mouseXWhenMinReachedRef = useRef<number | null>(null);
   const startMouseXRef = useRef(0);
   const initialMinWidthRef = useRef(0);
 
+  // Load conversation history on mount or when note changes
+  useEffect(() => {
+    if (!user || !selectedNoteId) {
+      setMessages([]);
+      setConversationId(null);
+      setSuggestedQuestions([]);
+      return;
+    }
+
+    const loadConversation = async () => {
+      try {
+        const convId = await chatHistoryService.getOrCreateConversation(user.id, selectedNoteId);
+        setConversationId(convId);
+        
+        const loadedMessages = await chatHistoryService.loadConversationMessages(convId);
+        setMessages(loadedMessages.length > 0 ? loadedMessages : [
+          {
+            id: '1',
+            role: 'assistant',
+            content: "I'm your personal tutor! I can help explain concepts, answer questions, and guide your learning. What would you like to explore?",
+            timestamp: new Date(),
+          },
+        ]);
+
+        // Generate suggested questions based on note content
+        if (currentNote?.content && currentNote.content.length > 50) {
+          generateSuggestedQuestions(currentNote.content);
+        }
+      } catch (error: any) {
+        console.error('Error loading conversation:', error);
+        // If table doesn't exist, just show default message (graceful degradation)
+        if (error?.code === 'PGRST205') {
+          setMessages([
+            {
+              id: '1',
+              role: 'assistant',
+              content: "I'm your personal tutor! I can help explain concepts, answer questions, and guide your learning. What would you like to explore?\n\n*Note: Chat history is disabled until database tables are set up. Run chat-history-schema.sql in Supabase.*",
+              timestamp: new Date(),
+            },
+          ]);
+          setConversationId(null); // Disable saving until tables exist
+        }
+      }
+    };
+
+    loadConversation();
+  }, [user, selectedNoteId, currentNote?.content]);
+
+  // Generate suggested questions from note content
+  const generateSuggestedQuestions = async (content: string) => {
+    try {
+      const prompt = `Based on the following content, generate 3-4 short, specific questions a student might ask. Return only the questions, one per line, no numbering:
+
+${content.substring(0, 2000)}`;
+
+      const response = await openaiService.chatCompletions([
+        { role: 'user', content: prompt }
+      ], content);
+
+      const questions = response
+        .split('\n')
+        .map(q => q.trim())
+        .filter(q => q.length > 0 && !q.match(/^\d+[\.\)]/))
+        .slice(0, 4);
+      
+      setSuggestedQuestions(questions);
+    } catch (error) {
+      console.error('Error generating suggested questions:', error);
+    }
+  };
+
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
       const newWidth = window.innerWidth - e.clientX;
-      // Use percentage-based minimum width (25% of screen, or 380px absolute minimum)
       const minWidth = Math.max(380, window.innerWidth * 0.25);
       const clampedWidth = Math.max(minWidth, Math.min(newWidth, 600));
       
-      // Check if we're dragging to the right (shrinking the panel)
       const isDraggingRight = clampedWidth < prevWidthRef.current;
       
-      // Handle starting at minimum width - initialize tracking if we start there
       if (prevWidthRef.current === minWidth && mouseXWhenMinReachedRef.current === null) {
         const dragDirection = e.clientX - startMouseXRef.current;
         if (dragDirection > 0) {
-          // User is dragging to the right from the start
           mouseXWhenMinReachedRef.current = startMouseXRef.current;
         }
       }
       
-      // If we hit the minimum width while dragging right, record the mouse X position
       if (isDraggingRight && clampedWidth === minWidth && mouseXWhenMinReachedRef.current === null) {
         mouseXWhenMinReachedRef.current = e.clientX;
       }
@@ -70,7 +145,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
       onResize(clampedWidth);
       prevWidthRef.current = clampedWidth;
       
-      // Auto-collapse: if we've hit minimum and user drags 3% more screen width to the right
       if (mouseXWhenMinReachedRef.current !== null) {
         const additionalDragDistance = e.clientX - mouseXWhenMinReachedRef.current;
         const collapseThreshold = window.innerWidth * 0.03;
@@ -105,53 +179,85 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     };
   }, [isResizing, onResize, onToggleCollapse, width]);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const handleSend = async (messageText?: string) => {
+    const textToSend = messageText || input.trim();
+    if (!textToSend || !user) return;
 
-    const userMessage: Message = {
+    const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: textToSend,
       timestamp: new Date(),
     };
 
-    setMessages([...messages, userMessage]);
-    const questionInput = input;
-    setInput('');
+    setMessages(prev => [...prev, userMessage]);
+    if (!messageText) setInput('');
+    setIsLoading(true);
+    setShowSuggestions(false);
 
     try {
-      // Get AI response using OpenAI with context from the note
+      // Save user message (only if conversation exists and table is set up)
+      if (conversationId) {
+        try {
+          await chatHistoryService.saveMessage(conversationId, 'user', textToSend);
+        } catch (saveError: any) {
+          // If save fails due to missing table, continue anyway
+          if (saveError?.code !== 'PGRST205') {
+            console.error('Error saving message:', saveError);
+          }
+        }
+      }
+
+      // Get AI response
       const context = currentNote?.content || '';
       const aiResponse = await openaiService.chatCompletions([
-        { role: 'user', content: questionInput }
+        { role: 'user', content: textToSend }
       ], context);
 
-      const aiMessage: Message = {
+      const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: aiResponse,
         timestamp: new Date(),
       };
+
       setMessages(prev => [...prev, aiMessage]);
+      
+      // Save AI response (only if conversation exists and table is set up)
+      if (conversationId) {
+        try {
+          await chatHistoryService.saveMessage(conversationId, 'assistant', aiResponse);
+        } catch (saveError: any) {
+          // If save fails due to missing table, continue anyway
+          if (saveError?.code !== 'PGRST205') {
+            console.error('Error saving AI message:', saveError);
+          }
+        }
+      }
     } catch (error) {
       console.error('Error getting AI response:', error);
       let errorContent = "I'm sorry, I couldn't process your request at this moment. Please try again.";
       
-      // Check if it's a rate limit error
       if (error instanceof Error && error.message.includes('429')) {
         errorContent = "Rate limit reached. Please wait a moment and try again in a few seconds.";
-      } else if (error instanceof Error && error.message.includes('429')) {
-        errorContent = "Your note content is too large. Please try with a shorter question or wait a moment.";
       }
       
-      const errorMessage: Message = {
+      const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: errorContent,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  const handleTemplateClick = (template: typeof CHAT_TEMPLATES[0]) => {
+    if (!currentNote?.content) return;
+    handleSend(template.prompt);
+    setShowTemplates(false);
   };
 
   if (isCollapsed) {
@@ -200,11 +306,37 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             <HiPlus className="w-5 h-5 rotate-45" />
             <span className="text-sm">Close</span>
           </button>
-          <h2 className="text-3xl font-bold text-white mb-2">Hey there!</h2>
+          <div className="flex items-center gap-2 mb-2">
+            <HiSparkles className="w-6 h-6 text-[#b85a3a]" />
+            <h2 className="text-3xl font-bold text-white">AI Tutor</h2>
+          </div>
           <p className="text-[#9ca3af] text-lg">
-            I can work with you on your docs and answer any questions!
+            I can help explain concepts, answer questions, and guide your learning!
           </p>
         </div>
+
+        {/* Suggested Questions */}
+        {showSuggestions && suggestedQuestions.length > 0 && (
+          <div className="px-6 mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <HiLightBulb className="w-4 h-4 text-[#d4a944]" />
+              <span className="text-sm text-[#9ca3af]">Suggested questions:</span>
+            </div>
+            <div className="space-y-2">
+              {suggestedQuestions.map((question, idx) => (
+                <motion.button
+                  key={idx}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => handleSend(question)}
+                  className="w-full text-left px-3 py-2 bg-[#1a1a1a] hover:bg-[#3a3a3a] rounded-lg text-sm text-white transition-colors"
+                >
+                  {question}
+                </motion.button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 space-y-4 pb-6">
@@ -217,33 +349,80 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] px-4 py-3 rounded-lg ${
+                  className={`max-w-[85%] px-4 py-3 rounded-lg ${
                     message.role === 'user'
                       ? 'bg-[#1a1a1a] text-white'
                       : 'bg-[#3a3a3a] text-white'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                  {message.role === 'assistant' ? (
+                    <div className="text-sm text-white">
+                      <MarkdownRenderer content={message.content} />
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                  )}
                 </div>
               </motion.div>
             ))}
+            {isLoading && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex justify-start"
+              >
+                <div className="bg-[#3a3a3a] px-4 py-3 rounded-lg">
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 bg-[#9ca3af] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 bg-[#9ca3af] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 bg-[#9ca3af] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input */}
-        <div className="p-6 border-t border-[#3a3a3a]">
+        <div className="p-6 border-t border-[#3a3a3a] space-y-3">
+          {/* Templates */}
+          {showTemplates && (
+            <div className="grid grid-cols-2 gap-2">
+              {CHAT_TEMPLATES.map((template) => (
+                <motion.button
+                  key={template.id}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => handleTemplateClick(template)}
+                  className="px-3 py-2 bg-[#1a1a1a] hover:bg-[#3a3a3a] rounded-lg text-xs text-white transition-colors text-left"
+                >
+                  {template.label}
+                </motion.button>
+              ))}
+            </div>
+          )}
+
           <div className="flex gap-2">
+            <button
+              onClick={() => setShowTemplates(!showTemplates)}
+              className="px-3 py-3 bg-[#1a1a1a] hover:bg-[#3a3a3a] rounded-lg transition-colors"
+              title="Templates"
+            >
+              <HiSparkles className="w-5 h-5 text-[#9ca3af]" />
+            </button>
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Ask anything"
+              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+              placeholder="Ask anything..."
               className="flex-1 px-4 py-3 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#b85a3a] transition-colors"
             />
             <button
-              onClick={handleSend}
-              className="p-3 rounded-lg bg-[#b85a3a] hover:bg-[#a04a2a] transition-colors"
+              onClick={() => handleSend()}
+              disabled={!input.trim() || isLoading}
+              className="p-3 rounded-lg bg-[#b85a3a] hover:bg-[#a04a2a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <HiPaperAirplane className="w-5 h-5 text-white" />
             </button>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { HiDocument } from 'react-icons/hi2';
 import { useAppData } from '../../context/AppDataContext';
+import { useStudySession } from '../../hooks/useStudySession';
 import { SummaryView } from './study-modes/SummaryView';
 import { TranscriptView } from './study-modes/TranscriptView';
 import { FeynmanView } from './study-modes/FeynmanView';
@@ -11,6 +12,9 @@ import { DocumentManagement } from './DocumentManagement';
 
 export const ContentView: React.FC = () => {
   const { currentStudyMode, selectedNoteId, notes } = useAppData();
+  
+  // Track study session for analytics
+  useStudySession(currentStudyMode);
   
   const currentNote = notes.find(n => n.id === selectedNoteId);
 

@@ -160,8 +160,11 @@ export const openaiService = {
     const systemMessage = {
       role: 'system' as const,
       content: truncatedContext
-        ? `You are a helpful study assistant. Use the following context to answer questions:\n\n${truncatedContext}`
-        : 'You are a helpful study assistant.',
+        ? `You are a helpful study assistant. Use the following context to answer questions:\n\n${truncatedContext}\n\nIMPORTANT: When writing mathematical formulas or equations, ALWAYS wrap them in dollar signs:
+- Inline math: $E = mc^2$ or $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$
+- Block math (displayed equations): $$\\int_0^1 f(x) dx$$ or $$\\sum_{i=1}^n x_i$$
+Always use $...$ for inline formulas and $$...$$ for displayed equations.`
+        : 'You are a helpful study assistant. IMPORTANT: When writing mathematical formulas or equations, ALWAYS wrap them in dollar signs:\n- Inline math: $E = mc^2$ or $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$\n- Block math (displayed equations): $$\\int_0^1 f(x) dx$$ or $$\\sum_{i=1}^n x_i$$\nAlways use $...$ for inline formulas and $$...$$ for displayed equations.',
     };
 
     try {

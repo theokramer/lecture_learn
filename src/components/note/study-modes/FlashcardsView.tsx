@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { HiPlus, HiPencil, HiTrash, HiCheck } from 'react-icons/hi2';
+import { HiPlus, HiPencil, HiTrash, HiCheck, HiClock, HiArrowDownTray } from 'react-icons/hi2';
 import { openaiService } from '../../../services/openai';
 import { studyContentService } from '../../../services/supabase';
+import { 
+  spacedRepetitionService,
+  type SpacedRepetitionCard 
+} from '../../../services/spacedRepetitionService';
+import { exportService } from '../../../services/exportService';
 import { useAppData } from '../../../context/AppDataContext';
 import { useSettings } from '../../../context/SettingsContext';
 
-interface Flashcard {
-  id: string;
-  front: string;
-  back: string;
-}
-
-type View = 'management' | 'learning' | 'results';
+type View = 'management' | 'learning' | 'review' | 'results';
 
 interface StudyResult {
   correct: number;
@@ -25,10 +24,11 @@ interface FlashcardsViewProps {
 }
 
 export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) => {
-  const { selectedNoteId } = useAppData();
+  const { selectedNoteId, notes } = useAppData();
   const { getPreference } = useSettings();
   const [view, setView] = useState<View>('management');
-  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
+  const [flashcards, setFlashcards] = useState<SpacedRepetitionCard[]>([]);
+  const [reviewCards, setReviewCards] = useState<SpacedRepetitionCard[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,7 +43,23 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
         const studyContent = await studyContentService.getStudyContent(selectedNoteId);
         
         if (studyContent.flashcards && studyContent.flashcards.length > 0) {
-          setFlashcards(studyContent.flashcards);
+          // Upgrade old format to spaced repetition format if needed
+          const currentNote = notes.find(n => n.id === selectedNoteId);
+          const upgradedCards = studyContent.flashcards.map((card: any) => {
+            if (card.easeFactor !== undefined) {
+              // Already has spaced repetition data - ensure note/folder IDs are set
+              return { ...card, noteId: selectedNoteId, folderId: currentNote?.folderId || undefined } as SpacedRepetitionCard;
+            } else {
+              // Upgrade old format
+              return spacedRepetitionService.upgradeToSpacedRepetition(
+                card,
+                selectedNoteId,
+                currentNote?.folderId || undefined
+              );
+            }
+          });
+          setFlashcards(upgradedCards);
+          updateReviewQueue(upgradedCards);
         } else if (noteContent) {
           // Only generate if no saved flashcards and note content exists
           generateFlashcards();
@@ -64,18 +80,26 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNoteId]);
 
+  // Update review queue when flashcards change
+  const updateReviewQueue = useCallback((cards: SpacedRepetitionCard[]) => {
+    const dueCards = spacedRepetitionService.getCardsDueForReview(cards);
+    const sorted = spacedRepetitionService.sortCardsByPriority(dueCards);
+    setReviewCards(sorted);
+  }, []);
+
   // Save flashcards to Supabase whenever they change
-  const saveFlashcards = useCallback(async (flashcardsToSave: Flashcard[]) => {
+  const saveFlashcards = useCallback(async (flashcardsToSave: SpacedRepetitionCard[]) => {
     if (!selectedNoteId) return;
     
     try {
       await studyContentService.saveStudyContent(selectedNoteId, {
         flashcards: flashcardsToSave,
       });
+      updateReviewQueue(flashcardsToSave);
     } catch (err) {
       console.error('Error saving flashcards:', err);
     }
-  }, [selectedNoteId]);
+  }, [selectedNoteId, updateReviewQueue]);
 
   // Save whenever flashcards array changes (but not during initial load)
   // Note: We explicitly save after generation, so this mainly handles user edits
@@ -94,11 +118,16 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
     try {
       const count = getPreference('flashcardsCount');
       const generated = await openaiService.generateFlashcards(noteContent, count);
-      const newFlashcards = generated.map((card, idx) => ({
-        id: `gen-${idx}`,
-        front: card.front,
-        back: card.back,
-      }));
+      const currentNote = notes.find(n => n.id === selectedNoteId);
+      const newFlashcards = generated.map((card, idx) =>
+        spacedRepetitionService.initializeSpacedRepetitionCard(
+          `gen-${idx}`,
+          card.front,
+          card.back,
+          selectedNoteId || undefined,
+          currentNote?.folderId || undefined
+        )
+      );
       setFlashcards(newFlashcards);
       
       // Explicitly save after generation
@@ -123,21 +152,64 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
   const [newCard, setNewCard] = useState({ front: '', back: '' });
   const [editingCard, setEditingCard] = useState<string | null>(null);
   const [editCard, setEditCard] = useState({ front: '', back: '' });
+  const [cardsToStudy, setCardsToStudy] = useState<SpacedRepetitionCard[]>([]);
 
   const handleStartLearning = () => {
     if (flashcards.length === 0) return;
+    // Use all cards for regular learning mode
+    setCardsToStudy(flashcards);
     setCurrentCard(0);
     setFlipped(false);
     setAnswers([]);
     setView('learning');
   };
 
-  const handleSwipe = (direction: 'left' | 'right') => {
-    const isCorrect = direction === 'right';
-    const cardId = flashcards[currentCard].id;
-    setAnswers([...answers, { cardId, correct: isCorrect }]);
+  const handleStartReview = () => {
+    if (reviewCards.length === 0) return;
+    // Use only due cards for review mode
+    setCardsToStudy(reviewCards);
+    setCurrentCard(0);
+    setFlipped(false);
+    setAnswers([]);
+    setView('review');
+  };
+
+  const handleAnswer = async (isCorrect: boolean, difficulty: 'easy' | 'normal' | 'hard' = 'normal') => {
+    const card = cardsToStudy[currentCard];
+    const quality = spacedRepetitionService.qualityFromResponse(isCorrect, difficulty);
     
-    if (currentCard < flashcards.length - 1) {
+    // Calculate next review using SM-2 algorithm
+    const nextReview = spacedRepetitionService.calculateNextReview(card, quality);
+    const currentNote = notes.find(n => n.id === selectedNoteId);
+    
+    // Update the card
+    const updatedCard: SpacedRepetitionCard = {
+      ...card,
+      ...nextReview,
+      lastReviewed: new Date().toISOString(),
+      quality,
+      noteId: selectedNoteId || card.noteId,
+      folderId: currentNote?.folderId || card.folderId,
+    };
+    
+    // Update cards array
+    const updatedCards = flashcards.map(c => 
+      c.id === card.id ? updatedCard : c
+    );
+    
+    // Update cardsToStudy for current session
+    const updatedCardsToStudy = cardsToStudy.map(c =>
+      c.id === card.id ? updatedCard : c
+    );
+    
+    setFlashcards(updatedCards);
+    setCardsToStudy(updatedCardsToStudy);
+    setAnswers([...answers, { cardId: card.id, correct: isCorrect }]);
+    
+    // Save updated card
+    await saveFlashcards(updatedCards);
+    
+    if (currentCard < cardsToStudy.length - 1) {
       setFlipped(false);
       setCurrentCard(currentCard + 1);
     } else {
@@ -155,11 +227,14 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
 
   const handleAddCard = () => {
     if (newCard.front.trim() && newCard.back.trim()) {
-      const card: Flashcard = {
-        id: Date.now().toString(),
-        front: newCard.front,
-        back: newCard.back,
-      };
+      const currentNote = notes.find(n => n.id === selectedNoteId);
+      const card = spacedRepetitionService.initializeSpacedRepetitionCard(
+        Date.now().toString(),
+        newCard.front,
+        newCard.back,
+        selectedNoteId || undefined,
+        currentNote?.folderId || undefined
+      );
       const updatedFlashcards = [...flashcards, card];
       setFlashcards(updatedFlashcards);
       saveFlashcards(updatedFlashcards);
@@ -214,7 +289,14 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
           <div className="flex items-center justify-between mb-8">
             <div>
               <h2 className="text-3xl font-bold text-white mb-2">Flashcards</h2>
-              <p className="text-[#9ca3af]">Manage your flashcards and start learning</p>
+              <p className="text-[#9ca3af]">
+                {flashcards.length > 0 && (
+                  <>
+                    {flashcards.length} cards • {reviewCards.length} due for review
+                  </>
+                )}
+                {flashcards.length === 0 && 'Manage your flashcards and start learning'}
+              </p>
             </div>
             {isGenerating ? (
               <div className="px-6 py-3 bg-[#3a3a3a] rounded-lg text-[#9ca3af]">
@@ -233,15 +315,38 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
                 </motion.button>
               </>
             ) : flashcards.length > 0 && (
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleStartLearning}
-                className="px-6 py-3 bg-[#b85a3a] rounded-lg text-white font-medium hover:bg-[#a04a2a] transition-colors flex items-center gap-2"
-              >
-                <HiCheck className="w-5 h-5" />
-                Start Learning
-              </motion.button>
+              <div className="flex gap-3">
+                {reviewCards.length > 0 && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleStartReview}
+                    className="px-6 py-3 bg-[#10b981] rounded-lg text-white font-medium hover:bg-[#059669] transition-colors flex items-center gap-2"
+                  >
+                    <HiClock className="w-5 h-5" />
+                    Review Due ({reviewCards.length})
+                  </motion.button>
+                )}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleStartLearning}
+                  className="px-6 py-3 bg-[#b85a3a] rounded-lg text-white font-medium hover:bg-[#a04a2a] transition-colors flex items-center gap-2"
+                >
+                  <HiCheck className="w-5 h-5" />
+                  Study All
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => exportService.exportToAnki(flashcards, 'csv')}
+                  className="px-6 py-3 bg-[#3a3a3a] rounded-lg text-white font-medium hover:bg-[#4a4a4a] transition-colors flex items-center gap-2"
+                  title="Export to Anki"
+                >
+                  <HiArrowDownTray className="w-5 h-5" />
+                  Export
+                </motion.button>
+              </div>
             )}
           </div>
 
@@ -365,7 +470,23 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
                   <div className="flex items-start gap-4">
                     <div className="flex-1">
                       <p className="text-white font-medium mb-2">Q: {card.front}</p>
-                      <p className="text-[#9ca3af]">A: {card.back}</p>
+                      <p className="text-[#9ca3af] mb-2">A: {card.back}</p>
+                      <div className="flex gap-4 text-xs text-[#6b7280]">
+                        <span>Ease: {card.easeFactor.toFixed(2)}</span>
+                        <span>Reps: {card.repetitions}</span>
+                        {card.nextReviewDate && (
+                          <span>
+                            Next: {
+                              card.intervalType === 'minutes' 
+                                ? `${Math.ceil((new Date(card.nextReviewDate).getTime() - Date.now()) / 60000)}m`
+                                : new Date(card.nextReviewDate).toLocaleDateString()
+                            }
+                            {reviewCards.some(c => c.id === card.id) && (
+                              <span className="ml-1 text-[#10b981]">(Due)</span>
+                            )}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -391,21 +512,29 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
     );
   }
 
-  if (view === 'learning') {
-    const card = flashcards[currentCard];
+  if (view === 'learning' || view === 'review') {
+    if (cardsToStudy.length === 0) {
+      return (
+        <div className="h-full flex items-center justify-center">
+          <p className="text-white text-lg">No cards to study</p>
+        </div>
+      );
+    }
+
+    const card = cardsToStudy[currentCard];
     return (
       <div className="h-full flex flex-col items-center justify-center p-8">
         <div className="w-full max-w-2xl">
           {/* Progress Bar */}
           <div className="mb-8">
             <div className="flex justify-between text-sm text-[#9ca3af] mb-2">
-              <span>Card {currentCard + 1} of {flashcards.length}</span>
-              <span>{Math.round(((currentCard + 1) / flashcards.length) * 100)}%</span>
+              <span>Card {currentCard + 1} of {cardsToStudy.length}</span>
+              <span>{Math.round(((currentCard + 1) / cardsToStudy.length) * 100)}%</span>
             </div>
             <div className="w-full bg-[#2a2a2a] rounded-full h-2">
               <motion.div
                 initial={{ width: 0 }}
-                animate={{ width: `${((currentCard + 1) / flashcards.length) * 100}%` }}
+                animate={{ width: `${((currentCard + 1) / cardsToStudy.length) * 100}%` }}
                 className="h-2 bg-[#b85a3a] rounded-full transition-all"
               />
             </div>
@@ -451,29 +580,49 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = ({ noteContent }) =
             </motion.div>
           </motion.div>
 
-          {/* Swipe Buttons */}
+          {/* Answer Buttons */}
           {flipped && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex gap-4"
+              className="space-y-3"
             >
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleSwipe('left')}
-                className="flex-1 px-6 py-4 bg-[#ef4444] rounded-lg text-white font-medium hover:bg-[#dc2626] transition-colors"
-              >
-                ❌ Wrong
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleSwipe('right')}
-                className="flex-1 px-6 py-4 bg-[#10b981] rounded-lg text-white font-medium hover:bg-[#059669] transition-colors"
-              >
-                ✅ Correct
-              </motion.button>
+              <div className="flex gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleAnswer(false)}
+                  className="flex-1 px-6 py-4 bg-[#ef4444] rounded-lg text-white font-medium hover:bg-[#dc2626] transition-colors"
+                >
+                  ❌ Wrong
+                </motion.button>
+              </div>
+              <div className="flex gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleAnswer(true, 'hard')}
+                  className="flex-1 px-6 py-4 bg-[#f59e0b] rounded-lg text-white font-medium hover:bg-[#d97706] transition-colors"
+                >
+                  🔶 Hard
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleAnswer(true, 'normal')}
+                  className="flex-1 px-6 py-4 bg-[#10b981] rounded-lg text-white font-medium hover:bg-[#059669] transition-colors"
+                >
+                  ✅ Good
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleAnswer(true, 'easy')}
+                  className="flex-1 px-6 py-4 bg-[#3b82f6] rounded-lg text-white font-medium hover:bg-[#2563eb] transition-colors"
+                >
+                  ⭐ Easy
+                </motion.button>
+              </div>
             </motion.div>
           )}
 

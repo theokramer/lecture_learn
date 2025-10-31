@@ -1,17 +1,42 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { IoAdd, IoDownloadOutline, IoRefresh } from 'react-icons/io5';
 import { HiDocument } from 'react-icons/hi2';
 import { useAppData } from '../../context/AppDataContext';
 import { Button } from '../shared/Button';
 import { storageService, studyContentService } from '../../services/supabase';
+import { AudioPlayer } from '../audio/AudioPlayer';
 
 export const DocumentManagement: React.FC = () => {
   const { notes, selectedNoteId, uploadDocumentToNote } = useAppData();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
 
   const currentNote = notes.find(n => n.id === selectedNoteId);
   const documents = currentNote?.documents || [];
+
+  // Load audio URLs for audio documents
+  useEffect(() => {
+    const loadAudioUrls = async () => {
+      const audioDocs = documents.filter(doc => doc.type === 'audio' || doc.type === 'video');
+      const urlMap: Record<string, string> = {};
+
+      for (const doc of audioDocs) {
+        try {
+          const url = await storageService.getFileUrl(doc.url);
+          urlMap[doc.id] = url;
+        } catch (error) {
+          console.error(`Error loading audio URL for ${doc.id}:`, error);
+        }
+      }
+
+      setAudioUrls(urlMap);
+    };
+
+    if (documents.length > 0) {
+      loadAudioUrls();
+    }
+  }, [documents]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -117,31 +142,49 @@ export const DocumentManagement: React.FC = () => {
 
       {documents.length > 0 ? (
         <div className="space-y-3">
-          {documents.map((doc) => (
-            <div
-              key={doc.id}
-              className="flex items-center justify-between p-4 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a] hover:bg-[#323232] hover:border-[#4a4a4a] transition-all"
-            >
-              <div className="flex items-center gap-4 flex-1 min-w-0">
-                <span className="text-3xl flex-shrink-0">{getDocumentIcon(doc.type)}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-base font-medium truncate">{doc.name}</p>
-                  <div className="flex items-center gap-3 text-sm text-[#9ca3af] mt-1">
-                    <span className="capitalize">{doc.type}</span>
-                    <span>•</span>
-                    <span>{formatFileSize(doc.size)}</span>
+          {documents.map((doc) => {
+            const isAudio = doc.type === 'audio' || doc.type === 'video';
+            const audioUrl = audioUrls[doc.id];
+
+            return (
+              <div key={doc.id}>
+                <div
+                  className="flex items-center justify-between p-4 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a] hover:bg-[#323232] hover:border-[#4a4a4a] transition-all"
+                >
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <span className="text-3xl flex-shrink-0">{getDocumentIcon(doc.type)}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-base font-medium truncate">{doc.name}</p>
+                      <div className="flex items-center gap-3 text-sm text-[#9ca3af] mt-1">
+                        <span className="capitalize">{doc.type}</span>
+                        <span>•</span>
+                        <span>{formatFileSize(doc.size)}</span>
+                      </div>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => handleDownload(doc)}
+                    className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors text-[#9ca3af] hover:text-white ml-4"
+                    title="Download document"
+                  >
+                    <IoDownloadOutline className="w-6 h-6" />
+                  </button>
                 </div>
+                
+                {/* Audio Player for audio/video files */}
+                {isAudio && audioUrl && (
+                  <div className="mt-2">
+                    <AudioPlayer audioUrl={audioUrl} title={doc.name} />
+                  </div>
+                )}
+                {isAudio && !audioUrl && (
+                  <div className="mt-2 text-xs text-[#9ca3af] p-2 bg-[#1a1a1a] rounded">
+                    Loading audio...
+                  </div>
+                )}
               </div>
-              <button
-                onClick={() => handleDownload(doc)}
-                className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors text-[#9ca3af] hover:text-white ml-4"
-                title="Download document"
-              >
-                <IoDownloadOutline className="w-6 h-6" />
-              </button>
-            </div>
-          ))}
+            );
+          })}
           
           {/* Regenerate Button */}
           <div className="mt-8 pt-6 border-t border-[#3a3a3a]">

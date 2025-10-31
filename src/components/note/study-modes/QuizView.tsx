@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { HiPlus, HiPencil, HiTrash, HiCheck } from 'react-icons/hi2';
 import { openaiService } from '../../../services/openai';
 import { studyContentService } from '../../../services/supabase';
+import { analyticsService } from '../../../services/analyticsService';
 import { useAppData } from '../../../context/AppDataContext';
 import { useSettings } from '../../../context/SettingsContext';
+import { useAuth } from '../../../context/AuthContext';
 
 interface Question {
   id: string;
@@ -29,12 +31,14 @@ interface QuizViewProps {
 export const QuizView: React.FC<QuizViewProps> = ({ noteContent }) => {
   const { selectedNoteId } = useAppData();
   const { getPreference } = useSettings();
+  const { user } = useAuth();
   const [view, setView] = useState<View>('management');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const isInitialLoad = React.useRef(true);
+  const quizStartTimeRef = useRef<Date | null>(null);
 
   // Load saved quiz questions from Supabase
   useEffect(() => {
@@ -134,6 +138,7 @@ export const QuizView: React.FC<QuizViewProps> = ({ noteContent }) => {
     setSelectedAnswer(null);
     setShowResult(false);
     setAnswers([]);
+    quizStartTimeRef.current = new Date();
     setView('quiz');
   };
 
@@ -143,21 +148,41 @@ export const QuizView: React.FC<QuizViewProps> = ({ noteContent }) => {
     setAnswers([...answers, { questionId: questions[currentQuestion].id, isCorrect }]);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
       setSelectedAnswer(null);
       setShowResult(false);
     } else {
-      // Show results
-      const correct = answers.length + 1;
-      const total = answers.length + 1;
+      // Calculate final results
+      const finalAnswer = selectedAnswer === questions[currentQuestion].correct;
+      const allAnswers = [...answers, { questionId: questions[currentQuestion].id, isCorrect: finalAnswer }];
+      const correctCount = allAnswers.filter(a => a.isCorrect).length;
+      const totalCount = allAnswers.length;
+      
       setResults({
-        correct,
-        incorrect: total - correct,
-        total,
-        answers: [...answers, { questionId: questions[currentQuestion].id, isCorrect: selectedAnswer === questions[currentQuestion].correct }],
+        correct: correctCount,
+        incorrect: totalCount - correctCount,
+        total: totalCount,
+        answers: allAnswers,
       });
+      
+      // Track quiz result in analytics
+      if (user && quizStartTimeRef.current) {
+        try {
+          const timeTaken = Math.floor((new Date().getTime() - quizStartTimeRef.current.getTime()) / 1000);
+          await analyticsService.saveQuizResult(
+            user.id,
+            selectedNoteId || null,
+            totalCount,
+            correctCount,
+            timeTaken
+          );
+        } catch (error) {
+          console.error('Error saving quiz result:', error);
+        }
+      }
+      
       setView('results');
     }
   };
