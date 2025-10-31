@@ -130,24 +130,74 @@ export const RecordAudioPage: React.FC = () => {
 
       // Use lower bitrate for longer recordings to reduce file size
       // 96kbps is still good quality for speech and reduces file size significantly
+      // IMPORTANT: No silence detection - record continuously regardless of speech pauses
       const options: MediaRecorderOptions = {
         mimeType: selectedMimeType || undefined,
         audioBitsPerSecond: 96000, // Reduced from 128kbps to reduce file size for long recordings
+        // Explicitly ensure no auto-stop on silence
+        // MediaRecorder doesn't have silence detection built-in, but we ensure continuous recording
       };
+      
+      console.log('MediaRecorder options:', {
+        mimeType: options.mimeType,
+        audioBitsPerSecond: options.audioBitsPerSecond,
+        note: 'Recording will continue through silence and pauses'
+      });
 
       const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
+      
+      // CRITICAL: Always start with empty chunks array
+      // Never clear chunks during recording
       chunksRef.current = [];
+      console.log('Initialized chunks array, starting with', chunksRef.current.length, 'chunks');
       
       // Flag to track if we're waiting for final chunk
       let waitingForFinalChunk = false;
       let finalChunkResolve: (() => void) | null = null;
 
+      // Track chunk collection statistics
+      let lastChunkTime = Date.now();
+      let chunkCountAtStart = 0;
+      
       // Handle data availability - collect chunks periodically
-      mediaRecorder.ondataavailable = (event) => {
+      // CRITICAL: This handler must never be removed or overwritten during recording
+      const chunkHandler = (event: BlobEvent) => {
+        const now = Date.now();
+        const timeSinceLastChunk = now - lastChunkTime;
+        lastChunkTime = now;
+        
+        // Verify chunksRef is accessible
+        if (!chunksRef.current) {
+          console.error('CRITICAL: chunksRef.current is null! Cannot collect chunks.');
+          return;
+        }
+        
+        const chunkCountBefore = chunksRef.current.length;
+        
         if (event.data && event.data.size > 0) {
           chunksRef.current.push(event.data);
-          console.log(`Chunk received: ${event.data.size} bytes, total chunks: ${chunksRef.current.length}`);
+          const totalSize = chunksRef.current.reduce((sum, c) => sum + c.size, 0);
+          
+          // Verify chunk was actually added
+          if (chunksRef.current.length !== chunkCountBefore + 1) {
+            console.error(`CRITICAL: Chunk not added! Expected length ${chunkCountBefore + 1}, got ${chunksRef.current.length}`);
+          }
+          
+          // Comprehensive logging for every chunk
+          console.log(`[Chunk #${chunksRef.current.length}] Received: ${event.data.size} bytes, Total: ${totalSize} bytes, Time since last: ${timeSinceLastChunk}ms`);
+          
+          // Warning if chunks stop coming for too long while recording
+          if (timeSinceLastChunk > 3000 && chunksRef.current.length > chunkCountAtStart) {
+            console.warn(`WARNING: No chunks received for ${timeSinceLastChunk}ms. Recording may have stopped.`);
+          }
+          
+          // Validate chunks array is growing
+          if (chunksRef.current.length < chunkCountBefore + 1) {
+            console.error('CRITICAL: Chunk count decreased! Something is wrong with chunk collection.');
+          }
+        } else {
+          console.warn(`Received empty chunk data at ${now}`);
         }
         
         // If we're waiting for final chunk and received data, resolve
@@ -159,6 +209,18 @@ export const RecordAudioPage: React.FC = () => {
           setTimeout(() => resolve(), 100);
         }
       };
+      
+      // Set handler and verify it's set
+      mediaRecorder.ondataavailable = chunkHandler;
+      
+      // Verify handler wasn't overwritten (defensive check)
+      if (mediaRecorder.ondataavailable !== chunkHandler) {
+        console.error('CRITICAL: ondataavailable handler was overwritten!');
+        mediaRecorder.ondataavailable = chunkHandler;
+      }
+      
+      chunkCountAtStart = chunksRef.current.length;
+      console.log('ondataavailable handler installed. Starting chunk count:', chunkCountAtStart);
       
       // Store the resolve function so handleStop can use it
       (mediaRecorder as any)._finalChunkResolve = (resolve: () => void) => {
@@ -189,9 +251,12 @@ export const RecordAudioPage: React.FC = () => {
 
       // Handle recording stop
       mediaRecorder.onstop = () => {
-        // Clear health check interval
+        // Clear all intervals
         if ((mediaRecorder as any)._healthCheckInterval) {
           clearInterval((mediaRecorder as any)._healthCheckInterval);
+        }
+        if ((mediaRecorder as any)._diagnosticInterval) {
+          clearInterval((mediaRecorder as any)._diagnosticInterval);
         }
         
         try {
@@ -203,9 +268,25 @@ export const RecordAudioPage: React.FC = () => {
           
           // Log chunk collection info
           const totalChunkSize = chunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0);
-          console.log(`Recording stopped after ${seconds} seconds`);
-          console.log(`Chunks collected: ${chunksRef.current.length}, total size: ${totalChunkSize} bytes`);
+          console.log(`=== RECORDING STOPPED ===`);
+          console.log(`Duration: ${seconds} seconds`);
+          console.log(`Chunks collected: ${chunksRef.current.length}`);
+          console.log(`Total chunk size: ${totalChunkSize} bytes`);
           console.log(`Expected size range: ${Math.round(expectedMinSize)} - ${Math.round(expectedMaxSize)} bytes`);
+          
+          // Calculate expected chunk count (1 chunk per second with 1000ms timeslice)
+          const expectedMinChunks = Math.floor(seconds * 0.8); // At least 80% of seconds
+          const expectedMaxChunks = Math.ceil(seconds * 1.2); // Up to 120% of seconds (some chunks might span)
+          
+          console.log(`Expected chunk count range: ${expectedMinChunks} - ${expectedMaxChunks}`);
+          console.log(`Actual chunk count: ${chunksRef.current.length}`);
+          
+          // Validate chunk count first
+          if (chunksRef.current.length < expectedMinChunks && seconds > 5) {
+            console.error(`CRITICAL: Missing chunks! Expected at least ${expectedMinChunks} chunks, got ${chunksRef.current.length}`);
+            console.error('This indicates chunks stopped being collected during recording.');
+            toast.error(`Warning: Recording may be incomplete. Expected ${expectedMinChunks}+ chunks, got ${chunksRef.current.length}`);
+          }
           
           // Ensure we have all chunks
           if (chunksRef.current.length > 0) {
@@ -215,21 +296,35 @@ export const RecordAudioPage: React.FC = () => {
             
             // Validate blob size
             if (blob.size < expectedMinSize && seconds > 10) {
-              console.warn(`Warning: Blob size (${blob.size} bytes) seems too small for ${seconds}s recording. Expected at least ${Math.round(expectedMinSize)} bytes.`);
-              console.warn('Some audio data may be missing. Chunks may not have been fully collected.');
+              console.error(`CRITICAL: Blob size (${blob.size} bytes) is too small for ${seconds}s recording.`);
+              console.error(`Expected at least ${Math.round(expectedMinSize)} bytes, got ${blob.size} bytes`);
+              console.error('This indicates significant audio data is missing!');
+              toast.error(`Warning: Recording may be incomplete. Expected ${Math.round(expectedMinSize / 1024)}KB, got ${Math.round(blob.size / 1024)}KB`);
             }
             
-            console.log('Final blob created. Size:', blob.size, 'bytes');
-            console.log('Blob size validation:', {
-              actual: blob.size,
+            // Log chunk size distribution for debugging
+            const chunkSizes = chunksRef.current.map((c, i) => ({ index: i, size: c.size }));
+            console.log('Chunk size distribution:', chunkSizes.slice(0, 10)); // First 10 chunks
+            if (chunksRef.current.length > 10) {
+              console.log('... (showing first 10 chunks)');
+              console.log('Last chunk sizes:', chunkSizes.slice(-5)); // Last 5 chunks
+            }
+            
+            console.log('=== BLOB VALIDATION ===');
+            console.log('Final blob created. Size:', blob.size, 'bytes (', (blob.size / 1024).toFixed(2), 'KB)');
+            console.log('Validation:', {
+              actualSize: blob.size,
               expectedMin: Math.round(expectedMinSize),
               expectedMax: Math.round(expectedMaxSize),
-              isValid: blob.size >= expectedMinSize && blob.size <= expectedMaxSize
+              isValid: blob.size >= expectedMinSize && blob.size <= expectedMaxSize,
+              chunkCount: chunksRef.current.length,
+              expectedChunks: `${expectedMinChunks}-${expectedMaxChunks}`,
+              chunksValid: chunksRef.current.length >= expectedMinChunks
             });
             
             setAudioBlob(blob);
           } else {
-            console.warn('No audio chunks collected');
+            console.error('CRITICAL: No audio chunks collected at all!');
             toast.error('No audio data was recorded. Please try again.');
           }
         } catch (error) {
@@ -301,14 +396,55 @@ export const RecordAudioPage: React.FC = () => {
       // Using timeslice of 1000ms (1 second) for efficient chunking
       mediaRecorder.start(1000); // Get chunks every 1 second
       
-      console.log('Recording started with mimeType:', selectedMimeType || 'default');
+      console.log('=== RECORDING STARTED ===');
+      console.log('MIME Type:', selectedMimeType || 'default');
       console.log('MediaRecorder state:', mediaRecorder.state);
       console.log('Max recording duration:', MAX_RECORDING_DURATION, 'seconds (2 hours)');
+      console.log('Timeslice: 1000ms (chunks every 1 second)');
+      console.log('Initial chunks array length:', chunksRef.current.length);
+      console.log('ondataavailable handler:', typeof mediaRecorder.ondataavailable);
       
       // Verify recording started successfully
       if (mediaRecorder.state !== 'recording') {
         throw new Error('MediaRecorder failed to start. State: ' + mediaRecorder.state);
       }
+      
+      // Start real-time diagnostic logging
+      const diagnosticInterval = setInterval(() => {
+        if (!isRecording || !mediaRecorderRef.current) {
+          clearInterval(diagnosticInterval);
+          return;
+        }
+        
+        const recorder = mediaRecorderRef.current;
+        const currentChunks = chunksRef.current.length;
+        const currentSize = chunksRef.current.reduce((sum, c) => sum + c.size, 0);
+        const expectedChunks = seconds;
+        const expectedSize = (96000 * seconds) / 8;
+        
+        // Log diagnostic info every 10 seconds
+        if (seconds > 0 && seconds % 10 === 0) {
+          console.log(`=== DIAGNOSTIC @ ${seconds}s ===`);
+          console.log(`State: ${recorder.state}`);
+          console.log(`Chunks: ${currentChunks} (expected: ~${expectedChunks})`);
+          console.log(`Size: ${currentSize} bytes (expected: ~${Math.round(expectedSize)} bytes)`);
+          console.log(`Chunk ratio: ${(currentChunks / expectedChunks * 100).toFixed(1)}%`);
+          console.log(`Size ratio: ${(currentSize / expectedSize * 100).toFixed(1)}%`);
+          
+          // Alert if significantly behind
+          if (currentChunks < expectedChunks * 0.7) {
+            console.error(`ALERT: Chunk collection is ${((1 - currentChunks / expectedChunks) * 100).toFixed(1)}% behind!`);
+          }
+        }
+      }, 1000); // Check every second
+      
+      // Store diagnostic interval for cleanup
+      (mediaRecorder as any)._diagnosticInterval = diagnosticInterval;
+      
+      // Track previous state to detect changes immediately
+      // Use ref to avoid closure issues with event listeners
+      const previousStateRef = { value: mediaRecorder.state as RecordingState };
+      let stateChangeCount = 0;
       
       // Add periodic health check to ensure recording continues
       // Some browsers may stop recording due to inactivity or other reasons
@@ -323,9 +459,42 @@ export const RecordAudioPage: React.FC = () => {
         const currentState = recorder.state;
         healthCheckCount++;
         
-        // Log health check every 10 checks (every 20 seconds since we check every 2 seconds)
-        if (healthCheckCount % 10 === 0) {
-          console.log(`Recording health check #${healthCheckCount}: state=${currentState}, chunks=${chunksRef.current.length}, totalSize=${chunksRef.current.reduce((sum, c) => sum + c.size, 0)} bytes`);
+        // Detect state changes immediately and log
+        if (currentState !== previousStateRef.value) {
+          console.error(`STATE CHANGE DETECTED: ${previousStateRef.value} -> ${currentState} at check #${healthCheckCount}`);
+          stateChangeCount++;
+          
+          if (currentState === 'inactive' && isRecording) {
+            console.error('CRITICAL: MediaRecorder stopped unexpectedly!');
+            console.error(`Recording state changed from ${previousStateRef.value} to ${currentState}`);
+            console.error(`Chunks collected so far: ${chunksRef.current.length}`);
+            console.error(`Current seconds: ${seconds}`);
+            console.error('This may indicate a browser autostop, permission issue, or hardware problem');
+            clearInterval(healthCheckInterval);
+            toast.error('Recording stopped unexpectedly. Please check your microphone permissions and try again.');
+            setIsRecording(false);
+            if (stopHandlerRef.current) {
+              stopHandlerRef.current();
+            }
+            return;
+          }
+          
+          previousStateRef.value = currentState;
+        }
+        
+        // Log health check every 5 checks (every 10 seconds since we check every 2 seconds)
+        if (healthCheckCount % 5 === 0) {
+          const totalChunks = chunksRef.current.length;
+          const totalSize = chunksRef.current.reduce((sum, c) => sum + c.size, 0);
+          const expectedChunks = Math.floor(seconds);
+          const expectedSize = (96000 * seconds) / 8;
+          
+          console.log(`[Health Check #${healthCheckCount}] State: ${currentState}, Seconds: ${seconds}, Chunks: ${totalChunks} (expected: ~${expectedChunks}), Size: ${totalSize} bytes (expected: ~${Math.round(expectedSize)} bytes)`);
+          
+          // Warning if chunk count is far behind
+          if (totalChunks < expectedChunks * 0.5 && seconds > 10) {
+            console.warn(`WARNING: Chunk collection lagging! Expected ~${expectedChunks} chunks, have ${totalChunks}`);
+          }
         }
         
         // If recorder stopped unexpectedly, alert user
@@ -340,6 +509,19 @@ export const RecordAudioPage: React.FC = () => {
           }
         }
       }, 2000); // Check every 2 seconds
+      
+      // Also listen to statechange event directly
+      mediaRecorder.addEventListener('statechange', () => {
+        const newState: RecordingState = mediaRecorder.state;
+        console.log(`MediaRecorder statechange event: ${previousStateRef.value} -> ${newState}`);
+        
+        if (newState === 'inactive' && previousStateRef.value === 'recording' && isRecording) {
+          console.error('CRITICAL: State change to inactive detected via event listener!');
+          console.error(`Chunks collected: ${chunksRef.current.length}, Duration: ${seconds}s`);
+        }
+        
+        previousStateRef.value = newState;
+      });
       
       // Store interval for cleanup
       (mediaRecorder as any)._healthCheckInterval = healthCheckInterval;
