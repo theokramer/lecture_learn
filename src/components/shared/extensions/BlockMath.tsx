@@ -1,7 +1,6 @@
 import { Node, type RawCommands, InputRule } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { BlockMathNodeView } from './BlockMathNodeView';
-import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
 // Augment TipTap Commands to include our custom blockMath command

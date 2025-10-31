@@ -1,37 +1,28 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { NodeViewWrapper } from '@tiptap/react';
+import { NodeViewWrapper, type ReactNodeViewProps } from '@tiptap/react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
-interface InlineMathNodeViewProps {
-  node: {
-    attrs: {
-      formula: string;
-    };
-  };
-  updateAttributes: (attrs: { formula: string }) => void;
-  selected: boolean;
-}
-
-export const InlineMathNodeView: React.FC<InlineMathNodeViewProps> = ({
+export const InlineMathNodeView: React.FC<ReactNodeViewProps> = ({
   node,
   updateAttributes,
   selected,
 }) => {
-  const [formula, setFormula] = useState(node.attrs.formula || '');
+  const formulaAttr = node.attrs.formula as string | undefined;
+  const [formula, setFormula] = useState(formulaAttr || '');
   const [isEditing, setIsEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const renderRef = useRef<HTMLSpanElement>(null);
 
   // Update local state when node attributes change
   useEffect(() => {
-    const newFormula = node.attrs.formula || '';
+    const newFormula = formulaAttr || '';
     setFormula(newFormula);
     // If formula is empty, enter edit mode automatically
     if (!newFormula.trim()) {
       setIsEditing(true);
     }
-  }, [node.attrs.formula]);
+  }, [formulaAttr]);
 
   // Enter edit mode when selected or when clicking on rendered math
   useEffect(() => {
