@@ -122,35 +122,80 @@ async function transcribeAudio(audioBase64: string, mimeType: string = 'audio/we
 async function transcribeAudioFromStorage(storagePath: string, supabaseClient: any) {
   if (!OPENAI_API_KEY) throw new Error('Missing OPENAI_API_KEY');
   
-  // Download file from storage
-  const { data: fileData, error: downloadError } = await supabaseClient.storage
-    .from('documents')
-    .download(storagePath);
-  
-  if (downloadError || !fileData) {
-    throw new Error(`Failed to download audio from storage: ${downloadError?.message || 'Unknown error'}`);
-  }
-  
-  // Convert blob to File for FormData
-  const formData = new FormData();
-  const file = new File([fileData], 'audio.webm', { type: fileData.type || 'audio/webm' });
-  formData.append('file', file);
-  formData.append('model', 'whisper-1');
+  try {
+    // Download file from storage with timeout
+    const downloadPromise = supabaseClient.storage
+      .from('documents')
+      .download(storagePath)
+      .then((result: any) => {
+        if (result.error) throw result.error;
+        return result;
+      });
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Storage download timeout after 30 seconds')), 30000);
+    });
+    
+    let downloadResult: any;
+    try {
+      downloadResult = await Promise.race([downloadPromise, timeoutPromise]);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      if (errorMsg.includes('timeout')) {
+        throw new Error('Storage download timeout after 30 seconds');
+      }
+      throw error;
+    }
+    
+    const { data: fileData } = downloadResult;
+    
+    if (!fileData) {
+      console.error('Storage download error: No file data returned');
+      throw new Error('Failed to download audio from storage: No file data returned');
+    }
+    
+    // Log file info for debugging
+    console.log(`Downloaded file from storage: ${storagePath}, size: ${fileData.size} bytes`);
+    
+    // Convert blob to File for FormData
+    const formData = new FormData();
+    const file = new File([fileData], 'audio.webm', { type: fileData.type || 'audio/webm' });
+    formData.append('file', file);
+    formData.append('model', 'whisper-1');
 
-  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: formData
-  });
+    // Transcribe with OpenAI, with timeout
+    const transcriptionPromise = fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: formData
+    });
+    
+    const transcriptionTimeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('OpenAI transcription timeout after 5 minutes')), 300000);
+    });
+    
+    const res = await Promise.race([
+      transcriptionPromise,
+      transcriptionTimeoutPromise
+    ]) as Response;
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`OpenAI transcription error: ${res.status} ${err}`);
+    if (!res.ok) {
+      const err = await res.text();
+      console.error(`OpenAI transcription error: ${res.status} ${err}`);
+      throw new Error(`OpenAI transcription error: ${res.status} ${err}`);
+    }
+    
+    const json = await res.json();
+    const transcriptionText = json.text || '';
+    console.log(`Transcription completed. Length: ${transcriptionText.length} characters`);
+    return { text: transcriptionText };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('Error in transcribeAudioFromStorage:', errorMsg);
+    throw error;
   }
-  const json = await res.json();
-  return { text: json.text || '' };
 }
 
 Deno.serve(async (req: Request) => {
@@ -193,12 +238,16 @@ Deno.serve(async (req: Request) => {
       // If storage path is provided, use storage-based transcription (for large files)
       if (storagePath) {
         try {
+          console.log(`Starting transcription from storage path: ${storagePath}`);
           // Use the authenticated supabase client for storage operations
           const result = await transcribeAudioFromStorage(storagePath, supabase);
+          console.log('Transcription successful');
           return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
         } catch (transcribeError) {
           const errorMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
-          // If OpenAI returns an error about file size, return proper JSON error
+          console.error('Transcription error:', errorMsg);
+          
+          // Return proper JSON error responses instead of throwing (which might return HTML)
           if (errorMsg.includes('too large') || errorMsg.includes('413') || errorMsg.includes('25MB')) {
             return new Response(
               JSON.stringify({ 
@@ -207,7 +256,32 @@ Deno.serve(async (req: Request) => {
               { status: 413, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
             );
           }
-          throw transcribeError; // Re-throw to be caught by outer try-catch
+          
+          if (errorMsg.includes('timeout')) {
+            return new Response(
+              JSON.stringify({ 
+                error: 'Transcription request timed out. The audio file may be too large or the service is overloaded.' 
+              }), 
+              { status: 504, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+            );
+          }
+          
+          if (errorMsg.includes('download') || errorMsg.includes('storage')) {
+            return new Response(
+              JSON.stringify({ 
+                error: `Failed to access audio file from storage: ${errorMsg}` 
+              }), 
+              { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+            );
+          }
+          
+          // Generic error - still return JSON
+          return new Response(
+            JSON.stringify({ 
+              error: `Transcription failed: ${errorMsg}` 
+            }), 
+            { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+          );
         }
       }
       

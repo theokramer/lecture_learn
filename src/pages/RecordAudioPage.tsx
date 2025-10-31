@@ -122,12 +122,32 @@ export const RecordAudioPage: React.FC = () => {
       const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
+      
+      // Flag to track if we're waiting for final chunk
+      let waitingForFinalChunk = false;
+      let finalChunkResolve: (() => void) | null = null;
 
       // Handle data availability - collect chunks periodically
       mediaRecorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           chunksRef.current.push(event.data);
+          console.log(`Chunk received: ${event.data.size} bytes, total chunks: ${chunksRef.current.length}`);
         }
+        
+        // If we're waiting for final chunk and received data, resolve
+        if (waitingForFinalChunk && finalChunkResolve) {
+          waitingForFinalChunk = false;
+          const resolve = finalChunkResolve;
+          finalChunkResolve = null;
+          // Small delay to ensure chunk is fully processed
+          setTimeout(() => resolve(), 100);
+        }
+      };
+      
+      // Store the resolve function so handleStop can use it
+      (mediaRecorder as any)._finalChunkResolve = (resolve: () => void) => {
+        waitingForFinalChunk = true;
+        finalChunkResolve = resolve;
       };
 
       // Handle recording errors
@@ -143,13 +163,39 @@ export const RecordAudioPage: React.FC = () => {
       // Handle recording stop
       mediaRecorder.onstop = () => {
         try {
+          // Calculate expected blob size based on recording duration
+          // At 96kbps, expected size = (bitrate * duration_in_seconds) / 8
+          // Add 20% overhead for container format
+          const expectedMinSize = (96000 * seconds) / 8 * 0.8; // 80% of expected as minimum
+          const expectedMaxSize = (96000 * seconds) / 8 * 1.5; // 150% of expected as maximum
+          
+          // Log chunk collection info
+          const totalChunkSize = chunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0);
+          console.log(`Recording stopped after ${seconds} seconds`);
+          console.log(`Chunks collected: ${chunksRef.current.length}, total size: ${totalChunkSize} bytes`);
+          console.log(`Expected size range: ${Math.round(expectedMinSize)} - ${Math.round(expectedMaxSize)} bytes`);
+          
           // Ensure we have all chunks
           if (chunksRef.current.length > 0) {
             const blob = new Blob(chunksRef.current, { 
               type: selectedMimeType || 'audio/webm' 
             });
+            
+            // Validate blob size
+            if (blob.size < expectedMinSize && seconds > 10) {
+              console.warn(`Warning: Blob size (${blob.size} bytes) seems too small for ${seconds}s recording. Expected at least ${Math.round(expectedMinSize)} bytes.`);
+              console.warn('Some audio data may be missing. Chunks may not have been fully collected.');
+            }
+            
+            console.log('Final blob created. Size:', blob.size, 'bytes');
+            console.log('Blob size validation:', {
+              actual: blob.size,
+              expectedMin: Math.round(expectedMinSize),
+              expectedMax: Math.round(expectedMaxSize),
+              isValid: blob.size >= expectedMinSize && blob.size <= expectedMaxSize
+            });
+            
             setAudioBlob(blob);
-            console.log('Recording stopped. Blob size:', blob.size, 'bytes');
           } else {
             console.warn('No audio chunks collected');
             toast.error('No audio data was recorded. Please try again.');
@@ -218,11 +264,37 @@ export const RecordAudioPage: React.FC = () => {
   const handleStop = useCallback(async () => {
     if (mediaRecorderRef.current && isRecording) {
       try {
-        // Request any remaining data
-        if (mediaRecorderRef.current.state === 'recording') {
-          mediaRecorderRef.current.requestData();
+        const recorder = mediaRecorderRef.current;
+        
+        if (recorder.state === 'recording') {
+          // Request final chunk and wait for it
+          const finalChunkPromise = new Promise<void>((resolve) => {
+            // Set up the resolve function
+            if ((recorder as any)._finalChunkResolve) {
+              (recorder as any)._finalChunkResolve(resolve);
+            } else {
+              // Fallback if method doesn't exist
+              resolve();
+            }
+            
+            // Request final data chunk
+            recorder.requestData();
+            
+            // Fallback timeout in case ondataavailable doesn't fire
+            setTimeout(() => {
+              resolve();
+            }, 1000);
+          });
+          
+          // Wait for final chunk, then stop
+          await finalChunkPromise;
         }
-        mediaRecorderRef.current.stop();
+        
+        // Now safe to stop - all chunks should be collected
+        if (recorder.state !== 'inactive') {
+          recorder.stop();
+        }
+        
         setIsRecording(false);
       } catch (error) {
         console.error('Error stopping recorder:', error);

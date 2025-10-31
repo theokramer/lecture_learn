@@ -50,16 +50,17 @@ export const aiGateway = {
     // Files larger than this will use storage-based approach
     const STORAGE_THRESHOLD = 2 * 1024 * 1024; // 2 MB
     
-    let finalStoragePath = storagePath;
-    
     try {
-      // If no storage path provided and file is large, upload to storage first
+      let finalStoragePath = storagePath;
+      
+      // If storage path is already provided, always use it (ProcessingPage uploads first)
+      // Otherwise, check if file is large enough to require storage
       if (!finalStoragePath && audioBlob.size > STORAGE_THRESHOLD) {
         if (!userId) {
           throw new Error('UserId required for large audio file transcription');
         }
         
-        // Upload audio to storage
+        // Upload audio to storage for large files
         const audioFile = new File([audioBlob], 'recording.webm', { 
           type: audioBlob.type || 'audio/webm' 
         });
@@ -68,8 +69,9 @@ export const aiGateway = {
 
       let data, error;
       
+      // Always use storage path if provided (preferred method for reliability)
       if (finalStoragePath) {
-        // Use storage-based transcription for large files
+        console.log(`Using storage-based transcription for path: ${finalStoragePath}`);
         try {
           const result = await supabase.functions.invoke('ai-generate', {
             body: {
@@ -90,6 +92,8 @@ export const aiGateway = {
           throw invokeError;
         }
       } else {
+        // Use direct base64 only for small files when no storage path is provided
+        console.log(`Using direct base64 transcription for small file (${audioBlob.size} bytes)`);
         // Use direct base64 for small files
         const arrayBuffer = await audioBlob.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
@@ -114,6 +118,7 @@ export const aiGateway = {
               errorMessage.includes('JSON') && errorMessage.includes('parse') ||
               errorMessage.includes('Unexpected token')) {
             // Fallback to storage-based approach if direct upload fails
+            console.log('Direct base64 transcription failed, falling back to storage-based approach');
             if (!userId) {
               throw new Error(
                 'Audio file is too large to process directly. Please record a shorter audio.'
@@ -123,12 +128,12 @@ export const aiGateway = {
             const audioFile = new File([audioBlob], 'recording.webm', { 
               type: audioBlob.type || 'audio/webm' 
             });
-            finalStoragePath = await storageService.uploadFile(userId, audioFile);
+            const fallbackStoragePath = await storageService.uploadFile(userId, audioFile);
             
             const retryResult = await supabase.functions.invoke('ai-generate', {
               body: {
                 type: 'transcription',
-                storagePath: finalStoragePath,
+                storagePath: fallbackStoragePath,
               },
             } as any);
             data = retryResult.data;
