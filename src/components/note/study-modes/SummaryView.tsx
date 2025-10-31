@@ -8,7 +8,7 @@ import { HiSparkles, HiDocumentText, HiArrowPath, HiQuestionMarkCircle } from 'r
 import 'katex/dist/katex.min.css';
 
 export const SummaryView: React.FC = () => {
-  const { selectedNoteId, notes } = useAppData();
+  const { selectedNoteId, notes, currentStudyMode } = useAppData();
   const { preferences } = useSettings();
   const currentNote = notes.find(n => n.id === selectedNoteId);
   
@@ -103,10 +103,35 @@ export const SummaryView: React.FC = () => {
     }
   }, [selectedNoteId, currentNote]);
 
-  // Load summary on mount or when note changes
+  // Load summary on mount, when note changes, or when switching to summary view
   useEffect(() => {
     loadSummary();
-  }, [loadSummary]);
+  }, [loadSummary, currentStudyMode]);
+
+  // Poll for newly generated summaries when we don't have one yet
+  // (Note: NoteViewPage handles auto-switching to summary view when summary is detected)
+  useEffect(() => {
+    if (!selectedNoteId || hasSummary || isGenerating) return;
+
+    // Poll every 3 seconds to check if a summary was generated in the background
+    const pollInterval = setInterval(async () => {
+      try {
+        const studyContent = await studyContentService.getStudyContent(selectedNoteId);
+        if (studyContent.summary && studyContent.summary.trim() !== '') {
+          // Summary was generated! Load it automatically
+          setSummary(studyContent.summary);
+          setHasSummary(true);
+          setLastSaved(new Date());
+        }
+      } catch (error) {
+        // Silently fail - we're just polling
+        console.debug('Polling for summary:', error);
+      }
+    }, 3000); // Check every 3 seconds
+
+    // Clean up polling when component unmounts or conditions change
+    return () => clearInterval(pollInterval);
+  }, [selectedNoteId, hasSummary, isGenerating]);
 
   // Auto-save with debounce
   useEffect(() => {

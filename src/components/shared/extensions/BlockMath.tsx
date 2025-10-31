@@ -1,4 +1,4 @@
-import { Node, type RawCommands } from '@tiptap/core';
+import { Node, type RawCommands, InputRule } from '@tiptap/core';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
@@ -42,7 +42,7 @@ export const BlockMath = Node.create({
           if (typeof node === 'string') return false;
           const element = node as HTMLElement;
           return {
-            formula: element.textContent || '',
+            formula: element.getAttribute('data-formula') || element.textContent || '',
           };
         },
       },
@@ -62,7 +62,32 @@ export const BlockMath = Node.create({
       html = `<div class="text-red-400 p-4 bg-red-900/20 rounded border border-red-500/50">Error: ${formula}</div>`;
     }
 
-    return ['div', { class: 'block-math my-6 text-center', 'data-type': 'block-math', dangerouslySetInnerHTML: { __html: html } }];
+    return ['div', { 
+      class: 'block-math my-6 text-center', 
+      'data-type': 'block-math',
+      'data-formula': formula,
+      dangerouslySetInnerHTML: { __html: html } 
+    }];
+  },
+
+  addInputRules() {
+    return [
+      // Block math: $$formula$$
+      // Triggered when user types $$...$$ and presses Enter or Space
+      new InputRule({
+        find: /\$\$([^$]+?)\$\$$/,
+        handler: ({ state, range, match }) => {
+          const formula = match[1].trim();
+          const { from, to } = range;
+          
+          state.tr
+            .delete(from, to)
+            .insert(
+              state.schema.nodes.blockMath.create({ formula })
+            );
+        },
+      }),
+    ];
   },
 
   addCommands(): Partial<RawCommands> {

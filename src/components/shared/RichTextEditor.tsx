@@ -31,7 +31,8 @@ import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { Highlight } from '@tiptap/extension-highlight';
-// LaTeX rendering via code blocks - we'll add custom rendering later
+import { BlockMath } from './extensions/BlockMath';
+import { InlineMath } from './extensions/InlineMath';
 import { 
   HiBold, 
   HiItalic, 
@@ -54,6 +55,87 @@ interface RichTextEditorProps {
   onChange: (content: string) => void;
   placeholder?: string;
   editable?: boolean;
+}
+
+/**
+ * Preprocesses HTML content to convert LaTeX formulas to TipTap nodes
+ * This handles existing content that contains $...$ and $$...$$ patterns
+ */
+function preprocessLaTeXContent(html: string): string {
+  if (!html || typeof html !== 'string') return html;
+
+  // Extract text content from HTML, process it, then reconstruct
+  // This is simpler than trying to parse HTML with regex
+  
+  // First, process block math: $$formula$$
+  // Use a more robust regex that handles multiline and various contexts
+  let processed = html;
+  
+  // Process block math first (to avoid conflicts with inline math)
+  // Match $$...$$ patterns, handling multiline formulas
+  processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (match, formula, offset) => {
+    // Check if this is inside an HTML tag attribute
+    const beforeMatch = processed.substring(0, offset);
+    const lastTagEnd = beforeMatch.lastIndexOf('>');
+    const lastTagStart = beforeMatch.lastIndexOf('<');
+    
+    // If we're inside an HTML tag (between < and >), don't replace
+    if (lastTagStart > lastTagEnd) {
+      return match;
+    }
+
+    const trimmedFormula = formula.trim();
+    if (!trimmedFormula) return match;
+
+    // Escape formula for HTML attribute
+    const escapedFormula = trimmedFormula
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    return `<div data-type="block-math" data-formula="${escapedFormula}"></div>`;
+  });
+
+  // Now process inline math: $formula$ (single dollar signs)
+  // But only if they're not part of $$...$$ (which we already processed)
+  processed = processed.replace(/\$([^$\n]+?)\$/g, (match, formula, offset) => {
+    // Check if we're inside an HTML tag
+    const beforeMatch = processed.substring(0, offset);
+    const lastTagEnd = beforeMatch.lastIndexOf('>');
+    const lastTagStart = beforeMatch.lastIndexOf('<');
+    
+    // If we're inside a tag, don't replace
+    if (lastTagStart > lastTagEnd) {
+      return match;
+    }
+
+    // Check if this is part of block math (should have $$ before and after)
+    // Look for $$ before this match
+    const before = processed.substring(Math.max(0, offset - 2), offset);
+    const after = processed.substring(offset + match.length, Math.min(processed.length, offset + match.length + 2));
+    
+    // If surrounded by $ signs, skip (it's block math that wasn't matched properly)
+    if ((before === '$' || before.endsWith('$')) && (after === '$' || after.startsWith('$'))) {
+      return match;
+    }
+
+    const trimmedFormula = formula.trim();
+    if (!trimmedFormula) return match;
+
+    // Escape formula for HTML attribute
+    const escapedFormula = trimmedFormula
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    return `<span data-type="inline-math" data-formula="${escapedFormula}"></span>`;
+  });
+
+  return processed;
 }
 
 export const RichTextEditor: React.FC<RichTextEditorProps> = ({
@@ -96,6 +178,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       Highlight.configure({
         multicolor: true,
       }),
+      BlockMath,
+      InlineMath,
     ],
     content,
     editable,
@@ -111,7 +195,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   useEffect(() => {
     if (editor && content !== editor.getHTML()) {
-      editor.commands.setContent(content);
+      // Preprocess content to convert LaTeX patterns to TipTap nodes
+      const processedContent = preprocessLaTeXContent(content);
+      editor.commands.setContent(processedContent);
     }
   }, [content, editor]);
 
