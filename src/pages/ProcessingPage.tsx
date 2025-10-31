@@ -34,16 +34,19 @@ export const ProcessingPage: React.FC = () => {
 
         if (audioBlob) {
           // Process audio recording
-          setCurrentTask('Transcribing audio...');
-          setProgress(25);
+          setCurrentTask('Uploading audio...');
+          setProgress(15);
           
-          const transcription = await openaiService.transcribeAudio(audioBlob);
-          setProgress(50);
-
-          // Upload audio to storage
+          // Upload audio to storage first (required for large files)
           const audioFile = new File([audioBlob], 'recording.webm', { type: 'audio/webm' });
           const storagePath = await storageService.uploadFile(user.id, audioFile);
-          setProgress(70);
+          setProgress(30);
+          
+          // Transcribe audio (will use storage path for large files)
+          setCurrentTask('Transcribing audio...');
+          setProgress(35);
+          const transcription = await openaiService.transcribeAudio(audioBlob, storagePath, user.id);
+          setProgress(60);
 
           // Create note title from transcription
           setCurrentTask('Generating title...');
@@ -51,9 +54,9 @@ export const ProcessingPage: React.FC = () => {
           
           // Create note with AI title and transcription
           const noteId = await createNote(aiTitleFromAudio || title || 'Voice Recording', transcription);
-          setProgress(85);
+          setProgress(75);
 
-          // Save audio file as document
+          // Save audio file as document (already uploaded, just create document record)
           await documentService.createDocument(noteId, audioFile, storagePath);
           setProgress(85);
 

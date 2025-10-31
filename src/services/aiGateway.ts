@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, storageService } from './supabase';
 
 export class DailyLimitError extends Error {
   limit: number;
@@ -45,61 +45,103 @@ export const aiGateway = {
     return (data as any)?.content ?? '';
   },
 
-  async transcribeAudio(audioBlob: Blob): Promise<string> {
-    // Check file size - Supabase Edge Functions have ~6MB limit for request body
-    // Base64 encoding increases size by ~33%, so we limit to ~4.5MB raw to be safe
-    const MAX_FILE_SIZE = 4.5 * 1024 * 1024; // 4.5 MB
+  async transcribeAudio(audioBlob: Blob, storagePath?: string, userId?: string): Promise<string> {
+    // Threshold for using storage-based transcription (2MB - safe for direct base64)
+    // Files larger than this will use storage-based approach
+    const STORAGE_THRESHOLD = 2 * 1024 * 1024; // 2 MB
     
-    if (audioBlob.size > MAX_FILE_SIZE) {
-      const sizeMB = (audioBlob.size / (1024 * 1024)).toFixed(2);
-      throw new Error(
-        `Audio file is too large (${sizeMB} MB). Maximum size is 4.5 MB. ` +
-        `Please record a shorter audio or compress the file.`
-      );
-    }
-
+    let finalStoragePath = storagePath;
+    
     try {
-      // Convert blob to base64 efficiently
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-      const binaryString = Array.from(uint8Array, byte => String.fromCharCode(byte)).join('');
-      const base64 = btoa(binaryString);
-      const mimeType = audioBlob.type || 'audio/webm';
-
-      let data, error;
-      try {
-        const result = await supabase.functions.invoke('ai-generate', {
-          body: {
-            type: 'transcription',
-            audioBase64: base64,
-            mimeType,
-          },
-        } as any);
-        data = result.data;
-        error = result.error;
-      } catch (invokeError: any) {
-        // Catch errors from Supabase client itself (e.g., when server returns HTML)
-        const errorMessage = invokeError?.message || String(invokeError);
-        
-        // Check for HTML error response (indicates payload too large before reaching edge function)
-        if (errorMessage.includes('text/html') || 
-            errorMessage.includes('JSON') && errorMessage.includes('parse') ||
-            errorMessage.includes('Unexpected token')) {
-          throw new Error(
-            'Audio file is too large to process. The request was rejected before processing. ' +
-            'Please record a shorter audio (under 2 minutes) or split it into smaller segments.'
-          );
+      // If no storage path provided and file is large, upload to storage first
+      if (!finalStoragePath && audioBlob.size > STORAGE_THRESHOLD) {
+        if (!userId) {
+          throw new Error('UserId required for large audio file transcription');
         }
         
-        // Re-throw other invoke errors
-        throw invokeError;
+        // Upload audio to storage
+        const audioFile = new File([audioBlob], 'recording.webm', { 
+          type: audioBlob.type || 'audio/webm' 
+        });
+        finalStoragePath = await storageService.uploadFile(userId, audioFile);
+      }
+
+      let data, error;
+      
+      if (finalStoragePath) {
+        // Use storage-based transcription for large files
+        try {
+          const result = await supabase.functions.invoke('ai-generate', {
+            body: {
+              type: 'transcription',
+              storagePath: finalStoragePath,
+            },
+          } as any);
+          data = result.data;
+          error = result.error;
+        } catch (invokeError: any) {
+          const errorMessage = invokeError?.message || String(invokeError);
+          if (errorMessage.includes('text/html') || 
+              errorMessage.includes('JSON') && errorMessage.includes('parse')) {
+            throw new Error(
+              'Failed to transcribe audio from storage. Please try again.'
+            );
+          }
+          throw invokeError;
+        }
+      } else {
+        // Use direct base64 for small files
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        const binaryString = Array.from(uint8Array, byte => String.fromCharCode(byte)).join('');
+        const base64 = btoa(binaryString);
+        const mimeType = audioBlob.type || 'audio/webm';
+
+        try {
+          const result = await supabase.functions.invoke('ai-generate', {
+            body: {
+              type: 'transcription',
+              audioBase64: base64,
+              mimeType,
+            },
+          } as any);
+          data = result.data;
+          error = result.error;
+        } catch (invokeError: any) {
+          const errorMessage = invokeError?.message || String(invokeError);
+          
+          if (errorMessage.includes('text/html') || 
+              errorMessage.includes('JSON') && errorMessage.includes('parse') ||
+              errorMessage.includes('Unexpected token')) {
+            // Fallback to storage-based approach if direct upload fails
+            if (!userId) {
+              throw new Error(
+                'Audio file is too large to process directly. Please record a shorter audio.'
+              );
+            }
+            // Upload and retry with storage approach
+            const audioFile = new File([audioBlob], 'recording.webm', { 
+              type: audioBlob.type || 'audio/webm' 
+            });
+            finalStoragePath = await storageService.uploadFile(userId, audioFile);
+            
+            const retryResult = await supabase.functions.invoke('ai-generate', {
+              body: {
+                type: 'transcription',
+                storagePath: finalStoragePath,
+              },
+            } as any);
+            data = retryResult.data;
+            error = retryResult.error;
+          } else {
+            throw invokeError;
+          }
+        }
       }
 
       if (error) {
-        // Supabase wraps non-2xx as error; try to parse limit response shape
         const errBody: any = (error as any)?.context || {};
         
-        // Check for daily limit error
         if (errBody?.code === 'DAILY_LIMIT_REACHED') {
           throw new DailyLimitError(errBody?.message || 'Daily limit reached', {
             limit: errBody.limit ?? 15,
@@ -109,22 +151,10 @@ export const aiGateway = {
           });
         }
         
-        // Check if it's a size/payload error
         const errorMessage = (error as any)?.message || String(error);
-        if (errorMessage.includes('Payload Too Large') || 
-            errorMessage.includes('413') ||
-            errorMessage.includes('Request Entity Too Large') ||
-            errorMessage.includes('too large') ||
-            errorMessage.includes('text/html')) {
-          throw new Error(
-            'Audio file is too large to process. Please record a shorter audio (under 2 minutes) or split it into smaller segments.'
-          );
-        }
-        
-        // Check for timeout errors
         if (errorMessage.includes('timeout') || errorMessage.includes('504')) {
           throw new Error(
-            'Transcription request timed out. The audio file may be too large. Please try a shorter recording.'
+            'Transcription request timed out. Please try again.'
           );
         }
         
@@ -133,17 +163,11 @@ export const aiGateway = {
 
       return (data as any)?.text ?? '';
     } catch (error) {
-      // Re-throw DailyLimitError as-is
       if (error instanceof DailyLimitError) {
         throw error;
       }
       
-      // Wrap other errors with more context
       const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('too large') || errorMessage.includes('size')) {
-        throw error; // Already has good message
-      }
-      
       throw new Error(`Failed to transcribe audio: ${errorMessage}`);
     }
   },

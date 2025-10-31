@@ -87,9 +87,9 @@ export function extractJSON(text: string): string {
 }
 
 export const openaiService = {
-  async transcribeAudio(audioBlob: Blob): Promise<string> {
+  async transcribeAudio(audioBlob: Blob, storagePath?: string, userId?: string): Promise<string> {
     try {
-      return await aiGateway.transcribeAudio(audioBlob);
+      return await aiGateway.transcribeAudio(audioBlob, storagePath, userId);
     } catch (error) {
       if (error instanceof DailyLimitError) throw error;
       console.error('Error transcribing audio:', error);

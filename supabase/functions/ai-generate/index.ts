@@ -119,6 +119,40 @@ async function transcribeAudio(audioBase64: string, mimeType: string = 'audio/we
   return { text: json.text || '' };
 }
 
+async function transcribeAudioFromStorage(storagePath: string, supabaseClient: any) {
+  if (!OPENAI_API_KEY) throw new Error('Missing OPENAI_API_KEY');
+  
+  // Download file from storage
+  const { data: fileData, error: downloadError } = await supabaseClient.storage
+    .from('documents')
+    .download(storagePath);
+  
+  if (downloadError || !fileData) {
+    throw new Error(`Failed to download audio from storage: ${downloadError?.message || 'Unknown error'}`);
+  }
+  
+  // Convert blob to File for FormData
+  const formData = new FormData();
+  const file = new File([fileData], 'audio.webm', { type: fileData.type || 'audio/webm' });
+  formData.append('file', file);
+  formData.append('model', 'whisper-1');
+
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: formData
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`OpenAI transcription error: ${res.status} ${err}`);
+  }
+  const json = await res.json();
+  return { text: json.text || '' };
+}
+
 Deno.serve(async (req: Request) => {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -152,10 +186,34 @@ Deno.serve(async (req: Request) => {
 
     // Handle transcription
     if (requestType === 'transcription') {
+      const storagePath = body?.storagePath;
       const audioBase64 = body?.audioBase64;
       const mimeType = body?.mimeType || 'audio/webm';
+      
+      // If storage path is provided, use storage-based transcription (for large files)
+      if (storagePath) {
+        try {
+          // Use the authenticated supabase client for storage operations
+          const result = await transcribeAudioFromStorage(storagePath, supabase);
+          return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+        } catch (transcribeError) {
+          const errorMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
+          // If OpenAI returns an error about file size, return proper JSON error
+          if (errorMsg.includes('too large') || errorMsg.includes('413') || errorMsg.includes('25MB')) {
+            return new Response(
+              JSON.stringify({ 
+                error: 'Audio file is too large. OpenAI Whisper has a 25MB limit. Please record a shorter audio.' 
+              }), 
+              { status: 413, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+            );
+          }
+          throw transcribeError; // Re-throw to be caught by outer try-catch
+        }
+      }
+      
+      // Fallback to base64 for small files
       if (!audioBase64) {
-        return new Response(JSON.stringify({ error: 'Missing audioBase64' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+        return new Response(JSON.stringify({ error: 'Missing audioBase64 or storagePath' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
       }
       
       // Check size before processing (base64 string length, approximate original size is ~75% of base64 length)
