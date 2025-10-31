@@ -1,7 +1,6 @@
 import { Node, type RawCommands, InputRule } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { InlineMathNodeView } from './InlineMathNodeView';
-import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
 // Augment TipTap Commands to include our custom inlineMath commands
@@ -68,18 +67,14 @@ export const InlineMath = Node.create({
           const formula = match[1].trim();
           const { from, to } = range;
           
-          if (!formula) return null;
+          if (!formula) return;
           
           // Check if it's part of $$ (block math) - if so, don't match
           const beforeText = state.doc.textBetween(Math.max(0, from - 2), from);
-          if (beforeText === '$') return null;
+          if (beforeText === '$') return;
           
           const node = state.schema.nodes.inlineMath.create({ formula });
-          const tr = state.tr
-            .delete(from, to - 1) // -1 to keep the space
-            .insert(from, node);
-          
-          return tr;
+          state.tr.delete(from, to - 1).insert(from, node);
         },
       }),
       // Inline math: $formula$ (trigger on punctuation or end of line)
@@ -89,18 +84,14 @@ export const InlineMath = Node.create({
           const formula = match[1].trim();
           const { from, to } = range;
           
-          if (!formula) return null;
+          if (!formula) return;
           
           // Check if it's part of $$ (block math) - if so, don't match
           const beforeText = state.doc.textBetween(Math.max(0, from - 2), from);
-          if (beforeText === '$') return null;
+          if (beforeText === '$') return;
           
           const node = state.schema.nodes.inlineMath.create({ formula });
-          const tr = state.tr
-            .delete(from, to)
-            .insert(from, node);
-          
-          return tr;
+          state.tr.delete(from, to).insert(from, node);
         },
       }),
     ];

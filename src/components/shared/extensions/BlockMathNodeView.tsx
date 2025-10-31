@@ -74,7 +74,7 @@ export const BlockMathNodeView: React.FC<ReactNodeViewProps> = ({
     // If empty, keep in edit mode (node will stay editable)
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = () => {
     // Don't exit on Enter - only on blur
     // Allow normal text editing behavior
   };
