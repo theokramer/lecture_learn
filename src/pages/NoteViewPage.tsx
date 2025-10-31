@@ -25,6 +25,7 @@ export const NoteViewPage: React.FC = () => {
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const hasCheckedSummaryRef = useRef<string | null>(null);
   const hasSetDefaultModeRef = useRef<string | null>(null);
+  const hasGeneratedStudyContentRef = useRef<string | null>(null);
   const saveHandlerRef = useRef<(() => void) | null>(null);
   const isMobile = useIsMobile(1024);
 
@@ -43,6 +44,7 @@ export const NoteViewPage: React.FC = () => {
       appData.setSelectedNoteId(noteId);
       hasCheckedSummaryRef.current = null; // Reset check for new note
       hasSetDefaultModeRef.current = null; // Reset default mode for new note
+      hasGeneratedStudyContentRef.current = null; // Reset generation check for new note
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -95,6 +97,45 @@ export const NoteViewPage: React.FC = () => {
     checkAndSwitchToSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appData.selectedNoteId, appData.currentStudyMode, preferences.defaultStudyMode]);
+
+  // Auto-generate study content (including summary) when opening a note that doesn't have it
+  useEffect(() => {
+    const autoGenerateStudyContent = async () => {
+      const noteId = appData.selectedNoteId;
+      if (!noteId || hasGeneratedStudyContentRef.current === noteId) return;
+
+      const currentNote = appData.notes?.find(n => n.id === noteId);
+      if (!currentNote) return;
+
+      const content = currentNote.content || '';
+      if (content.trim().length < 50) return; // Not enough content
+
+      try {
+        // Check if study content already exists
+        const studyContent = await studyContentService.getStudyContent(noteId);
+        
+        // Only generate if there's no summary (this means no study content was generated yet)
+        if (!studyContent.summary || studyContent.summary.trim() === '') {
+          // Generate all study content in background (including summary)
+          // This will automatically preserve any existing content
+          hasGeneratedStudyContentRef.current = noteId;
+          studyContentService.generateAndSaveAllStudyContent(noteId, content).catch(err => {
+            console.error('Background study content generation failed:', err);
+            // Reset on error so we can try again
+            hasGeneratedStudyContentRef.current = null;
+          });
+        } else {
+          // Summary exists, mark as generated
+          hasGeneratedStudyContentRef.current = noteId;
+        }
+      } catch (error) {
+        console.error('Error checking/generating study content:', error);
+      }
+    };
+
+    autoGenerateStudyContent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appData.selectedNoteId, appData.notes]);
 
   // Poll for newly generated summaries (when they finish generating in background)
   // Only if default mode is summary
@@ -191,7 +232,7 @@ export const NoteViewPage: React.FC = () => {
       </div>
 
       {/* Desktop Left Sidebar */}
-      <div className="hidden lg:block">
+      <div className="hidden lg:block h-full">
         <NoteSidebar
           currentMode={appData.currentStudyMode}
           onModeChange={handleModeChange}
@@ -220,7 +261,7 @@ export const NoteViewPage: React.FC = () => {
       </div>
 
       {/* Desktop Right AI Chat */}
-      <div className="hidden lg:block">
+      <div className="hidden lg:block h-full">
         <AnimatePresence mode="wait">
           <AIChatPanel
             key="ai-chat"

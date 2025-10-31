@@ -33,21 +33,56 @@ export const ProcessingPage: React.FC = () => {
         const { audioBlob, title, text, fileMetadata } = location.state || {};
 
         if (audioBlob) {
+          // Validate audio blob
+          if (!audioBlob || audioBlob.size === 0) {
+            throw new Error('Audio recording is empty or invalid. Please try recording again.');
+          }
+          
+          console.log('Processing audio:', {
+            size: audioBlob.size,
+            type: audioBlob.type,
+            userId: user.id
+          });
+          
           // Process audio recording
           setCurrentTask('Uploading audio...');
           setProgress(15);
           
           // Upload audio to storage first (required for large files)
-          const audioFile = new File([audioBlob], 'recording.webm', { type: 'audio/webm' });
-          const storagePath = await storageService.uploadFile(user.id, audioFile);
+          const audioFile = new File([audioBlob], 'recording.webm', { type: audioBlob.type || 'audio/webm' });
+          
+          let storagePath: string;
+          try {
+            storagePath = await storageService.uploadFile(user.id, audioFile);
+            console.log('Audio uploaded to storage:', storagePath);
+            
+            // Validate storagePath was returned correctly
+            if (!storagePath || typeof storagePath !== 'string' || storagePath.trim().length === 0) {
+              console.error('Invalid storage path returned:', storagePath);
+              throw new Error('Failed to upload audio file: Invalid storage path returned.');
+            }
+          } catch (uploadError) {
+            console.error('Failed to upload audio:', uploadError);
+            throw new Error('Failed to upload audio file. Please check your connection and try again.');
+          }
+          
           setProgress(30);
           
           // Transcribe audio (will use storage path for large files)
           setCurrentTask('Transcribing audio...');
           setProgress(35);
-          console.log(`Starting transcription. Blob size: ${audioBlob.size} bytes, Duration: ${(audioBlob.size / (96000 / 8)).toFixed(1)}s estimated`);
-          const transcription = await openaiService.transcribeAudio(audioBlob, storagePath, user.id);
-          console.log(`Transcription completed. Length: ${transcription.length} characters, ${transcription.split(/\s+/).length} words`);
+          console.log(`Starting transcription. Blob size: ${audioBlob.size} bytes, Storage path: ${storagePath}, Path type: ${typeof storagePath}, Path length: ${storagePath.length}`);
+          
+          let transcription: string;
+          try {
+            transcription = await openaiService.transcribeAudio(audioBlob, storagePath, user.id);
+            console.log(`Transcription completed. Length: ${transcription.length} characters, ${transcription.split(/\s+/).length} words`);
+          } catch (transcribeError) {
+            console.error('Transcription failed:', transcribeError);
+            // Re-throw to be caught by outer catch
+            throw transcribeError;
+          }
+          
           setProgress(60);
 
           // Create note title from transcription
@@ -158,7 +193,11 @@ export const ProcessingPage: React.FC = () => {
             'Daily transcription limit reached. Please try again tomorrow or contact support.'
           );
         } else {
-          setError(`Failed to process content: ${errorMessage}. Please try again.`);
+          // Only add "Please try again" if it's not already in the message
+          const displayMessage = errorMessage.includes('Please try again') 
+            ? `Failed to process content: ${errorMessage}` 
+            : `Failed to process content: ${errorMessage}. Please try again.`;
+          setError(displayMessage);
         }
       }
     };

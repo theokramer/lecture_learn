@@ -506,7 +506,7 @@ ${content.substring(0, 2000)}`;
   return (
     <motion.div
       ref={chatRef}
-      className="relative bg-[#2a2a2a] border-l border-[#3a3a3a] flex flex-col"
+      className="relative bg-[#2a2a2a] border-l border-[#3a3a3a] flex flex-col h-full"
       style={{ width: `${width}px` }}
       initial={{ opacity: 1 }}
       animate={{ opacity: 1 }}

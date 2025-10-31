@@ -396,17 +396,54 @@ async function generateAllStudyContent(noteId: string, content: string) {
     const { openaiService } = await import('./openai');
     const { summaryService } = await import('./summaryService');
 
-    // Fetch documents metadata for summary context
-    const documents = await documentService.getDocuments(noteId);
+    // Check if study_content exists and if summary already exists
+    const { data: existingRows } = await supabase
+      .from('study_content')
+      .select('id, summary')
+      .eq('note_id', noteId)
+      .order('updated_at', { ascending: false });
 
-    // Generate all study materials in parallel
-    const [flashcardsData, quizData, exercisesData, feynmanTopicsData, summaryData] = await Promise.allSettled([
+    // Handle duplicates: use the most recent row
+    const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
+    
+    // Clean up duplicates if found
+    if (existingRows && existingRows.length > 1) {
+      const duplicateIds = existingRows.slice(1).map(row => row.id);
+      supabase
+        .from('study_content')
+        .delete()
+        .in('id', duplicateIds)
+        .catch(err => console.error('Error cleaning up duplicates:', err));
+    }
+
+    const hasExistingSummary = existing?.summary && existing.summary.trim() !== '';
+
+    // Fetch documents metadata for summary context (only if we need to generate summary)
+    const documentsPromise = !hasExistingSummary 
+      ? documentService.getDocuments(noteId)
+      : Promise.resolve([]);
+
+    // Generate study materials in parallel
+    // Only generate summary if it doesn't already exist
+    const studyContentPromises = [
       openaiService.generateFlashcards(content),
       openaiService.generateQuiz(content),
       generateExercisesHelper(content),
       generateFeynmanTopicsHelper(content),
-      summaryService.generateIntelligentSummary(content, documents, { detailLevel: 'standard' }),
-    ]);
+    ];
+
+    // Add summary generation only if it doesn't exist
+    if (!hasExistingSummary) {
+      const documents = await documentsPromise;
+      studyContentPromises.push(
+        summaryService.generateIntelligentSummary(content, documents, { detailLevel: 'standard' })
+      );
+    } else {
+      // Add a resolved promise to keep array alignment
+      studyContentPromises.push(Promise.resolve(''));
+    }
+
+    const [flashcardsData, quizData, exercisesData, feynmanTopicsData, summaryData] = await Promise.allSettled(studyContentPromises);
 
     const flashcards = flashcardsData.status === 'fulfilled' 
       ? flashcardsData.value.map((f: any) => ({ id: `gen-${Date.now()}-${Math.random()}`, ...f }))
@@ -429,17 +466,10 @@ async function generateAllStudyContent(noteId: string, content: string) {
       ? feynmanTopicsData.value
       : [];
 
-    const summaryHtml = summaryData.status === 'fulfilled'
+    // Only set summary if we generated a new one (and it was successful)
+    const summaryHtml = !hasExistingSummary && summaryData.status === 'fulfilled'
       ? summaryData.value
       : '';
-
-    // Save all study content
-    // Check if study_content exists for this note
-    const { data: existing } = await supabase
-      .from('study_content')
-      .select('id')
-      .eq('note_id', noteId)
-      .maybeSingle();
 
     const contentData: any = {};
     
@@ -447,14 +477,19 @@ async function generateAllStudyContent(noteId: string, content: string) {
     contentData.quiz_questions = quizQuestions;
     contentData.exercises = exercises;
     contentData.feynman_topics = feynmanTopics;
-    if (summaryHtml) contentData.summary = summaryHtml;
+    
+    // Only include summary in update if we generated a new one
+    // Never overwrite existing summary
+    if (summaryHtml && !hasExistingSummary) {
+      contentData.summary = summaryHtml;
+    }
 
     if (existing) {
-      // Update existing
+      // Update only the most recent row (by ID) - summary will be preserved automatically (not in contentData if it exists)
       const { error } = await supabase
         .from('study_content')
         .update(contentData)
-        .eq('note_id', noteId);
+        .eq('id', existing.id);
 
       if (error) throw error;
     } else {
@@ -483,7 +518,7 @@ export const studyContentService = {
       .from('study_content')
       .select('*')
       .eq('note_id', noteId)
-      .maybeSingle();
+      .order('updated_at', { ascending: false });
 
     if (error) {
       console.error('Error loading study content:', error);
@@ -496,13 +531,46 @@ export const studyContentService = {
         feynmanTopics: [],
       };
     }
+
+    // Handle case where multiple rows exist (data integrity issue)
+    if (data && data.length > 1) {
+      console.warn(`Multiple study_content rows found for note ${noteId}. Using most recent and cleaning up duplicates.`);
+      
+      // Use the most recent row (already sorted by updated_at DESC)
+      const mostRecent = data[0];
+      
+      // Clean up duplicates in background (keep the most recent one)
+      const duplicateIds = data.slice(1).map(row => row.id);
+      if (duplicateIds.length > 0) {
+        supabase
+          .from('study_content')
+          .delete()
+          .in('id', duplicateIds)
+          .then(() => {
+            console.log(`Cleaned up ${duplicateIds.length} duplicate study_content rows for note ${noteId}`);
+          })
+          .catch(err => {
+            console.error('Error cleaning up duplicate study_content rows:', err);
+          });
+      }
+      
+      return {
+        summary: mostRecent.summary || '',
+        flashcards: mostRecent.flashcards || [],
+        quizQuestions: mostRecent.quiz_questions || [],
+        exercises: mostRecent.exercises || [],
+        feynmanTopics: mostRecent.feynman_topics || [],
+      };
+    }
     
-    return data ? {
-      summary: data.summary || '',
-      flashcards: data.flashcards || [],
-      quizQuestions: data.quiz_questions || [],
-      exercises: data.exercises || [],
-      feynmanTopics: data.feynman_topics || [],
+    // Normal case: 0 or 1 row
+    const singleData = data && data.length > 0 ? data[0] : null;
+    return singleData ? {
+      summary: singleData.summary || '',
+      flashcards: singleData.flashcards || [],
+      quizQuestions: singleData.quiz_questions || [],
+      exercises: singleData.exercises || [],
+      feynmanTopics: singleData.feynman_topics || [],
     } : {
       summary: '',
       flashcards: [],
@@ -518,6 +586,14 @@ export const studyContentService = {
 
   async generateAndSaveSummary(noteId: string, content: string, detailLevel: 'concise' | 'standard' | 'comprehensive' = 'standard') {
     try {
+      // Check if summary already exists - never regenerate if it exists
+      const existingContent = await this.getStudyContent(noteId);
+      if (existingContent.summary && existingContent.summary.trim() !== '') {
+        console.log('Summary already exists for note, returning existing summary');
+        return existingContent.summary;
+      }
+
+      // No summary exists, generate a new one
       const { summaryService } = await import('./summaryService');
       const documents = await documentService.getDocuments(noteId);
       const summary = await summaryService.generateIntelligentSummary(content, documents, { detailLevel });
@@ -540,11 +616,24 @@ export const studyContentService = {
     }
   ) {
     // Check if study_content exists for this note
-    const { data: existing } = await supabase
+    const { data: existingRows } = await supabase
       .from('study_content')
       .select('id')
       .eq('note_id', noteId)
-      .maybeSingle();
+      .order('updated_at', { ascending: false });
+
+    // Handle duplicates: use the most recent row
+    const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
+    
+    // Clean up duplicates if found
+    if (existingRows && existingRows.length > 1) {
+      const duplicateIds = existingRows.slice(1).map(row => row.id);
+      supabase
+        .from('study_content')
+        .delete()
+        .in('id', duplicateIds)
+        .catch(err => console.error('Error cleaning up duplicates:', err));
+    }
 
     const contentData: any = {};
     
@@ -555,11 +644,11 @@ export const studyContentService = {
     if (data.feynmanTopics !== undefined) contentData.feynman_topics = data.feynmanTopics;
 
     if (existing) {
-      // Update existing
+      // Update only the most recent row (by ID)
       const { error } = await supabase
         .from('study_content')
         .update(contentData)
-        .eq('note_id', noteId);
+        .eq('id', existing.id);
 
       if (error) throw error;
     } else {

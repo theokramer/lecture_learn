@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -144,6 +144,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   placeholder = 'Start typing...',
   editable = true,
 }) => {
+  const isUpdatingRef = useRef(false);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -197,11 +198,25 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   });
 
   useEffect(() => {
-    if (editor && content !== editor.getHTML()) {
-      // Preprocess content to convert LaTeX patterns to TipTap nodes
-      const processedContent = preprocessLaTeXContent(content);
-      editor.commands.setContent(processedContent);
-    }
+    if (!editor || isUpdatingRef.current) return;
+    
+    const currentContent = editor.getHTML();
+    if (content === currentContent) return;
+
+    // Defer setContent to avoid flushSync during render
+    isUpdatingRef.current = true;
+    queueMicrotask(() => {
+      try {
+        // Double-check content hasn't changed while we were waiting
+        if (editor && content !== editor.getHTML()) {
+          // Preprocess content to convert LaTeX patterns to TipTap nodes
+          const processedContent = preprocessLaTeXContent(content);
+          editor.commands.setContent(processedContent);
+        }
+      } finally {
+        isUpdatingRef.current = false;
+      }
+    });
   }, [content, editor]);
 
   const setLink = useCallback(() => {

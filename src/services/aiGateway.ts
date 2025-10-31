@@ -72,6 +72,12 @@ export const aiGateway = {
       // Always use storage path if provided (preferred method for reliability)
       if (finalStoragePath) {
         console.log(`Using storage-based transcription for path: ${finalStoragePath}`);
+        console.log('Request payload:', {
+          type: 'transcription',
+          storagePath: finalStoragePath,
+          storagePathType: typeof finalStoragePath,
+          storagePathLength: finalStoragePath.length,
+        });
         try {
           const result = await supabase.functions.invoke('ai-generate', {
             body: {
@@ -84,11 +90,24 @@ export const aiGateway = {
             hasData: !!result.data, 
             hasError: !!result.error,
             dataKeys: result.data ? Object.keys(result.data) : [],
-            errorType: typeof result.error
+            errorType: typeof result.error,
+            errorContent: result.error,
           });
           
           data = result.data;
           error = result.error;
+          
+          // If Supabase wrapped the error, try to extract the actual error message
+          if (error && typeof error === 'object') {
+            const errorContext = (error as any)?.context;
+            if (errorContext) {
+              console.log('Error context:', errorContext);
+              // If context is the error response body, extract the error message
+              if (errorContext.error || errorContext.message) {
+                console.log('Found error message in context:', errorContext.error || errorContext.message);
+              }
+            }
+          }
           
           // Check if data contains an error object (function returned error in JSON body)
           // Supabase functions.invoke might parse error responses into data instead of error
@@ -109,8 +128,58 @@ export const aiGateway = {
             error = { message: error };
           }
         } catch (invokeError: any) {
-          const errorMessage = invokeError?.message || String(invokeError);
           console.error('Invoke error:', invokeError);
+          console.error('Invoke error details:', {
+            message: invokeError?.message,
+            name: invokeError?.name,
+            context: invokeError?.context,
+            stack: invokeError?.stack,
+          });
+          
+          // Try to extract error message from Supabase error response
+          let errorMessage = invokeError?.message || String(invokeError);
+          const errorContext = invokeError?.context;
+          
+          // Try to read the response body if errorContext is a Response object
+          let responseBody: any = null;
+          if (errorContext instanceof Response) {
+            try {
+              // Clone the response so we can read it without consuming it
+              const clonedResponse = errorContext.clone();
+              const text = await clonedResponse.text();
+              console.log('Response body text:', text);
+              try {
+                responseBody = JSON.parse(text);
+                console.log('Parsed response body:', responseBody);
+              } catch (parseError) {
+                console.log('Failed to parse response as JSON, using raw text');
+                responseBody = { error: text };
+              }
+            } catch (readError) {
+              console.error('Failed to read response body:', readError);
+            }
+          }
+          
+          // Extract error from response body
+          if (responseBody) {
+            if (responseBody.error) {
+              errorMessage = responseBody.error;
+            } else if (responseBody.message) {
+              errorMessage = responseBody.message;
+            }
+          }
+          
+          // Supabase might wrap the error response body in context
+          if (errorContext && !(errorContext instanceof Response)) {
+            // If context has an error property, use it
+            if (errorContext.error) {
+              errorMessage = errorContext.error;
+            } else if (errorContext.message) {
+              errorMessage = errorContext.message;
+            } else if (typeof errorContext === 'string') {
+              errorMessage = errorContext;
+            }
+          }
           
           // Handle JSON parse errors (function might have returned HTML error page)
           if (errorMessage.includes('text/html') || 
@@ -118,6 +187,19 @@ export const aiGateway = {
               errorMessage.includes('Unexpected token')) {
             throw new Error(
               'Failed to transcribe audio from storage. The service may be temporarily unavailable. Please try again.'
+            );
+          }
+          
+          // Check for 400 Bad Request specifically
+          if (errorMessage.includes('400') || errorMessage.includes('Bad Request') || 
+              (errorContext instanceof Response && errorContext.status === 400)) {
+            // Use extracted error from response body if available
+            if (responseBody?.error) {
+              throw new Error(`Transcription request error: ${responseBody.error}`);
+            }
+            
+            throw new Error(
+              'Invalid transcription request. The audio file may not have been uploaded correctly. Please try recording again.'
             );
           }
           
@@ -310,6 +392,13 @@ export const aiGateway = {
       
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('Transcription error:', errorMessage);
+      
+      // If error already has a clear message, preserve it; otherwise wrap it
+      if (errorMessage && errorMessage.length > 0 && !errorMessage.includes('Failed to transcribe')) {
+        // Re-throw the original error to preserve its message
+        throw error;
+      }
+      
       throw new Error(`Failed to transcribe audio: ${errorMessage}`);
     }
   },

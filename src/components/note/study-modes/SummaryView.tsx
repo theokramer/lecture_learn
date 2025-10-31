@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RichTextEditor } from '../../shared/RichTextEditor';
 import { studyContentService } from '../../../services/supabase';
 import { useAppData } from '../../../context/AppDataContext';
@@ -24,6 +24,11 @@ export const SummaryView: React.FC = () => {
   const [showLaTeXGuide, setShowLaTeXGuide] = useState(false);
   const [generationFailed, setGenerationFailed] = useState(false);
   const [hasAttemptedAutoGenerate, setHasAttemptedAutoGenerate] = useState(false);
+  
+  // Track which note we've loaded the summary for to avoid reloading
+  const loadedNoteIdRef = useRef<string | null>(null);
+  // Track if initialization is complete to prevent race conditions
+  const initializationCompleteRef = useRef<boolean>(false);
 
   // LaTeX examples with proper escaping
   const latexExamples = {
@@ -38,30 +43,97 @@ export const SummaryView: React.FC = () => {
     },
   };
 
-  // Load existing summary
+  // Initialize from sessionStorage FIRST on mount/note change for instant display
+  // This must run before any other effects to prevent regeneration
+  useEffect(() => {
+    if (!selectedNoteId) return;
+    
+    // If we already loaded this note, skip
+    if (loadedNoteIdRef.current === selectedNoteId) return;
+    
+    // Mark as loaded immediately to prevent other effects from running
+    loadedNoteIdRef.current = selectedNoteId;
+    initializationCompleteRef.current = false;
+    
+    // Try to load from sessionStorage for instant display
+    const cacheKey = `summary_cache_${selectedNoteId}`;
+    const cachedSummary = sessionStorage.getItem(cacheKey);
+    if (cachedSummary && cachedSummary.trim() !== '') {
+      // Set all state synchronously to prevent auto-generation
+      setSummary(cachedSummary);
+      setHasSummary(true);
+      setHasAttemptedAutoGenerate(true);
+      setIsLoading(false);
+      initializationCompleteRef.current = true;
+    } else {
+      // No cache, will need to load from database
+      setHasSummary(false);
+      setIsLoading(true);
+      // Mark complete after a brief delay to allow loadSummary to run
+      setTimeout(() => {
+        initializationCompleteRef.current = true;
+      }, 100);
+    }
+  }, [selectedNoteId]);
+
+  // Load existing summary from database (runs after initialization)
   const loadSummary = useCallback(async () => {
     if (!selectedNoteId) return;
     
-    setIsLoading(true);
+    // If we already have the summary loaded for this note, don't reload
+    if (loadedNoteIdRef.current !== selectedNoteId) {
+      return; // Different note, wait for initialization effect
+    }
+    
+    const cacheKey = `summary_cache_${selectedNoteId}`;
+    const cachedSummary = sessionStorage.getItem(cacheKey);
+    
+    // If we already have a cached summary displayed, just verify in background
+    if (cachedSummary && cachedSummary.trim() !== '' && hasSummary) {
+      // Silently verify with database without showing loading
+      try {
+        const studyContent = await studyContentService.getStudyContent(selectedNoteId);
+        if (studyContent.summary && studyContent.summary.trim() !== '' && studyContent.summary !== cachedSummary) {
+          // Only update if database has different content
+          setSummary(studyContent.summary);
+          sessionStorage.setItem(cacheKey, studyContent.summary);
+        }
+      } catch (error) {
+        // Silently fail - we have cached version
+        console.debug('Background verification failed:', error);
+      }
+      return;
+    }
+    
+    // No cached version, load from database
     setGenerationFailed(false);
-    setHasAttemptedAutoGenerate(false);
     try {
       const studyContent = await studyContentService.getStudyContent(selectedNoteId);
       if (studyContent.summary && studyContent.summary.trim() !== '') {
         setSummary(studyContent.summary);
+        // Update cache
+        sessionStorage.setItem(cacheKey, studyContent.summary);
         setHasSummary(true);
+        // If summary exists, mark as attempted to prevent re-generation when switching tabs
+        setHasAttemptedAutoGenerate(true);
       } else {
+        // No summary in database
+        sessionStorage.removeItem(cacheKey);
         setSummary('');
         setHasSummary(false);
+        setHasAttemptedAutoGenerate(false);
       }
+      initializationCompleteRef.current = true;
     } catch (error) {
       console.error('Error loading summary:', error);
       setSummary('');
       setHasSummary(false);
+      setHasAttemptedAutoGenerate(false);
+      initializationCompleteRef.current = true;
     } finally {
       setIsLoading(false);
     }
-  }, [selectedNoteId]);
+  }, [selectedNoteId, hasSummary]);
 
   // Auto-save summary changes
   const saveSummary = useCallback(async (content: string) => {
@@ -70,6 +142,9 @@ export const SummaryView: React.FC = () => {
     setIsSaving(true);
     try {
       await studyContentService.saveSummary(selectedNoteId, content);
+      // Update cache
+      const cacheKey = `summary_cache_${selectedNoteId}`;
+      sessionStorage.setItem(cacheKey, content);
       setLastSaved(new Date());
       setHasSummary(true);
     } catch (error) {
@@ -105,6 +180,10 @@ export const SummaryView: React.FC = () => {
 
       setSummary(generatedSummary);
       setHasSummary(true);
+      loadedNoteIdRef.current = selectedNoteId;
+      // Cache the generated summary
+      const cacheKey = `summary_cache_${selectedNoteId}`;
+      sessionStorage.setItem(cacheKey, generatedSummary);
       setLastSaved(new Date());
       setGenerationFailed(false);
     } catch (error: any) {
@@ -127,28 +206,59 @@ export const SummaryView: React.FC = () => {
     }
   }, [selectedNoteId, currentNote, preferences.summaryDetailLevel, isGenerating]);
 
-  // Load summary on mount, when note changes, or when switching to summary view
+  // Load summary from database when switching to summary view or note changes
   useEffect(() => {
-    loadSummary();
-  }, [loadSummary, currentStudyMode]);
+    // Only load when we're actually on the summary view
+    if (currentStudyMode === 'summary') {
+      loadSummary();
+    }
+  }, [loadSummary, currentStudyMode, selectedNoteId]);
 
   // Auto-generate summary in background when no summary exists
   useEffect(() => {
+    // Wait for initialization to complete before checking
+    if (!initializationCompleteRef.current) return;
     if (!selectedNoteId || !currentNote || hasSummary || isLoading || isGenerating || hasAttemptedAutoGenerate) return;
     
     // Only auto-generate if there's enough content
     const content = currentNote.content || '';
     if (content.trim().length < 50) return;
 
-    // Set generating state immediately to show loading screen
-    setIsGenerating(true);
-    setHasAttemptedAutoGenerate(true);
+    // Double-check database before generating to avoid race conditions
+    const checkAndGenerate = async () => {
+      try {
+        const studyContent = await studyContentService.getStudyContent(selectedNoteId);
+        // If summary exists in database, load it instead of generating
+        if (studyContent.summary && studyContent.summary.trim() !== '') {
+          setSummary(studyContent.summary);
+          setHasSummary(true);
+          setHasAttemptedAutoGenerate(true);
+          const cacheKey = `summary_cache_${selectedNoteId}`;
+          sessionStorage.setItem(cacheKey, studyContent.summary);
+          return; // Don't generate if summary exists
+        }
 
-    // Trigger background generation
-    generateSummary(true).catch(err => {
-      console.error('Background summary generation failed:', err);
-      // Note: generateSummary will set isGenerating to false and generationFailed to true on error
-    });
+        // No summary exists, proceed with generation
+        setIsGenerating(true);
+        setHasAttemptedAutoGenerate(true);
+
+        // Trigger background generation
+        generateSummary(true).catch(err => {
+          console.error('Background summary generation failed:', err);
+          // Note: generateSummary will set isGenerating to false and generationFailed to true on error
+        });
+      } catch (error) {
+        console.error('Error checking for existing summary:', error);
+        // On error, still try to generate (might be network issue)
+        setIsGenerating(true);
+        setHasAttemptedAutoGenerate(true);
+        generateSummary(true).catch(err => {
+          console.error('Background summary generation failed:', err);
+        });
+      }
+    };
+
+    checkAndGenerate();
   }, [selectedNoteId, currentNote, hasSummary, isLoading, isGenerating, hasAttemptedAutoGenerate, generateSummary]);
 
   // Poll for newly generated summaries when we're generating or just finished
@@ -166,6 +276,9 @@ export const SummaryView: React.FC = () => {
           // Summary was generated! Load it automatically
           setSummary(studyContent.summary);
           setHasSummary(true);
+          // Cache it
+          const cacheKey = `summary_cache_${selectedNoteId}`;
+          sessionStorage.setItem(cacheKey, studyContent.summary);
           setLastSaved(new Date());
           setGenerationFailed(false);
         }

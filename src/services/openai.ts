@@ -93,6 +93,15 @@ export const openaiService = {
     } catch (error) {
       if (error instanceof DailyLimitError) throw error;
       console.error('Error transcribing audio:', error);
+      
+      // Preserve the original error message if it's already user-friendly
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // If the error already contains a clear message, use it; otherwise provide a generic one
+      if (errorMessage && !errorMessage.includes('Failed to transcribe audio')) {
+        throw error; // Re-throw original error if it has a meaningful message
+      }
+      
       throw new Error('Failed to transcribe audio. Please try again.');
     }
   },

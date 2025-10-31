@@ -158,7 +158,7 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
 
   if (isCollapsed) {
     return (
-      <div className="w-16 bg-[#2a2a2a] border-r border-[#3a3a3a] flex flex-col py-4">
+      <div className="w-16 bg-[#2a2a2a] border-r border-[#3a3a3a] flex flex-col py-4 h-full">
         {/* Hamburger Menu */}
         <div className="px-4 mb-6">
           <motion.button
@@ -219,7 +219,7 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
       initial={{ width: 250 }}
       animate={{ width: 250 }}
       transition={{ duration: 0.3 }}
-      className="bg-[#2a2a2a] border-r border-[#3a3a3a] flex flex-col"
+      className="bg-[#2a2a2a] border-r border-[#3a3a3a] flex flex-col h-full"
     >
       {/* Header with Hamburger */}
       <div className="p-4 border-b border-[#3a3a3a] flex items-center justify-end">

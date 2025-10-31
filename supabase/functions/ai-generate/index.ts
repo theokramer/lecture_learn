@@ -123,13 +123,41 @@ async function transcribeAudioFromStorage(storagePath: string, supabaseClient: a
   if (!OPENAI_API_KEY) throw new Error('Missing OPENAI_API_KEY');
   
   try {
+    console.log(`Attempting to download file from storage path: "${storagePath}"`);
+    console.log(`Storage client available: ${!!supabaseClient}, Storage available: ${!!supabaseClient?.storage}`);
+    
     // Download file from storage with timeout
     const downloadPromise = supabaseClient.storage
       .from('documents')
       .download(storagePath)
       .then((result: any) => {
-        if (result.error) throw result.error;
+        console.log('Storage download response:', {
+          hasData: !!result?.data,
+          hasError: !!result?.error,
+          dataSize: result?.data?.size,
+          errorDetails: result?.error,
+        });
+        
+        if (result.error) {
+          console.error('Storage download error:', result.error);
+          // Extract error message from Supabase error object
+          const errorMessage = result.error?.message || result.error?.error_description || JSON.stringify(result.error);
+          const errorToThrow = new Error(`Storage download failed: ${errorMessage}`);
+          (errorToThrow as any).supabaseError = result.error;
+          throw errorToThrow;
+        }
         return result;
+      })
+      .catch((error: any) => {
+        // Log the full error for debugging
+        console.error('Storage download promise error:', {
+          errorType: typeof error,
+          errorName: error?.name,
+          errorMessage: error?.message,
+          supabaseError: error?.supabaseError,
+          fullError: error,
+        });
+        throw error;
       });
     
     const timeoutPromise = new Promise((_, reject) => {
@@ -139,23 +167,43 @@ async function transcribeAudioFromStorage(storagePath: string, supabaseClient: a
     let downloadResult: any;
     try {
       downloadResult = await Promise.race([downloadPromise, timeoutPromise]);
-    } catch (error) {
+    } catch (error: any) {
       const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('Storage download failed:', errorMsg);
+      console.error('Storage download error details:', {
+        message: errorMsg,
+        errorType: typeof error,
+        errorName: error?.name,
+        supabaseError: error?.supabaseError,
+        stack: error?.stack,
+      });
+      
       if (errorMsg.includes('timeout')) {
         throw new Error('Storage download timeout after 30 seconds');
       }
-      throw error;
+      // Check for common storage errors
+      if (errorMsg.includes('not found') || errorMsg.includes('404') || errorMsg.includes('NoSuchKey')) {
+        throw new Error(`Audio file not found in storage at path: ${storagePath}`);
+      }
+      if (errorMsg.includes('permission') || errorMsg.includes('403') || errorMsg.includes('Forbidden')) {
+        throw new Error(`Permission denied accessing audio file at path: ${storagePath}`);
+      }
+      if (errorMsg.includes('400') || errorMsg.includes('Bad Request')) {
+        throw new Error(`Invalid storage path or request: ${storagePath}. Error: ${errorMsg}`);
+      }
+      // Re-throw with more context
+      throw new Error(`Storage download failed: ${errorMsg}`);
     }
     
     const { data: fileData } = downloadResult;
     
     if (!fileData) {
-      console.error('Storage download error: No file data returned');
+      console.error('Storage download error: No file data returned for path:', storagePath);
       throw new Error('Failed to download audio from storage: No file data returned');
     }
     
     // Log file info for debugging
-    console.log(`Downloaded file from storage: ${storagePath}, size: ${fileData.size} bytes`);
+    console.log(`Downloaded file from storage: ${storagePath}, size: ${fileData.size} bytes, type: ${fileData.type || 'unknown'}`);
     
     // Convert blob to File for FormData
     const formData = new FormData();
@@ -217,7 +265,17 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
-    const body = await req.json();
+    let body: any;
+    try {
+      body = await req.json();
+    } catch (jsonError) {
+      console.error('JSON parse error:', jsonError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid request body. Expected JSON.' }), 
+        { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
+    }
+    
     const requestType = body?.type || 'chat'; // 'chat' or 'transcription'
 
     // Enforce limit for both chat and transcription
@@ -235,17 +293,35 @@ Deno.serve(async (req: Request) => {
       const audioBase64 = body?.audioBase64;
       const mimeType = body?.mimeType || 'audio/webm';
       
+      console.log('Transcription request received:', {
+        hasStoragePath: !!storagePath,
+        storagePathType: typeof storagePath,
+        storagePathValue: storagePath,
+        storagePathLength: storagePath ? storagePath.length : 0,
+        hasAudioBase64: !!audioBase64,
+        audioBase64Length: audioBase64 ? audioBase64.length : 0,
+        bodyKeys: Object.keys(body || {}),
+      });
+      
       // If storage path is provided, use storage-based transcription (for large files)
-      if (storagePath) {
+      // Validate storagePath is a non-empty string
+      if (storagePath && typeof storagePath === 'string' && storagePath.trim().length > 0) {
+        const trimmedPath = storagePath.trim();
         try {
-          console.log(`Starting transcription from storage path: ${storagePath}`);
+          console.log(`Starting transcription from storage path: "${trimmedPath}"`);
           // Use the authenticated supabase client for storage operations
-          const result = await transcribeAudioFromStorage(storagePath, supabase);
+          const result = await transcribeAudioFromStorage(trimmedPath, supabase);
           console.log('Transcription successful');
           return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
         } catch (transcribeError) {
           const errorMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
           console.error('Transcription error:', errorMsg);
+          console.error('Error details:', {
+            errorType: typeof transcribeError,
+            errorName: transcribeError instanceof Error ? transcribeError.name : 'N/A',
+            storagePath: trimmedPath,
+            stack: transcribeError instanceof Error ? transcribeError.stack : 'N/A',
+          });
           
           // Return proper JSON error responses instead of throwing (which might return HTML)
           if (errorMsg.includes('too large') || errorMsg.includes('413') || errorMsg.includes('25MB')) {
@@ -266,12 +342,21 @@ Deno.serve(async (req: Request) => {
             );
           }
           
-          if (errorMsg.includes('download') || errorMsg.includes('storage')) {
+          if (errorMsg.includes('download') || errorMsg.includes('storage') || errorMsg.includes('not found') || errorMsg.includes('404')) {
             return new Response(
               JSON.stringify({ 
                 error: `Failed to access audio file from storage: ${errorMsg}` 
               }), 
               { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+            );
+          }
+          
+          if (errorMsg.includes('permission') || errorMsg.includes('403') || errorMsg.includes('Forbidden')) {
+            return new Response(
+              JSON.stringify({ 
+                error: `Permission denied accessing audio file: ${errorMsg}` 
+              }), 
+              { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
             );
           }
           
@@ -287,7 +372,20 @@ Deno.serve(async (req: Request) => {
       
       // Fallback to base64 for small files
       if (!audioBase64) {
-        return new Response(JSON.stringify({ error: 'Missing audioBase64 or storagePath' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+        console.error('Transcription request missing both storagePath and audioBase64:', {
+          bodyKeys: Object.keys(body || {}),
+          storagePathValue: storagePath,
+          storagePathType: typeof storagePath,
+          storagePathTrimmed: storagePath ? storagePath.trim() : null,
+          storagePathLength: storagePath ? storagePath.length : 0,
+          storagePathTrimmedLength: storagePath ? storagePath.trim().length : 0,
+        });
+        return new Response(
+          JSON.stringify({ 
+            error: `Missing audioBase64 or storagePath. Provide either a storagePath (string) or audioBase64 (string) for transcription. Received: storagePath=${JSON.stringify(storagePath)}, type=${typeof storagePath}` 
+          }), 
+          { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
       }
       
       // Check size before processing (base64 string length, approximate original size is ~75% of base64 length)
