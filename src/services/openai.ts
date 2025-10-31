@@ -1,11 +1,4 @@
-import OpenAI from 'openai';
 import { aiGateway, DailyLimitError } from './aiGateway';
-
-// NOTE: We keep transcription via client for now; generation routes through aiGateway.
-const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-const openai = apiKey
-  ? new OpenAI({ apiKey, dangerouslyAllowBrowser: true })
-  : (null as any);
 
 // Helper function to truncate content to ~2000 tokens (approximately 1500 words)
 function truncateContent(content: string, maxWords: number = 1500): string {
@@ -95,10 +88,13 @@ function extractJSON(text: string): string {
 
 export const openaiService = {
   async transcribeAudio(audioBlob: Blob): Promise<string> {
-    if (!openai) throw new Error('Audio transcription unavailable.');
-    const file = new File([audioBlob], 'audio.webm', { type: 'audio/webm' });
-    const transcription = await openai.audio.transcriptions.create({ file, model: 'whisper-1' });
-    return transcription.text || '';
+    try {
+      return await aiGateway.transcribeAudio(audioBlob);
+    } catch (error) {
+      if (error instanceof DailyLimitError) throw error;
+      console.error('Error transcribing audio:', error);
+      throw new Error('Failed to transcribe audio. Please try again.');
+    }
   },
 
   async generateFlashcards(text: string, count: number = 20): Promise<Array<{ front: string; back: string }>> {

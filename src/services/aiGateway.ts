@@ -21,6 +21,7 @@ export const aiGateway = {
   ): Promise<string> {
     const { data, error } = await supabase.functions.invoke('ai-generate', {
       body: {
+        type: 'chat',
         messages,
         model: options?.model || 'gpt-4o-mini',
         temperature: options?.temperature ?? 0.7,
@@ -30,7 +31,6 @@ export const aiGateway = {
     if (error) {
       // Supabase wraps non-2xx as error; try to parse limit response shape
       const errBody: any = (error as any)?.context || {};
-      const code = errBody?.code || (error as any)?.name;
       if (errBody?.code === 'DAILY_LIMIT_REACHED') {
         throw new DailyLimitError(errBody?.message || 'Daily limit reached', {
           limit: errBody.limit ?? 15,
@@ -43,6 +43,39 @@ export const aiGateway = {
     }
 
     return (data as any)?.content ?? '';
+  },
+
+  async transcribeAudio(audioBlob: Blob): Promise<string> {
+    // Convert blob to base64 efficiently
+    const arrayBuffer = await audioBlob.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    const binaryString = Array.from(uint8Array, byte => String.fromCharCode(byte)).join('');
+    const base64 = btoa(binaryString);
+    const mimeType = audioBlob.type || 'audio/webm';
+
+    const { data, error } = await supabase.functions.invoke('ai-generate', {
+      body: {
+        type: 'transcription',
+        audioBase64: base64,
+        mimeType,
+      },
+    } as any);
+
+    if (error) {
+      // Supabase wraps non-2xx as error; try to parse limit response shape
+      const errBody: any = (error as any)?.context || {};
+      if (errBody?.code === 'DAILY_LIMIT_REACHED') {
+        throw new DailyLimitError(errBody?.message || 'Daily limit reached', {
+          limit: errBody.limit ?? 15,
+          remaining: errBody.remaining ?? 0,
+          resetAt: errBody.resetAt ?? new Date().toISOString(),
+          code: 'DAILY_LIMIT_REACHED',
+        });
+      }
+      throw error;
+    }
+
+    return (data as any)?.text ?? '';
   },
 };
 

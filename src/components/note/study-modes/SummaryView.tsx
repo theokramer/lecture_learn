@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RichTextEditor } from '../../shared/RichTextEditor';
-import { summaryService } from '../../../services/summaryService';
 import { studyContentService } from '../../../services/supabase';
 import { useAppData } from '../../../context/AppDataContext';
 import { motion, AnimatePresence } from 'framer-motion';

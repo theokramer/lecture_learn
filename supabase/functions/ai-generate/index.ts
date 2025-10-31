@@ -87,6 +87,38 @@ async function callOpenAI(messages: any[], model = 'gpt-4o-mini', temperature = 
   return { content };
 }
 
+async function transcribeAudio(audioBase64: string, mimeType: string = 'audio/webm') {
+  if (!OPENAI_API_KEY) throw new Error('Missing OPENAI_API_KEY');
+  
+  // Convert base64 to bytes for FormData
+  const binaryString = atob(audioBase64);
+  const audioBytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    audioBytes[i] = binaryString.charCodeAt(i);
+  }
+  
+  const blob = new Blob([audioBytes], { type: mimeType });
+  const formData = new FormData();
+  const file = new File([blob], 'audio.webm', { type: mimeType });
+  formData.append('file', file);
+  formData.append('model', 'whisper-1');
+
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: formData
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`OpenAI transcription error: ${res.status} ${err}`);
+  }
+  const json = await res.json();
+  return { text: json.text || '' };
+}
+
 Deno.serve(async (req: Request) => {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -107,11 +139,9 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const messages = body?.messages ?? [];
-    const model = body?.model ?? 'gpt-4o-mini';
-    const temperature = body?.temperature ?? 0.7;
+    const requestType = body?.type || 'chat'; // 'chat' or 'transcription'
 
-    // Enforce limit
+    // Enforce limit for both chat and transcription
     const limitResponse = await incrementUsageOrThrow(supabase, user.id);
     if (limitResponse) {
       // Ensure CORS headers on limit response
@@ -120,7 +150,21 @@ Deno.serve(async (req: Request) => {
       return new Response(body, { status: lr.status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
-    // Proxy to OpenAI
+    // Handle transcription
+    if (requestType === 'transcription') {
+      const audioBase64 = body?.audioBase64;
+      const mimeType = body?.mimeType || 'audio/webm';
+      if (!audioBase64) {
+        return new Response(JSON.stringify({ error: 'Missing audioBase64' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+      }
+      const result = await transcribeAudio(audioBase64, mimeType);
+      return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    // Handle chat completion
+    const messages = body?.messages ?? [];
+    const model = body?.model ?? 'gpt-4o-mini';
+    const temperature = body?.temperature ?? 0.7;
     const result = await callOpenAI(messages, model, temperature);
     return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e) {
