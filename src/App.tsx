@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppDataProvider } from './context/AppDataContext';
 import { SettingsProvider } from './context/SettingsContext';
+import { PdfSelectionProvider } from './context/PdfSelectionContext';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { HomePage } from './pages/HomePage';
 import { NoteViewPage } from './pages/NoteViewPage';
@@ -26,7 +27,8 @@ function App() {
     <AuthProvider>
       <SettingsProvider>
         <AppDataProvider>
-          <Router>
+          <PdfSelectionProvider>
+            <Router>
           <Routes>
             <Route path="/login" element={<LoginScreen />} />
             <Route
@@ -120,6 +122,7 @@ function App() {
             <Route path="/" element={<Navigate to="/home" />} />
           </Routes>
         </Router>
+          </PdfSelectionProvider>
         </AppDataProvider>
       </SettingsProvider>
     </AuthProvider>

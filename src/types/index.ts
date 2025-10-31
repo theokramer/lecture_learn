@@ -38,7 +38,7 @@ export interface UserPreferences {
   summaryDetailLevel?: 'concise' | 'standard' | 'comprehensive';
 }
 
-export type StudyMode = 'summary' | 'transcript' | 'feynman' | 'flashcards' | 'quiz' | 'exercises' | 'documents';
+export type StudyMode = 'summary' | 'transcript' | 'feynman' | 'flashcards' | 'quiz' | 'exercises' | 'documents' | 'ai-chat';
 
 export interface ChatMessage {
   id: string;

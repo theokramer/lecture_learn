@@ -1,16 +1,22 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { IoAdd, IoDownloadOutline, IoRefresh } from 'react-icons/io5';
+import { IoAdd, IoDownloadOutline, IoRefresh, IoEyeOutline, IoPencil, IoCheckmark, IoClose } from 'react-icons/io5';
 import { HiDocument } from 'react-icons/hi2';
 import { useAppData } from '../../context/AppDataContext';
 import { Button } from '../shared/Button';
-import { storageService, studyContentService } from '../../services/supabase';
+import { storageService, studyContentService, documentService } from '../../services/supabase';
 import { AudioPlayer } from '../audio/AudioPlayer';
+import { DocumentPreview } from './DocumentPreview';
 
 export const DocumentManagement: React.FC = () => {
-  const { notes, selectedNoteId, uploadDocumentToNote } = useAppData();
+  const { notes, selectedNoteId, uploadDocumentToNote, refreshData } = useAppData();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
+  const [previewDocument, setPreviewDocument] = useState<{ id: string; name: string; type: string; url: string } | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [draggedOverId, setDraggedOverId] = useState<string | null>(null);
 
   const currentNote = notes.find(n => n.id === selectedNoteId);
   const documents = currentNote?.documents || [];
@@ -114,6 +120,90 @@ export const DocumentManagement: React.FC = () => {
     }
   };
 
+  const handlePreview = (doc: any) => {
+    // Only show preview for PDFs and images
+    if (doc.type === 'pdf' || doc.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+      setPreviewDocument(doc);
+    }
+  };
+
+  const handleStartRename = (doc: any) => {
+    setRenamingId(doc.id);
+    setRenameValue(doc.name);
+  };
+
+  const handleSaveRename = async (docId: string) => {
+    if (!renameValue.trim()) {
+      setRenamingId(null);
+      return;
+    }
+
+    try {
+      await documentService.renameDocument(docId, renameValue.trim());
+      setRenamingId(null);
+      await refreshData();
+    } catch (error) {
+      console.error('Error renaming document:', error);
+      alert('Failed to rename document');
+    }
+  };
+
+  const handleCancelRename = () => {
+    setRenamingId(null);
+    setRenameValue('');
+  };
+
+  const handleDragStart = (e: React.DragEvent, docId: string) => {
+    setDraggedId(docId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, docId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedId && draggedId !== docId) {
+      setDraggedOverId(docId);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDraggedOverId(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetDocId: string) => {
+    e.preventDefault();
+    
+    if (!draggedId || draggedId === targetDocId || !currentNote) {
+      setDraggedId(null);
+      setDraggedOverId(null);
+      return;
+    }
+
+    try {
+      const draggedDoc = documents.find(d => d.id === draggedId);
+      const targetDoc = documents.find(d => d.id === targetDocId);
+      
+      if (!draggedDoc || !targetDoc) return;
+
+      // Calculate new order based on target position
+      const draggedIndex = documents.findIndex(d => d.id === draggedId);
+      const targetIndex = documents.findIndex(d => d.id === targetDocId);
+
+      // Create a new date that places the dragged item after the target
+      const baseDate = new Date(targetDoc.uploadedAt);
+      const newDate = new Date(baseDate.getTime() + (draggedIndex < targetIndex ? 1000 : -1000));
+
+      await documentService.updateDocumentOrder(draggedId, newDate);
+      await refreshData();
+    } catch (error) {
+      console.error('Error reordering document:', error);
+      alert('Failed to reorder document');
+    } finally {
+      setDraggedId(null);
+      setDraggedOverId(null);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-12">
       <div className="flex items-center justify-between mb-6">
@@ -145,30 +235,92 @@ export const DocumentManagement: React.FC = () => {
           {documents.map((doc) => {
             const isAudio = doc.type === 'audio' || doc.type === 'video';
             const audioUrl = audioUrls[doc.id];
+            const isRenaming = renamingId === doc.id;
+            const isDraggedOver = draggedOverId === doc.id;
+            const canPreview = doc.type === 'pdf' || doc.name.match(/\.(jpg|jpeg|png|gif|webp)$/i);
 
             return (
               <div key={doc.id}>
                 <div
-                  className="flex items-center justify-between p-4 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a] hover:bg-[#323232] hover:border-[#4a4a4a] transition-all"
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, doc.id)}
+                  onDragOver={(e) => handleDragOver(e, doc.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, doc.id)}
+                  className={`flex items-center justify-between p-4 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a] hover:bg-[#323232] hover:border-[#4a4a4a] transition-all cursor-move ${
+                    isDraggedOver ? 'border-[#b85a3a] bg-[#323232]' : ''
+                  } ${draggedId === doc.id ? 'opacity-50' : ''}`}
                 >
                   <div className="flex items-center gap-4 flex-1 min-w-0">
                     <span className="text-3xl flex-shrink-0">{getDocumentIcon(doc.type)}</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-white text-base font-medium truncate">{doc.name}</p>
-                      <div className="flex items-center gap-3 text-sm text-[#9ca3af] mt-1">
-                        <span className="capitalize">{doc.type}</span>
-                        <span>•</span>
-                        <span>{formatFileSize(doc.size)}</span>
-                      </div>
+                      {isRenaming ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveRename(doc.id);
+                              if (e.key === 'Escape') handleCancelRename();
+                            }}
+                            className="flex-1 px-2 py-1 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-white text-base"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleSaveRename(doc.id)}
+                            className="p-1 rounded hover:bg-[#3a3a3a] text-green-400"
+                            title="Save"
+                          >
+                            <IoCheckmark className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={handleCancelRename}
+                            className="p-1 rounded hover:bg-[#3a3a3a] text-red-400"
+                            title="Cancel"
+                          >
+                            <IoClose className="w-5 h-5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-white text-base font-medium truncate">{doc.name}</p>
+                          <div className="flex items-center gap-3 text-sm text-[#9ca3af] mt-1">
+                            <span className="capitalize">{doc.type}</span>
+                            <span>•</span>
+                            <span>{formatFileSize(doc.size)}</span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleDownload(doc)}
-                    className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors text-[#9ca3af] hover:text-white ml-4"
-                    title="Download document"
-                  >
-                    <IoDownloadOutline className="w-6 h-6" />
-                  </button>
+                  <div className="flex items-center gap-2 ml-4">
+                    {canPreview && !isRenaming && (
+                      <button
+                        onClick={() => handlePreview(doc)}
+                        className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors text-[#9ca3af] hover:text-white"
+                        title="Preview document"
+                      >
+                        <IoEyeOutline className="w-5 h-5" />
+                      </button>
+                    )}
+                    {!isRenaming && (
+                      <button
+                        onClick={() => handleStartRename(doc)}
+                        className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors text-[#9ca3af] hover:text-white"
+                        title="Rename document"
+                      >
+                        <IoPencil className="w-5 h-5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDownload(doc)}
+                      className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors text-[#9ca3af] hover:text-white"
+                      title="Download document"
+                    >
+                      <IoDownloadOutline className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
                 
                 {/* Audio Player for audio/video files */}
@@ -205,6 +357,13 @@ export const DocumentManagement: React.FC = () => {
             No documents attached. Click "Add Document" to upload files.
           </p>
         </div>
+      )}
+
+      {previewDocument && (
+        <DocumentPreview
+          document={previewDocument}
+          onClose={() => setPreviewDocument(null)}
+        />
       )}
     </div>
   );

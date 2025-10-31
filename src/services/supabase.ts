@@ -252,6 +252,25 @@ export const documentService = {
     if (error) throw error;
   },
 
+  async renameDocument(documentId: string, newName: string): Promise<void> {
+    const { error } = await supabase
+      .from('documents')
+      .update({ name: newName })
+      .eq('id', documentId);
+
+    if (error) throw error;
+  },
+
+  async updateDocumentOrder(documentId: string, newOrder: Date): Promise<void> {
+    // Update uploaded_at to change order (simple approach without schema changes)
+    const { error } = await supabase
+      .from('documents')
+      .update({ uploaded_at: newOrder.toISOString() })
+      .eq('id', documentId);
+
+    if (error) throw error;
+  },
+
   getFileType(mimeType: string): DocumentType {
     if (mimeType.startsWith('audio/')) return 'audio';
     if (mimeType.startsWith('video/')) return 'video';
@@ -277,11 +296,23 @@ export const storageService = {
   },
 
   async getFileUrl(path: string): Promise<string> {
-    const urlData = supabase.storage
+    // For private buckets, download the file and create a blob URL
+    // This allows PDF.js and other libraries to access the file
+    const { data, error } = await supabase.storage
       .from('documents')
-      .getPublicUrl(path);
+      .download(path);
 
-    return urlData.data.publicUrl;
+    if (error) {
+      // Fallback to public URL if download fails (for public buckets)
+      const urlData = supabase.storage
+        .from('documents')
+        .getPublicUrl(path);
+      return urlData.data.publicUrl;
+    }
+
+    // Create a blob URL that can be used by PDF.js
+    const blob = data;
+    return URL.createObjectURL(blob);
   },
 
   async downloadFile(path: string): Promise<Blob> {
@@ -306,7 +337,8 @@ export const storageService = {
 // Helper functions for generating study content
 async function generateExercisesHelper(content: string) {
   try {
-    const { openaiService } = await import('./openai');
+    const { openaiService, extractJSON } = await import('./openai');
+    
     const prompt = `Based on the following note content, generate 8-10 practical exercises that help students practice and apply what they've learned. 
 
 Note content:
@@ -323,18 +355,56 @@ Make the exercises:
 3. Cover different aspects of the topic
 4. Include clear instructions
 
-Return only the JSON array, no other text.`;
+IMPORTANT: Return ONLY valid JSON array. Escape all special characters properly. Use \\n for newlines in strings. Ensure all quotes within strings are escaped. Do not include any markdown formatting, just pure JSON.`;
 
     const response = await openaiService.chatCompletions(
       [{ role: 'user', content: prompt }],
-      'You are an educational assistant creating practice exercises.'
+      'You are an educational assistant creating practice exercises. Always return valid JSON with properly escaped characters.'
     );
     
-    const jsonMatch = response.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+    // Extract JSON using the helper from openai.ts
+    let jsonString = extractJSON(response);
+    
+    // If extractJSON didn't find anything, try simple array match
+    if (!jsonString || jsonString === response) {
+      const arrayMatch = response.match(/(\[[\s\S]*\])/);
+      if (arrayMatch) {
+        jsonString = arrayMatch[1];
+      } else {
+        console.warn('No JSON array found in exercise generation response');
+        return [];
+      }
     }
-    return [];
+    
+    // Clean up the JSON string - remove any leading/trailing whitespace
+    jsonString = jsonString.trim();
+    
+    // Try to find the actual array boundaries
+    const firstBracket = jsonString.indexOf('[');
+    const lastBracket = jsonString.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+      jsonString = jsonString.substring(firstBracket, lastBracket + 1);
+    }
+    
+    try {
+      // Try parsing the JSON
+      return JSON.parse(jsonString);
+    } catch (parseError: any) {
+      // If parsing fails, log detailed error information
+      console.error('Error parsing exercises JSON:', parseError);
+      console.error('Parse error position:', parseError.message);
+      console.error('JSON preview (first 1000 chars):', jsonString.substring(0, 1000));
+      
+      // Try to recover by finding the position and fixing common issues
+      const errorMatch = parseError.message.match(/position (\d+)/);
+      if (errorMatch) {
+        const errorPos = parseInt(errorMatch[1], 10);
+        console.error('Error at position:', errorPos);
+        console.error('Context around error:', jsonString.substring(Math.max(0, errorPos - 50), Math.min(jsonString.length, errorPos + 50)));
+      }
+      
+      return [];
+    }
   } catch (error) {
     console.error('Error generating exercises:', error);
     return [];

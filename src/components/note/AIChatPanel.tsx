@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { HiPlus, HiPaperAirplane, HiSparkles, HiLightBulb } from 'react-icons/hi2';
 import { useAppData } from '../../context/AppDataContext';
 import { useAuth } from '../../context/AuthContext';
+import { usePdfSelection } from '../../context/PdfSelectionContext';
 import { openaiService } from '../../services/openai';
 import { chatHistoryService, type ChatMessage } from '../../services/chatHistoryService';
 import { MarkdownRenderer } from '../shared/MarkdownRenderer';
@@ -30,6 +31,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
 }) => {
   const { selectedNoteId, notes } = useAppData();
   const { user } = useAuth();
+  const { selectedText: pdfSelectedText, clearSelection } = usePdfSelection();
   const currentNote = notes.find(n => n.id === selectedNoteId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -117,6 +119,23 @@ ${content.substring(0, 2000)}`;
     }
   };
 
+  // Listen for quick action events from PDF selection
+  useEffect(() => {
+    const handleQuickAction = (event: CustomEvent) => {
+      const { message } = event.detail;
+      if (message && user) {
+        // Create a temporary handler that uses the current message
+        handleSend(message);
+      }
+    };
+
+    window.addEventListener('ai-chat-quick-action', handleQuickAction as EventListener);
+    return () => {
+      window.removeEventListener('ai-chat-quick-action', handleQuickAction as EventListener);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   // Scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -183,15 +202,24 @@ ${content.substring(0, 2000)}`;
     const textToSend = messageText || input.trim();
     if (!textToSend || !user) return;
 
+    // If messageText is provided (from quick action), it already includes the selected text
+    // Otherwise, if there's selected PDF text from context, include it
+    const fullMessage = messageText 
+      ? textToSend // Quick action already formatted with selected text
+      : (pdfSelectedText 
+        ? `[Selected text from PDF: "${pdfSelectedText}"]\n\n${textToSend}`
+        : textToSend);
+
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: textToSend,
+      content: fullMessage,
       timestamp: new Date(),
     };
 
     setMessages(prev => [...prev, userMessage]);
     if (!messageText) setInput('');
+    if (pdfSelectedText) clearSelection(); // Clear PDF selection after sending
     setIsLoading(true);
     setShowSuggestions(false);
 
@@ -199,7 +227,7 @@ ${content.substring(0, 2000)}`;
       // Save user message (only if conversation exists and table is set up)
       if (conversationId) {
         try {
-          await chatHistoryService.saveMessage(conversationId, 'user', textToSend);
+          await chatHistoryService.saveMessage(conversationId, 'user', fullMessage);
         } catch (saveError: any) {
           // If save fails due to missing table, continue anyway
           if (saveError?.code !== 'PGRST205') {
@@ -211,7 +239,7 @@ ${content.substring(0, 2000)}`;
       // Get AI response
       const context = currentNote?.content || '';
       const aiResponse = await openaiService.chatCompletions([
-        { role: 'user', content: textToSend }
+        { role: 'user', content: fullMessage }
       ], context);
 
       const aiMessage: ChatMessage = {
@@ -386,6 +414,27 @@ ${content.substring(0, 2000)}`;
 
         {/* Input */}
         <div className="p-6 border-t border-[#3a3a3a] space-y-3">
+          {/* PDF Selection Indicator */}
+          {pdfSelectedText && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="px-3 py-2 bg-[#1a1a1a] border border-[#b85a3a] rounded-lg text-xs text-white"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate flex-1">
+                  📄 Selected: "{pdfSelectedText.substring(0, 50)}{pdfSelectedText.length > 50 ? '...' : ''}"
+                </span>
+                <button
+                  onClick={clearSelection}
+                  className="text-[#9ca3af] hover:text-white transition-colors"
+                  title="Clear selection"
+                >
+                  ✕
+                </button>
+              </div>
+            </motion.div>
+          )}
           {/* Templates */}
           {showTemplates && (
             <div className="grid grid-cols-2 gap-2">
@@ -416,7 +465,7 @@ ${content.substring(0, 2000)}`;
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-              placeholder="Ask anything..."
+              placeholder={pdfSelectedText ? `Ask about "${pdfSelectedText.substring(0, 30)}..."` : "Ask anything..."}
               className="flex-1 px-4 py-3 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#b85a3a] transition-colors"
             />
             <button

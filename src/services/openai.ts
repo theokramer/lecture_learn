@@ -69,7 +69,7 @@ function buildBalancedContext(content: string, maxWords: number = 1500): string 
 }
 
 // Helper function to extract JSON from markdown code blocks
-function extractJSON(text: string): string {
+export function extractJSON(text: string): string {
   // Try to find JSON in markdown code blocks
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) {

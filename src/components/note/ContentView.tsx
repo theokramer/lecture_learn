@@ -9,6 +9,7 @@ import { FlashcardsView } from './study-modes/FlashcardsView';
 import { QuizView } from './study-modes/QuizView';
 import { ExercisesView } from './study-modes/ExercisesView';
 import { DocumentManagement } from './DocumentManagement';
+import { AIChatView } from './study-modes/AIChatView';
 
 export const ContentView: React.FC = () => {
   const { currentStudyMode, selectedNoteId, notes } = useAppData();
@@ -34,6 +35,8 @@ export const ContentView: React.FC = () => {
         return <ExercisesView noteContent={currentNote?.content || ''} />;
       case 'documents':
         return <DocumentManagement />;
+      case 'ai-chat':
+        return <AIChatView />;
       default:
         return <SummaryView />;
     }
@@ -50,7 +53,7 @@ export const ContentView: React.FC = () => {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-8 pb-12">
+      <div className={`flex-1 overflow-hidden ${currentStudyMode === 'ai-chat' ? 'p-0' : 'overflow-auto p-8 pb-12'}`}>
         {renderMode()}
       </div>
     </div>

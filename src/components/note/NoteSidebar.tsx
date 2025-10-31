@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { HiHome, HiDocument, HiMicrophone, HiRectangleStack, HiQuestionMarkCircle, HiBookOpen, HiBars3, HiFolder, HiDocumentText } from 'react-icons/hi2';
+import { HiHome, HiDocument, HiMicrophone, HiRectangleStack, HiQuestionMarkCircle, HiBookOpen, HiBars3, HiFolder, HiDocumentText, HiSparkles } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 import type { StudyMode } from '../../types';
 
@@ -26,6 +26,7 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
     { icon: HiQuestionMarkCircle, label: 'Quiz', mode: 'quiz' as StudyMode },
     { icon: HiBookOpen, label: 'Exercises', mode: 'exercises' as StudyMode },
     { icon: HiDocumentText, label: 'Transcript', mode: 'transcript' as StudyMode },
+    { icon: HiSparkles, label: 'AI Chat', mode: 'ai-chat' as StudyMode },
   ];
 
   if (isCollapsed) {
