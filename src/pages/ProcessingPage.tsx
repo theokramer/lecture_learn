@@ -134,7 +134,27 @@ export const ProcessingPage: React.FC = () => {
         }
       } catch (err) {
         console.error('Processing error:', err);
-        setError('Failed to process content. Please try again.');
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        
+        // Provide more specific error messages
+        if (errorMessage.includes('too large') || errorMessage.includes('size')) {
+          setError(
+            'The audio recording is too large to process. ' +
+            'For long recordings (over 2 minutes), please try recording in shorter segments, ' +
+            'or the system will automatically reduce quality for longer recordings.'
+          );
+        } else if (errorMessage.includes('timeout')) {
+          setError(
+            'The transcription request timed out. This usually happens with very long recordings. ' +
+            'Please try recording in shorter segments (under 2 minutes each).'
+          );
+        } else if (errorMessage.includes('DAILY_LIMIT')) {
+          setError(
+            'Daily transcription limit reached. Please try again tomorrow or contact support.'
+          );
+        } else {
+          setError(`Failed to process content: ${errorMessage}. Please try again.`);
+        }
       }
     };
 

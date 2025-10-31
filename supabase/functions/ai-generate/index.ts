@@ -157,8 +157,37 @@ Deno.serve(async (req: Request) => {
       if (!audioBase64) {
         return new Response(JSON.stringify({ error: 'Missing audioBase64' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
       }
-      const result = await transcribeAudio(audioBase64, mimeType);
-      return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+      
+      // Check size before processing (base64 string length, approximate original size is ~75% of base64 length)
+      const estimatedSizeBytes = (audioBase64.length * 3) / 4;
+      const MAX_SIZE = 6 * 1024 * 1024; // 6MB limit for Supabase Edge Functions
+      
+      if (estimatedSizeBytes > MAX_SIZE) {
+        const sizeMB = (estimatedSizeBytes / (1024 * 1024)).toFixed(2);
+        return new Response(
+          JSON.stringify({ 
+            error: `Audio file is too large (${sizeMB} MB). Maximum size is 6 MB. Please record a shorter audio.` 
+          }), 
+          { status: 413, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+      
+      try {
+        const result = await transcribeAudio(audioBase64, mimeType);
+        return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+      } catch (transcribeError) {
+        const errorMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
+        // If OpenAI returns an error about file size, return proper JSON error
+        if (errorMsg.includes('too large') || errorMsg.includes('413') || errorMsg.includes('25MB')) {
+          return new Response(
+            JSON.stringify({ 
+              error: 'Audio file is too large. OpenAI Whisper has a 25MB limit. Please record a shorter audio.' 
+            }), 
+            { status: 413, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+          );
+        }
+        throw transcribeError; // Re-throw to be caught by outer try-catch
+      }
     }
 
     // Handle chat completion

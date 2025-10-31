@@ -112,9 +112,11 @@ export const RecordAudioPage: React.FC = () => {
         }
       }
 
+      // Use lower bitrate for longer recordings to reduce file size
+      // 96kbps is still good quality for speech and reduces file size significantly
       const options: MediaRecorderOptions = {
         mimeType: selectedMimeType || undefined,
-        audioBitsPerSecond: 128000, // Good quality for speech
+        audioBitsPerSecond: 96000, // Reduced from 128kbps to reduce file size for long recordings
       };
 
       const mediaRecorder = new MediaRecorder(stream, options);
