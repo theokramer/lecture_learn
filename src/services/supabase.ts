@@ -484,7 +484,19 @@ async function generateAllStudyContent(noteId: string, content: string) {
       contentData.summary = summaryHtml;
     }
 
+    // Use upsert pattern: try to update first, if no rows affected, then insert
+    // This prevents race conditions where multiple inserts happen simultaneously
     if (existing) {
+      // Clean up any duplicates first
+      if (existingRows && existingRows.length > 1) {
+        const duplicateIds = existingRows.slice(1).map(row => row.id);
+        await supabase
+          .from('study_content')
+          .delete()
+          .in('id', duplicateIds)
+          .catch(err => console.error('Error cleaning up duplicates:', err));
+      }
+      
       // Update only the most recent row (by ID) - summary will be preserved automatically (not in contentData if it exists)
       const { error } = await supabase
         .from('study_content')
@@ -493,15 +505,58 @@ async function generateAllStudyContent(noteId: string, content: string) {
 
       if (error) throw error;
     } else {
-      // Create new
-      const { error } = await supabase
+      // Before inserting, double-check to prevent race conditions
+      // If another request created a row between our check and insert, update it instead
+      const { data: checkRows } = await supabase
         .from('study_content')
-        .insert({
-          note_id: noteId,
-          ...contentData,
-        });
+        .select('id')
+        .eq('note_id', noteId)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      
+      if (checkRows && checkRows.length > 0) {
+        // Row was created by another request, update it instead
+        const { error } = await supabase
+          .from('study_content')
+          .update(contentData)
+          .eq('id', checkRows[0].id);
+        
+        if (error) throw error;
+      } else {
+        // Safe to insert
+        const { error } = await supabase
+          .from('study_content')
+          .insert({
+            note_id: noteId,
+            ...contentData,
+          });
 
-      if (error) throw error;
+        if (error) {
+          // If insert fails due to duplicate, try to update instead
+          if (error.code === '23505') { // Unique violation (if constraint exists)
+            const { data: existingRow } = await supabase
+              .from('study_content')
+              .select('id')
+              .eq('note_id', noteId)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .single();
+            
+            if (existingRow) {
+              const { error: updateError } = await supabase
+                .from('study_content')
+                .update(contentData)
+                .eq('id', existingRow.id);
+              
+              if (updateError) throw updateError;
+            } else {
+              throw error;
+            }
+          } else {
+            throw error;
+          }
+        }
+      }
     }
 
     console.log('Successfully generated and saved all study content');
@@ -534,8 +589,6 @@ export const studyContentService = {
 
     // Handle case where multiple rows exist (data integrity issue)
     if (data && data.length > 1) {
-      console.warn(`Multiple study_content rows found for note ${noteId}. Using most recent and cleaning up duplicates.`);
-      
       // Use the most recent row (already sorted by updated_at DESC)
       const mostRecent = data[0];
       
@@ -546,9 +599,6 @@ export const studyContentService = {
           .from('study_content')
           .delete()
           .in('id', duplicateIds)
-          .then(() => {
-            console.log(`Cleaned up ${duplicateIds.length} duplicate study_content rows for note ${noteId}`);
-          })
           .catch(err => {
             console.error('Error cleaning up duplicate study_content rows:', err);
           });
@@ -643,7 +693,19 @@ export const studyContentService = {
     if (data.exercises !== undefined) contentData.exercises = data.exercises;
     if (data.feynmanTopics !== undefined) contentData.feynman_topics = data.feynmanTopics;
 
+    // Use upsert pattern: try to update first, if no rows affected, then insert
+    // This prevents race conditions where multiple inserts happen simultaneously
     if (existing) {
+      // Clean up any duplicates first
+      if (existingRows && existingRows.length > 1) {
+        const duplicateIds = existingRows.slice(1).map(row => row.id);
+        await supabase
+          .from('study_content')
+          .delete()
+          .in('id', duplicateIds)
+          .catch(err => console.error('Error cleaning up duplicates:', err));
+      }
+      
       // Update only the most recent row (by ID)
       const { error } = await supabase
         .from('study_content')
@@ -652,15 +714,58 @@ export const studyContentService = {
 
       if (error) throw error;
     } else {
-      // Create new
-      const { error } = await supabase
+      // Before inserting, double-check to prevent race conditions
+      // If another request created a row between our check and insert, update it instead
+      const { data: checkRows } = await supabase
         .from('study_content')
-        .insert({
-          note_id: noteId,
-          ...contentData,
-        });
+        .select('id')
+        .eq('note_id', noteId)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      
+      if (checkRows && checkRows.length > 0) {
+        // Row was created by another request, update it instead
+        const { error } = await supabase
+          .from('study_content')
+          .update(contentData)
+          .eq('id', checkRows[0].id);
+        
+        if (error) throw error;
+      } else {
+        // Safe to insert
+        const { error } = await supabase
+          .from('study_content')
+          .insert({
+            note_id: noteId,
+            ...contentData,
+          });
 
-      if (error) throw error;
+        if (error) {
+          // If insert fails due to duplicate, try to update instead
+          if (error.code === '23505') { // Unique violation (if constraint exists)
+            const { data: existingRow } = await supabase
+              .from('study_content')
+              .select('id')
+              .eq('note_id', noteId)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .single();
+            
+            if (existingRow) {
+              const { error: updateError } = await supabase
+                .from('study_content')
+                .update(contentData)
+                .eq('id', existingRow.id);
+              
+              if (updateError) throw updateError;
+            } else {
+              throw error;
+            }
+          } else {
+            throw error;
+          }
+        }
+      }
     }
   },
 
