@@ -11,6 +11,7 @@ import { studyContentService } from '../services/supabase';
 import type { StudyMode } from '../types';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsModal } from '../components/shared/KeyboardShortcutsModal';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 export const NoteViewPage: React.FC = () => {
   const appData = useAppData();
@@ -25,18 +26,15 @@ export const NoteViewPage: React.FC = () => {
   const hasCheckedSummaryRef = useRef<string | null>(null);
   const hasSetDefaultModeRef = useRef<string | null>(null);
   const saveHandlerRef = useRef<(() => void) | null>(null);
+  const isMobile = useIsMobile(1024);
 
-  // Close mobile drawers when mode changes on mobile
+  // Close mobile drawers when resizing to desktop
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth >= 1024) {
-        setMobileSidebarOpen(false);
-        setMobileChatOpen(false);
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    if (!isMobile) {
+      setMobileSidebarOpen(false);
+      setMobileChatOpen(false);
+    }
+  }, [isMobile]);
 
   // Set the selected note from URL parameter
   useEffect(() => {
@@ -155,10 +153,19 @@ export const NoteViewPage: React.FC = () => {
   const handleModeChange = (mode: StudyMode) => {
     appData.setCurrentStudyMode(mode);
     // Close mobile sidebar when mode changes on mobile
-    if (window.innerWidth < 1024) {
+    if (isMobile) {
       setMobileSidebarOpen(false);
     }
   };
+
+  // Safety check: ensure appData is available
+  if (!appData) {
+    return (
+      <div className="flex h-screen bg-[#1a1a1a] items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-[#1a1a1a] overflow-hidden">
@@ -194,7 +201,7 @@ export const NoteViewPage: React.FC = () => {
         />
       </div>
 
-      {/* Mobile Sidebar Drawer */}
+      {/* Mobile Sidebar Drawer - Always render but use CSS to hide on desktop */}
       <div className="lg:hidden">
         <NoteSidebar
           currentMode={appData.currentStudyMode}
@@ -226,7 +233,7 @@ export const NoteViewPage: React.FC = () => {
         </AnimatePresence>
       </div>
 
-      {/* Mobile AI Chat Modal */}
+      {/* Mobile AI Chat Modal - Always render but use CSS to hide on desktop */}
       <div className="lg:hidden">
         <AIChatPanel
           width={0}

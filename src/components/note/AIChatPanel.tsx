@@ -310,6 +310,11 @@ ${content.substring(0, 2000)}`;
 
   // Mobile modal version
   if (isMobile) {
+    // Return null when closed on mobile (don't render collapsed button)
+    if (!isOpen) {
+      return null;
+    }
+    
     return (
       <AnimatePresence>
         {isOpen && (
