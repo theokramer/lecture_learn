@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { HiPlus, HiPaperAirplane, HiSparkles, HiLightBulb } from 'react-icons/hi2';
+import { HiPlus, HiPaperAirplane, HiSparkles, HiLightBulb, HiXMark } from 'react-icons/hi2';
 import { useAppData } from '../../context/AppDataContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePdfSelection } from '../../context/PdfSelectionContext';
@@ -13,6 +13,9 @@ interface AIChatPanelProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onResize: (width: number) => void;
+  isMobile?: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 const CHAT_TEMPLATES = [
@@ -28,6 +31,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
   isCollapsed,
   onToggleCollapse,
   onResize,
+  isMobile = false,
+  isOpen = false,
+  onClose,
 }) => {
   const { selectedNoteId, notes } = useAppData();
   const { user } = useAuth();
@@ -287,6 +293,199 @@ ${content.substring(0, 2000)}`;
     handleSend(template.prompt);
     setShowTemplates(false);
   };
+
+  // Prevent body scroll when mobile modal is open
+  useEffect(() => {
+    if (isMobile && isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else if (!isMobile) {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      if (isMobile) {
+        document.body.style.overflow = '';
+      }
+    };
+  }, [isMobile, isOpen]);
+
+  // Mobile modal version
+  if (isMobile) {
+    return (
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={onClose}
+              className="fixed inset-0 bg-black/60 z-[150] backdrop-blur-sm"
+            />
+            
+            {/* Modal */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.3 }}
+              className="fixed inset-0 z-[151] flex flex-col bg-[#2a2a2a] lg:hidden"
+            >
+              {/* Header */}
+              <div className="p-4 border-b border-[#3a3a3a] flex items-center justify-between flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <HiSparkles className="w-6 h-6 text-[#b85a3a]" />
+                  <h2 className="text-xl font-bold text-white">AI Tutor</h2>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
+                  aria-label="Close chat"
+                >
+                  <HiXMark className="w-6 h-6 text-[#9ca3af]" />
+                </button>
+              </div>
+
+              {/* Suggested Questions */}
+              {showSuggestions && suggestedQuestions.length > 0 && (
+                <div className="px-4 py-3 border-b border-[#3a3a3a] flex-shrink-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <HiLightBulb className="w-4 h-4 text-[#d4a944]" />
+                    <span className="text-sm text-[#9ca3af]">Suggested questions:</span>
+                  </div>
+                  <div className="space-y-2">
+                    {suggestedQuestions.map((question, idx) => (
+                      <motion.button
+                        key={idx}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => handleSend(question)}
+                        className="w-full text-left px-3 py-2 bg-[#1a1a1a] hover:bg-[#3a3a3a] rounded-lg text-sm text-white transition-colors"
+                      >
+                        {question}
+                      </motion.button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+                <AnimatePresence>
+                  {messages.map((message) => (
+                    <motion.div
+                      key={message.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-[85%] px-4 py-3 rounded-lg ${
+                          message.role === 'user'
+                            ? 'bg-[#1a1a1a] text-white'
+                            : 'bg-[#3a3a3a] text-white'
+                        }`}
+                      >
+                        {message.role === 'assistant' ? (
+                          <div className="text-sm text-white">
+                            <MarkdownRenderer content={message.content} />
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
+                  {isLoading && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="flex justify-start"
+                    >
+                      <div className="bg-[#3a3a3a] px-4 py-3 rounded-lg">
+                        <div className="flex gap-1">
+                          <div className="w-2 h-2 bg-[#9ca3af] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <div className="w-2 h-2 bg-[#9ca3af] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <div className="w-2 h-2 bg-[#9ca3af] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Input */}
+              <div className="p-4 border-t border-[#3a3a3a] flex-shrink-0 space-y-3">
+                {/* PDF Selection Indicator */}
+                {pdfSelectedText && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="px-3 py-2 bg-[#1a1a1a] border border-[#b85a3a] rounded-lg text-xs text-white"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate flex-1">
+                        📄 Selected: "{pdfSelectedText.substring(0, 50)}{pdfSelectedText.length > 50 ? '...' : ''}"
+                      </span>
+                      <button
+                        onClick={clearSelection}
+                        className="text-[#9ca3af] hover:text-white transition-colors"
+                        title="Clear selection"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+                {/* Templates */}
+                {showTemplates && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {CHAT_TEMPLATES.map((template) => (
+                      <motion.button
+                        key={template.id}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => handleTemplateClick(template)}
+                        className="px-3 py-2 bg-[#1a1a1a] hover:bg-[#3a3a3a] rounded-lg text-xs text-white transition-colors text-left"
+                      >
+                        {template.label}
+                      </motion.button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowTemplates(!showTemplates)}
+                    className="px-3 py-3 bg-[#1a1a1a] hover:bg-[#3a3a3a] rounded-lg transition-colors"
+                    title="Templates"
+                  >
+                    <HiSparkles className="w-5 h-5 text-[#9ca3af]" />
+                  </button>
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                    placeholder={pdfSelectedText ? `Ask about "${pdfSelectedText.substring(0, 30)}..."` : "Ask anything..."}
+                    className="flex-1 px-4 py-3 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#b85a3a] transition-colors"
+                  />
+                  <button
+                    onClick={() => handleSend()}
+                    disabled={!input.trim() || isLoading}
+                    className="p-3 rounded-lg bg-[#b85a3a] hover:bg-[#a04a2a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <HiPaperAirplane className="w-5 h-5 text-white" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    );
+  }
 
   if (isCollapsed) {
     return (

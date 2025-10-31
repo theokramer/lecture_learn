@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { RichTextEditor } from '../../shared/RichTextEditor';
 import { studyContentService } from '../../../services/supabase';
 import { useAppData } from '../../../context/AppDataContext';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useSettings } from '../../../context/SettingsContext';
 import { HiSparkles, HiDocumentText, HiQuestionMarkCircle, HiArrowDownTray } from 'react-icons/hi2';
 import { exportService } from '../../../services/exportService';
@@ -22,6 +22,8 @@ export const SummaryView: React.FC = () => {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showLaTeXGuide, setShowLaTeXGuide] = useState(false);
+  const [generationFailed, setGenerationFailed] = useState(false);
+  const [hasAttemptedAutoGenerate, setHasAttemptedAutoGenerate] = useState(false);
 
   // LaTeX examples with proper escaping
   const latexExamples = {
@@ -41,6 +43,8 @@ export const SummaryView: React.FC = () => {
     if (!selectedNoteId) return;
     
     setIsLoading(true);
+    setGenerationFailed(false);
+    setHasAttemptedAutoGenerate(false);
     try {
       const studyContent = await studyContentService.getStudyContent(selectedNoteId);
       if (studyContent.summary && studyContent.summary.trim() !== '') {
@@ -75,11 +79,22 @@ export const SummaryView: React.FC = () => {
     }
   }, [selectedNoteId]);
 
-  // Generate new summary
-  const generateSummary = useCallback(async () => {
-    if (!selectedNoteId || !currentNote) return;
+  // Generate new summary (can be called manually or automatically)
+  const generateSummary = useCallback(async (isAutoGenerate = false) => {
+    if (!selectedNoteId || !currentNote) {
+      setIsGenerating(false);
+      return;
+    }
 
-    setIsGenerating(true);
+    // Only set isGenerating if not already set (for auto-generate case, it's set before calling)
+    if (!isGenerating) {
+      setIsGenerating(true);
+    }
+    setGenerationFailed(false);
+    if (isAutoGenerate) {
+      setHasAttemptedAutoGenerate(true);
+    }
+    
     try {
       // Generate and save in background via service (faster model under the hood)
       const generatedSummary = await studyContentService.generateAndSaveSummary(
@@ -91,30 +106,57 @@ export const SummaryView: React.FC = () => {
       setSummary(generatedSummary);
       setHasSummary(true);
       setLastSaved(new Date());
+      setGenerationFailed(false);
     } catch (error: any) {
       console.error('Error generating summary:', error);
+      setGenerationFailed(true);
       const code = error?.code || error?.name;
       if (code === 'DAILY_LIMIT_REACHED') {
         const resetAt = error?.resetAt ? new Date(error.resetAt) : null;
         const when = resetAt ? ` after ${resetAt.toLocaleTimeString()}` : ' tomorrow';
-        toast.error(`Daily AI limit reached (15/day). Please try again${when}.`);
+        if (!isAutoGenerate) {
+          toast.error(`Daily AI limit reached (15/day). Please try again${when}.`);
+        }
       } else {
-        toast.error('Failed to generate summary. Please try again.');
+        if (!isAutoGenerate) {
+          toast.error('Failed to generate summary. Please try again.');
+        }
       }
     } finally {
       setIsGenerating(false);
     }
-  }, [selectedNoteId, currentNote]);
+  }, [selectedNoteId, currentNote, preferences.summaryDetailLevel, isGenerating]);
 
   // Load summary on mount, when note changes, or when switching to summary view
   useEffect(() => {
     loadSummary();
   }, [loadSummary, currentStudyMode]);
 
-  // Poll for newly generated summaries when we don't have one yet
+  // Auto-generate summary in background when no summary exists
+  useEffect(() => {
+    if (!selectedNoteId || !currentNote || hasSummary || isLoading || isGenerating || hasAttemptedAutoGenerate) return;
+    
+    // Only auto-generate if there's enough content
+    const content = currentNote.content || '';
+    if (content.trim().length < 50) return;
+
+    // Set generating state immediately to show loading screen
+    setIsGenerating(true);
+    setHasAttemptedAutoGenerate(true);
+
+    // Trigger background generation
+    generateSummary(true).catch(err => {
+      console.error('Background summary generation failed:', err);
+      // Note: generateSummary will set isGenerating to false and generationFailed to true on error
+    });
+  }, [selectedNoteId, currentNote, hasSummary, isLoading, isGenerating, hasAttemptedAutoGenerate, generateSummary]);
+
+  // Poll for newly generated summaries when we're generating or just finished
   // (Note: NoteViewPage handles auto-switching to summary view when summary is detected)
   useEffect(() => {
-    if (!selectedNoteId || hasSummary || isGenerating) return;
+    if (!selectedNoteId || hasSummary) return;
+    
+    if (!isGenerating && !hasAttemptedAutoGenerate) return; // Don't poll if we haven't started generating yet
 
     // Poll every 3 seconds to check if a summary was generated in the background
     const pollInterval = setInterval(async () => {
@@ -125,6 +167,7 @@ export const SummaryView: React.FC = () => {
           setSummary(studyContent.summary);
           setHasSummary(true);
           setLastSaved(new Date());
+          setGenerationFailed(false);
         }
       } catch (error) {
         // Silently fail - we're just polling
@@ -132,9 +175,17 @@ export const SummaryView: React.FC = () => {
       }
     }, 3000); // Check every 3 seconds
 
+    // Stop polling after 2 minutes if still no summary
+    const timeout = setTimeout(() => {
+      clearInterval(pollInterval);
+    }, 120000); // 2 minutes
+
     // Clean up polling when component unmounts or conditions change
-    return () => clearInterval(pollInterval);
-  }, [selectedNoteId, hasSummary, isGenerating]);
+    return () => {
+      clearInterval(pollInterval);
+      clearTimeout(timeout);
+    };
+  }, [selectedNoteId, hasSummary, isGenerating, hasAttemptedAutoGenerate]);
 
   // Auto-save with debounce
   useEffect(() => {
@@ -156,7 +207,31 @@ export const SummaryView: React.FC = () => {
     );
   }
 
-  if (!hasSummary && !isGenerating) {
+  // Show generating screen when generating OR when we've attempted auto-generation but haven't failed yet
+  if (isGenerating || (hasAttemptedAutoGenerate && !hasSummary && !generationFailed)) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center max-w-2xl px-8"
+        >
+          <div className="bg-[#2a2a2a] rounded-3xl p-12 border border-[#3a3a3a]">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-[#b85a3a] mx-auto mb-6"></div>
+            <h2 className="text-3xl font-bold text-white mb-4">
+              Generating Your Summary
+            </h2>
+            <p className="text-[#9ca3af] text-lg">
+              Analyzing your documents and creating a comprehensive summary...
+            </p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Only show "Generate Summary" button if generation failed
+  if (!hasSummary && generationFailed) {
     return (
       <div className="flex items-center justify-center h-full">
         <motion.div
@@ -167,11 +242,10 @@ export const SummaryView: React.FC = () => {
           <div className="bg-[#2a2a2a] rounded-3xl p-12 border border-[#3a3a3a]">
             <HiSparkles className="w-20 h-20 text-[#b85a3a] mx-auto mb-6" />
             <h2 className="text-3xl font-bold text-white mb-4">
-              Create Your Summary
+              Generate Your Summary
             </h2>
             <p className="text-[#9ca3af] text-lg mb-8">
-              Generate an intelligent summary that combines all your documents
-              and learning materials into one comprehensive study guide.
+              Summary generation failed. Click below to try again.
             </p>
             
             {currentNote?.documents && currentNote.documents.length > 0 && (
@@ -189,22 +263,37 @@ export const SummaryView: React.FC = () => {
             )}
 
             <button
-              onClick={generateSummary}
+              onClick={() => generateSummary(false)}
               disabled={isGenerating}
               className="px-8 py-4 bg-[#b85a3a] hover:bg-[#a04a2a] text-white rounded-xl font-semibold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-3"
             >
-              {isGenerating ? (
-                <>
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                  Generating Summary...
-                </>
-              ) : (
-                <>
-                  <HiSparkles className="w-6 h-6" />
-                  Generate Summary
-                </>
-              )}
+              <HiSparkles className="w-6 h-6" />
+              Generate Summary
             </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // If no summary and not generating and not failed and not attempted, show empty state (shouldn't happen often)
+  // This handles edge cases where auto-generation hasn't triggered yet
+  if (!hasSummary && !isGenerating && !generationFailed && !hasAttemptedAutoGenerate) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center max-w-2xl px-8"
+        >
+          <div className="bg-[#2a2a2a] rounded-3xl p-12 border border-[#3a3a3a]">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-[#b85a3a] mx-auto mb-6"></div>
+            <h2 className="text-3xl font-bold text-white mb-4">
+              Generating Your Summary
+            </h2>
+            <p className="text-[#9ca3af] text-lg">
+              Please wait while we generate your summary...
+            </p>
           </div>
         </motion.div>
       </div>
@@ -316,38 +405,12 @@ export const SummaryView: React.FC = () => {
 
       {/* Rich Text Editor */}
       <div className="flex-1 overflow-hidden">
-        <AnimatePresence mode="wait">
-          {isGenerating ? (
-            <motion.div
-              key="generating"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex items-center justify-center h-full"
-            >
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-[#b85a3a] mx-auto mb-4"></div>
-                <p className="text-white text-xl mb-2">Generating Your Summary</p>
-                <p className="text-gray-400">Analyzing your documents and creating a comprehensive summary...</p>
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="editor"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="h-full"
-            >
-              <RichTextEditor
-                content={summary}
-                onChange={setSummary}
-                placeholder="Start writing your summary..."
-                editable={true}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <RichTextEditor
+          content={summary}
+          onChange={setSummary}
+          placeholder="Start writing your summary..."
+          editable={true}
+        />
       </div>
     </div>
   );

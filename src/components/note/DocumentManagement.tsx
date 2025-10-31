@@ -251,17 +251,17 @@ export const DocumentManagement: React.FC = React.memo(() => {
   };
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="flex items-center justify-between mb-6">
+    <div className="space-y-4 lg:space-y-6 pb-8 lg:pb-12">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 lg:mb-6">
         <div>
-          <h3 className="text-2xl font-semibold text-white mb-2">Documents</h3>
-          <p className="text-base text-[#9ca3af]">
+          <h3 className="text-xl lg:text-2xl font-semibold text-white mb-2">Documents</h3>
+          <p className="text-sm lg:text-base text-[#9ca3af]">
             {documents.length} document{documents.length !== 1 ? 's' : ''} attached
           </p>
         </div>
         <Button
           onClick={handleBrowseClick}
-          className="flex items-center gap-2"
+          className="flex items-center justify-center gap-2 w-full sm:w-auto"
         >
           <IoAdd className="w-5 h-5" />
           Add Document
@@ -293,12 +293,12 @@ export const DocumentManagement: React.FC = React.memo(() => {
                   onDragOver={(e) => handleDragOver(e, doc.id)}
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, doc.id)}
-                  className={`flex items-center justify-between p-4 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a] hover:bg-[#323232] hover:border-[#4a4a4a] transition-all cursor-move ${
+                  className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 lg:p-4 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a] hover:bg-[#323232] hover:border-[#4a4a4a] transition-all cursor-move ${
                     isDraggedOver ? 'border-[#b85a3a] bg-[#323232]' : ''
                   } ${draggedId === doc.id ? 'opacity-50' : ''}`}
             >
-              <div className="flex items-center gap-4 flex-1 min-w-0">
-                <span className="text-3xl flex-shrink-0">{getDocumentIcon(doc.type)}</span>
+              <div className="flex items-center gap-3 lg:gap-4 flex-1 min-w-0">
+                <span className="text-2xl lg:text-3xl flex-shrink-0">{getDocumentIcon(doc.type)}</span>
                 <div className="flex-1 min-w-0">
                       {isRenaming ? (
                         <div className="flex items-center gap-2">
@@ -310,7 +310,7 @@ export const DocumentManagement: React.FC = React.memo(() => {
                               if (e.key === 'Enter') handleSaveRename(doc.id);
                               if (e.key === 'Escape') handleCancelRename();
                             }}
-                            className="flex-1 px-2 py-1 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-white text-base"
+                            className="flex-1 px-2 py-1 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-white text-sm lg:text-base"
                             autoFocus
                           />
                           <button
@@ -318,20 +318,20 @@ export const DocumentManagement: React.FC = React.memo(() => {
                             className="p-1 rounded hover:bg-[#3a3a3a] text-green-400"
                             title="Save"
                           >
-                            <IoCheckmark className="w-5 h-5" />
+                            <IoCheckmark className="w-4 h-4 lg:w-5 lg:h-5" />
                           </button>
                           <button
                             onClick={handleCancelRename}
                             className="p-1 rounded hover:bg-[#3a3a3a] text-red-400"
                             title="Cancel"
                           >
-                            <IoClose className="w-5 h-5" />
+                            <IoClose className="w-4 h-4 lg:w-5 lg:h-5" />
                           </button>
                         </div>
                       ) : (
                         <>
-                  <p className="text-white text-base font-medium truncate">{doc.name}</p>
-                  <div className="flex items-center gap-3 text-sm text-[#9ca3af] mt-1">
+                  <p className="text-white text-sm lg:text-base font-medium truncate">{doc.name}</p>
+                  <div className="flex items-center gap-2 lg:gap-3 text-xs lg:text-sm text-[#9ca3af] mt-1">
                     <span className="capitalize">{doc.type}</span>
                     <span>•</span>
                     <span>{formatFileSize(doc.size)}</span>
@@ -340,14 +340,14 @@ export const DocumentManagement: React.FC = React.memo(() => {
                       )}
                 </div>
               </div>
-                  <div className="flex items-center gap-2 ml-4">
+                  <div className="flex items-center gap-2 sm:ml-4 justify-end sm:justify-start">
                     {canPreview && !isRenaming && (
                       <button
                         onClick={() => handlePreview(doc)}
                         className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors text-[#9ca3af] hover:text-white"
                         title="Preview document"
                       >
-                        <IoEyeOutline className="w-5 h-5" />
+                        <IoEyeOutline className="w-4 h-4 lg:w-5 lg:h-5" />
                       </button>
                     )}
                     {!isRenaming && (
@@ -356,7 +356,7 @@ export const DocumentManagement: React.FC = React.memo(() => {
                         className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors text-[#9ca3af] hover:text-white"
                         title="Rename document"
                       >
-                        <IoPencil className="w-5 h-5" />
+                        <IoPencil className="w-4 h-4 lg:w-5 lg:h-5" />
                       </button>
                     )}
               <button
@@ -364,7 +364,7 @@ export const DocumentManagement: React.FC = React.memo(() => {
                       className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors text-[#9ca3af] hover:text-white"
                 title="Download document"
               >
-                      <IoDownloadOutline className="w-5 h-5" />
+                      <IoDownloadOutline className="w-4 h-4 lg:w-5 lg:h-5" />
               </button>
             </div>
                 </div>

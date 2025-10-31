@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
+import { HiBars3, HiChatBubbleLeftRight } from 'react-icons/hi2';
 import { NoteSidebar } from '../components/note/NoteSidebar';
 import { ContentView } from '../components/note/ContentView';
 import { AIChatPanel } from '../components/note/AIChatPanel';
@@ -19,9 +20,23 @@ export const NoteViewPage: React.FC = () => {
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [chatWidth, setChatWidth] = useState(450);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const hasCheckedSummaryRef = useRef<string | null>(null);
   const hasSetDefaultModeRef = useRef<string | null>(null);
   const saveHandlerRef = useRef<(() => void) | null>(null);
+
+  // Close mobile drawers when mode changes on mobile
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setMobileSidebarOpen(false);
+        setMobileChatOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Set the selected note from URL parameter
   useEffect(() => {
@@ -123,10 +138,6 @@ export const NoteViewPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appData.selectedNoteId, preferences.defaultStudyMode]);
 
-  const handleModeChange = (mode: StudyMode) => {
-    appData.setCurrentStudyMode(mode);
-  };
-
   // Keyboard shortcuts
   useKeyboardShortcuts({
     onSave: () => {
@@ -141,29 +152,92 @@ export const NoteViewPage: React.FC = () => {
     },
   });
 
+  const handleModeChange = (mode: StudyMode) => {
+    appData.setCurrentStudyMode(mode);
+    // Close mobile sidebar when mode changes on mobile
+    if (window.innerWidth < 1024) {
+      setMobileSidebarOpen(false);
+    }
+  };
+
   return (
-    <div className="flex h-screen bg-[#1a1a1a]">
-      {/* Left Sidebar */}
-      <NoteSidebar
-        currentMode={appData.currentStudyMode}
-        onModeChange={handleModeChange}
-        isCollapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-      />
+    <div className="flex h-screen bg-[#1a1a1a] overflow-hidden">
+      {/* Mobile Header Bar */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-[#2a2a2a] border-b border-[#3a3a3a] px-4 py-3 flex items-center justify-between">
+        <button
+          onClick={() => setMobileSidebarOpen(true)}
+          className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors"
+          aria-label="Open menu"
+        >
+          <HiBars3 className="w-6 h-6 text-white" />
+        </button>
+        <h1 className="text-white font-semibold text-lg truncate flex-1 mx-4">
+          {appData.notes.find(n => n.id === appData.selectedNoteId)?.title || 'Note'}
+        </h1>
+        <button
+          onClick={() => setMobileChatOpen(true)}
+          className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors"
+          aria-label="Open AI chat"
+        >
+          <HiChatBubbleLeftRight className="w-6 h-6 text-[#b85a3a]" />
+        </button>
+      </div>
+
+      {/* Desktop Left Sidebar */}
+      <div className="hidden lg:block">
+        <NoteSidebar
+          currentMode={appData.currentStudyMode}
+          onModeChange={handleModeChange}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          isMobile={false}
+        />
+      </div>
+
+      {/* Mobile Sidebar Drawer */}
+      <div className="lg:hidden">
+        <NoteSidebar
+          currentMode={appData.currentStudyMode}
+          onModeChange={handleModeChange}
+          isCollapsed={false}
+          onToggleCollapse={() => setMobileSidebarOpen(false)}
+          isMobile={true}
+          isOpen={mobileSidebarOpen}
+          onClose={() => setMobileSidebarOpen(false)}
+        />
+      </div>
 
       {/* Center Content */}
-      <ContentView />
+      <div className="flex-1 flex flex-col lg:pt-0 pt-14 overflow-hidden">
+        <ContentView />
+      </div>
 
-      {/* Right AI Chat */}
-      <AnimatePresence mode="wait">
+      {/* Desktop Right AI Chat */}
+      <div className="hidden lg:block">
+        <AnimatePresence mode="wait">
+          <AIChatPanel
+            key="ai-chat"
+            width={chatWidth}
+            isCollapsed={chatCollapsed}
+            onToggleCollapse={() => setChatCollapsed(!chatCollapsed)}
+            onResize={setChatWidth}
+            isMobile={false}
+          />
+        </AnimatePresence>
+      </div>
+
+      {/* Mobile AI Chat Modal */}
+      <div className="lg:hidden">
         <AIChatPanel
-          key="ai-chat"
-          width={chatWidth}
-          isCollapsed={chatCollapsed}
-          onToggleCollapse={() => setChatCollapsed(!chatCollapsed)}
-          onResize={setChatWidth}
+          width={0}
+          isCollapsed={!mobileChatOpen}
+          onToggleCollapse={() => setMobileChatOpen(!mobileChatOpen)}
+          onResize={() => {}}
+          isMobile={true}
+          isOpen={mobileChatOpen}
+          onClose={() => setMobileChatOpen(false)}
         />
-      </AnimatePresence>
+      </div>
 
       {/* Keyboard Shortcuts Modal */}
       <KeyboardShortcutsModal isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />

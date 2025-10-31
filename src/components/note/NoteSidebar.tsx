@@ -1,6 +1,6 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { HiHome, HiDocument, HiMicrophone, HiRectangleStack, HiQuestionMarkCircle, HiBookOpen, HiBars3, HiFolder, HiDocumentText, HiSparkles } from 'react-icons/hi2';
+import React, { useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { HiHome, HiDocument, HiMicrophone, HiRectangleStack, HiQuestionMarkCircle, HiBookOpen, HiBars3, HiFolder, HiDocumentText, HiSparkles, HiXMark } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 import type { StudyMode } from '../../types';
 
@@ -9,6 +9,9 @@ interface NoteSidebarProps {
   onModeChange: (mode: StudyMode) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  isMobile?: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 export const NoteSidebar: React.FC<NoteSidebarProps> = ({
@@ -16,8 +19,23 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
   onModeChange,
   isCollapsed,
   onToggleCollapse,
+  isMobile = false,
+  isOpen = false,
+  onClose,
 }) => {
   const navigate = useNavigate();
+
+  // Prevent body scroll when mobile drawer is open
+  useEffect(() => {
+    if (isMobile && isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobile, isOpen]);
 
   const menuItems = [
     { icon: HiDocument, label: 'Summary', mode: 'summary' as StudyMode },
@@ -28,6 +46,115 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
     { icon: HiDocumentText, label: 'Transcript', mode: 'transcript' as StudyMode },
     { icon: HiSparkles, label: 'AI Chat', mode: 'ai-chat' as StudyMode },
   ];
+
+  // Mobile drawer version
+  if (isMobile) {
+    return (
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={onClose}
+              className="fixed inset-0 bg-black/60 z-[100] backdrop-blur-sm lg:hidden"
+            />
+            
+            {/* Drawer */}
+            <motion.div
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed left-0 top-0 bottom-0 w-[280px] bg-[#2a2a2a] border-r border-[#3a3a3a] z-[101] flex flex-col overflow-y-auto lg:hidden"
+            >
+              {/* Header with Close Button */}
+              <div className="p-4 border-b border-[#3a3a3a] flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-white">Menu</h2>
+                <button
+                  onClick={onClose}
+                  className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
+                  aria-label="Close menu"
+                >
+                  <HiXMark className="w-6 h-6 text-[#9ca3af]" />
+                </button>
+              </div>
+
+              {/* Home Button */}
+              <div className="px-4 pt-4 pb-2">
+                <motion.button
+                  whileHover={{ scale: 1.02, x: 4 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    navigate('/home');
+                    onClose?.();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white"
+                >
+                  <HiHome className="w-5 h-5" />
+                  <span className="font-medium">Home</span>
+                </motion.button>
+              </div>
+
+              {/* Menu Items */}
+              <div className="flex-1 py-4 px-2 space-y-1">
+                {menuItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = currentMode === item.mode;
+                  
+                  return (
+                    <motion.button
+                      key={item.mode}
+                      whileHover={{ scale: 1.02, x: 4 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => {
+                        onModeChange(item.mode);
+                        onClose?.();
+                      }}
+                      className={`
+                        w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
+                        ${isActive 
+                          ? 'bg-[#3a3a3a] text-white' 
+                          : 'text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white'
+                        }
+                      `}
+                    >
+                      <Icon className="w-5 h-5" />
+                      <span className="font-medium">{item.label}</span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+
+              {/* Bottom - Manage Documents */}
+              <div className="p-4 border-t border-[#3a3a3a]">
+                <motion.button
+                  whileHover={{ scale: 1.02, x: 4 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    onModeChange('documents' as StudyMode);
+                    onClose?.();
+                  }}
+                  className={`
+                    w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
+                    ${currentMode === 'documents'
+                      ? 'bg-[#3a3a3a] text-white'
+                      : 'text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white'
+                    }
+                  `}
+                >
+                  <HiFolder className="w-5 h-5" />
+                  <span className="font-medium">Documents</span>
+                </motion.button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    );
+  }
 
   if (isCollapsed) {
     return (
