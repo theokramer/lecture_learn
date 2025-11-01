@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext';
 import { openaiService } from '../services/openai';
 import { storageService, documentService, studyContentService } from '../services/supabase';
 import { summaryService } from '../services/summaryService';
+import { RateLimitError, checkRateLimit } from '../services/aiGateway';
+import toast from 'react-hot-toast';
 
 export const ProcessingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -29,6 +31,36 @@ export const ProcessingPage: React.FC = () => {
       hasProcessedRef.current = true;
 
       try {
+        // ⚠️ CHECK RATE LIMIT FIRST - BEFORE ANY OPERATIONS
+        // This prevents wasting time on uploads/processing if user is at limit
+        setCurrentTask('Checking rate limit...');
+        setProgress(5);
+        try {
+          await checkRateLimit(user.id);
+        } catch (rateLimitError) {
+          // Rate limit reached - show error and navigate home immediately
+          if (rateLimitError instanceof RateLimitError) {
+            const rateLimitMessage = rateLimitError.code === 'ACCOUNT_LIMIT_REACHED'
+              ? '🚫 You have already used your one-time AI generation quota. No additional AI generations are available.'
+              : `🚫 Daily AI limit reached. You have used your daily quota (${rateLimitError.limit} generations). Please try again tomorrow.`;
+            
+            toast.error(rateLimitMessage, {
+              duration: 5000,
+            });
+            
+            setError(rateLimitMessage);
+            
+            // Automatically navigate home after a short delay
+            setTimeout(() => {
+              navigate('/home');
+            }, 2000);
+            
+            return; // Stop processing - no note should be created
+          }
+          // If it's not a RateLimitError but was thrown from checkRateLimit, re-throw
+          throw rateLimitError;
+        }
+
         // Get state from location
         const { audioBlob, title, text, fileMetadata } = location.state || {};
 
@@ -85,15 +117,18 @@ export const ProcessingPage: React.FC = () => {
           
           setProgress(60);
 
-          // Create note title from transcription (non-blocking - if it fails due to rate limit, use default)
+          // Create note title from transcription (non-blocking - if it fails due to rate limit, abort)
           setCurrentTask('Generating title...');
           let aiTitleFromAudio: string | null = null;
           try {
             aiTitleFromAudio = await summaryService.generatePerfectTitle(transcription);
           } catch (titleError: any) {
-            // If title generation fails due to rate limit or any error, just use default
-            // Don't fail the note creation - title generation is optional
-            console.log('Title generation skipped (rate limit or error):', titleError?.code || titleError?.message);
+            // If title generation fails due to rate limit, abort note creation
+            if (titleError instanceof RateLimitError || titleError?.code === 'DAILY_LIMIT_REACHED' || titleError?.code === 'ACCOUNT_LIMIT_REACHED') {
+              throw titleError; // Re-throw to be caught by outer catch
+            }
+            // For other errors, just use default title - title generation is optional
+            console.log('Title generation skipped (error):', titleError?.code || titleError?.message);
             aiTitleFromAudio = null;
           }
           
@@ -125,7 +160,18 @@ export const ProcessingPage: React.FC = () => {
           // Process text content
           setCurrentTask('Generating title...');
           setProgress(45);
-          const aiTitle = await summaryService.generatePerfectTitle(text);
+          let aiTitle: string | null = null;
+          try {
+            aiTitle = await summaryService.generatePerfectTitle(text);
+          } catch (titleError: any) {
+            // If title generation fails due to rate limit, abort note creation
+            if (titleError instanceof RateLimitError || titleError?.code === 'DAILY_LIMIT_REACHED' || titleError?.code === 'ACCOUNT_LIMIT_REACHED') {
+              throw titleError; // Re-throw to be caught by outer catch
+            }
+            // For other errors, just use default title - title generation is optional
+            console.log('Title generation skipped (error):', titleError?.code || titleError?.message);
+            aiTitle = null;
+          }
 
           setCurrentTask('Creating note...');
           setProgress(55);
@@ -184,12 +230,34 @@ export const ProcessingPage: React.FC = () => {
         console.error('Processing error:', err);
         const errorMessage = err instanceof Error ? err.message : String(err);
         
-        // Provide more specific error messages
-        if (err?.code === 'ACCOUNT_LIMIT_REACHED') {
-          setError('You have already used your one-time AI generation quota. No additional AI generations are available.');
-        } else if (err?.code === 'DAILY_LIMIT_REACHED') {
-          setError('🚫 Daily AI limit reached. You have used your daily quota for AI-powered features. Please try again tomorrow.');
-        } else if (errorMessage.includes('too large') || errorMessage.includes('size')) {
+        // Check if this is a rate limit error
+        const isRateLimitError = err instanceof RateLimitError || 
+                                 err?.code === 'DAILY_LIMIT_REACHED' || 
+                                 err?.code === 'ACCOUNT_LIMIT_REACHED';
+        
+        if (isRateLimitError) {
+          // Show toast notification
+          const rateLimitMessage = err?.code === 'ACCOUNT_LIMIT_REACHED'
+            ? '🚫 You have already used your one-time AI generation quota. No additional AI generations are available.'
+            : '🚫 Daily AI limit reached. You have used your daily quota for AI-powered features. Please try again tomorrow.';
+          
+          toast.error(rateLimitMessage, {
+            duration: 5000,
+          });
+          
+          // Set error state to show error UI
+          setError(rateLimitMessage);
+          
+          // Automatically navigate home after a short delay to show the error
+          setTimeout(() => {
+            navigate('/home');
+          }, 2000); // Show error for 2 seconds, then navigate
+          
+          return; // Don't process any further - no note should be created
+        }
+        
+        // Handle other error types
+        if (errorMessage.includes('too large') || errorMessage.includes('size')) {
           setError(
             'The audio recording is too large to process. ' +
             'For long recordings (over 2 minutes), please try recording in shorter segments, ' +
@@ -214,6 +282,9 @@ export const ProcessingPage: React.FC = () => {
   }, [user, location, createNote, refreshData, navigate]);
 
   if (error) {
+    // Check if this is a rate limit error - if so, auto-navigate is already scheduled
+    const isRateLimitError = error.includes('Daily AI limit reached') || error.includes('one-time AI generation quota');
+    
     return (
       <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center px-8 py-12">
         <motion.div
@@ -225,12 +296,16 @@ export const ProcessingPage: React.FC = () => {
           <div className="text-center">
             <h2 className="text-4xl font-bold text-white mb-4">Error</h2>
             <p className="text-[#9ca3af] text-lg mb-8">{error}</p>
-            <button
-              onClick={() => navigate('/home')}
-              className="px-6 py-3 bg-[#b85a3a] hover:bg-[#a04a2a] text-white rounded-lg font-medium transition-colors"
-            >
-              Back to Home
-            </button>
+            {isRateLimitError ? (
+              <p className="text-[#9ca3af] text-sm">Redirecting to home...</p>
+            ) : (
+              <button
+                onClick={() => navigate('/home')}
+                className="px-6 py-3 bg-[#b85a3a] hover:bg-[#a04a2a] text-white rounded-lg font-medium transition-colors"
+              >
+                Back to Home
+              </button>
+            )}
           </div>
         </motion.div>
       </div>

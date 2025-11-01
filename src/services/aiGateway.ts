@@ -43,7 +43,8 @@ export async function checkRateLimit(userId: string): Promise<void> {
       console.warn('Error checking account limit:', limitError);
     }
     
-    const dailyLimit = accountLimit?.daily_ai_limit ?? 1;
+    // Default to 30 to match backend default
+    const dailyLimit = accountLimit?.daily_ai_limit ?? 30;
     
     // Get today's usage count (may not exist yet, so use maybeSingle)
     const { data: usageData, error: usageError } = await supabase
