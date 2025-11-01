@@ -114,9 +114,15 @@ export const QuizView: React.FC<QuizViewProps> = React.memo(function QuizView({ 
           quizQuestions: newQuestions,
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating quiz:', error);
-      setError(error instanceof Error ? error.message : 'Failed to generate quiz');
+      if (error?.code === 'ACCOUNT_LIMIT_REACHED') {
+        setError('You have already used your one-time AI generation quota. No additional AI generations are available.');
+      } else if (error?.code === 'DAILY_LIMIT_REACHED') {
+        setError('Daily AI limit reached. Please try again tomorrow.');
+      } else {
+        setError(error instanceof Error ? error.message : 'Failed to generate quiz');
+      }
     } finally {
       setIsGenerating(false);
     }

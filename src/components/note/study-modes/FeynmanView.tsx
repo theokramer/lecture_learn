@@ -221,13 +221,20 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
           suggestions: [],
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error getting AI feedback:', error);
-      // Fallback feedback
+      let feedbackMessage = "I couldn't process your explanation at this moment. Please try again.";
+      
+      if (error?.code === 'ACCOUNT_LIMIT_REACHED') {
+        feedbackMessage = "You have already used your one-time AI generation quota. No additional AI generations are available.";
+      } else if (error?.code === 'DAILY_LIMIT_REACHED') {
+        feedbackMessage = "Daily AI limit reached. Please try again tomorrow.";
+      }
+      
       setFeedback({
         id: Date.now().toString(),
         score: 50,
-        feedback: "I couldn't process your explanation at this moment. Please try again.",
+        feedback: feedbackMessage,
         suggestions: ["Try simplifying your explanation", "Use more examples and analogies"],
       });
     } finally {

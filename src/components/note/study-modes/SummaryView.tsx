@@ -190,7 +190,11 @@ export const SummaryView: React.FC = () => {
       console.error('Error generating summary:', error);
       setGenerationFailed(true);
       const code = error?.code || error?.name;
-      if (code === 'DAILY_LIMIT_REACHED') {
+      if (code === 'ACCOUNT_LIMIT_REACHED') {
+        if (!isAutoGenerate) {
+          toast.error('You have already used your one-time AI generation quota. No additional AI generations are available.');
+        }
+      } else if (code === 'DAILY_LIMIT_REACHED') {
         const resetAt = error?.resetAt ? new Date(error.resetAt) : null;
         const when = resetAt ? ` after ${resetAt.toLocaleTimeString()}` : ' tomorrow';
         if (!isAutoGenerate) {

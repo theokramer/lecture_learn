@@ -1,28 +1,33 @@
-// YouTube transcript functionality temporarily disabled due to CORS issues
-// This package requires server-side implementation
+// YouTube transcript functionality - now uses backend edge function
+import { linkProcessor } from './linkProcessor';
 
 export const youtubeService = {
-  async getTranscript(_videoUrl: string): Promise<string> {
-    throw new Error('YouTube transcript feature is temporarily disabled. Please use other input methods.');
+  async getTranscript(videoUrl: string): Promise<string> {
+    try {
+      const result = await linkProcessor.processYouTubeLink(videoUrl);
+      // Extract just the transcript text, removing the header
+      const transcriptStart = result.content.indexOf('\n\n');
+      if (transcriptStart > 0) {
+        return result.content.substring(transcriptStart + 2);
+      }
+      return result.content;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to get YouTube transcript: ${errorMessage}`);
+    }
   },
 
   extractVideoId(url: string): string | null {
-    const patterns = [
-      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
-      /youtube\.com\/watch\?.*?v=([^&\n?#]+)/,
-    ];
-
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match && match[1]) {
-        return match[1];
-      }
-    }
-
-    return null;
+    return linkProcessor.extractYouTubeVideoId(url);
   },
 
-  async getTranscriptWithFallback(_videoUrl: string): Promise<string> {
-    throw new Error('YouTube transcript feature is temporarily disabled. Please use other input methods.');
+  async getTranscriptWithFallback(videoUrl: string): Promise<string> {
+    try {
+      return await this.getTranscript(videoUrl);
+    } catch (error) {
+      // Return a fallback message instead of throwing
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return `Note: Could not extract transcript for this YouTube video: ${videoUrl}\n\nError: ${errorMessage}\n\nPlease add your own notes about this video.`;
+    }
   },
 };

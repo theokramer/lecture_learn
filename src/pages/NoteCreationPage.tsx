@@ -6,6 +6,7 @@ import { HiDocumentText } from 'react-icons/hi2';
 import { Modal } from '../components/shared/Modal';
 import toast from 'react-hot-toast';
 import { handleError } from '../utils/errorHandler';
+import { linkProcessor } from '../services/linkProcessor';
 
 export const NoteCreationPage: React.FC = () => {
   const navigate = useNavigate();
@@ -22,17 +23,29 @@ export const NoteCreationPage: React.FC = () => {
 
     setProcessingWebLink(true);
     try {
-      // YouTube transcript temporarily disabled - just save the URL
+      toast.loading('Processing link...', { id: 'link-processing' });
+      
+      // Close modal while processing
+      setShowWebLinkModal(false);
+      
+      // Process the link using the link processor
+      const result = await linkProcessor.processLink(webLinkUrl.trim());
+      
+      toast.success('Link processed successfully!', { id: 'link-processing' });
+      
+      // Navigate to processing page with the extracted content
       navigate('/note-creation/processing', { 
         state: { 
-          text: `Link: ${webLinkUrl}\n\n(YouTube transcript feature is temporarily disabled. You can manually add notes about this link.)`, 
-          title: webLinkUrl.includes('youtube.com') || webLinkUrl.includes('youtu.be') ? 'YouTube Video' : 'Web Link'
+          text: result.content,
+          title: result.title
         } 
       });
     } catch (error) {
+      toast.error('Failed to process link', { id: 'link-processing' });
       handleError(error, 'NoteCreationPage: Processing web link', toast.error);
-    } finally {
       setProcessingWebLink(false);
+      // Reopen modal on error so user can try again
+      setShowWebLinkModal(true);
     }
   };
 
@@ -84,7 +97,7 @@ export const NoteCreationPage: React.FC = () => {
           </button>
           <h1 className="text-4xl font-bold text-white mb-4">New note</h1>
           <p className="text-[#9ca3af] text-lg">
-            Record audio, upload audio, or use a YouTube URL
+            Record audio, upload documents, or add a link (YouTube, Google Drive, web pages)
           </p>
         </div>
 
@@ -126,10 +139,13 @@ export const NoteCreationPage: React.FC = () => {
                 type="url"
                 value={webLinkUrl}
                 onChange={(e) => setWebLinkUrl(e.target.value)}
-                placeholder="https://..."
+                placeholder="https://www.youtube.com/watch?v=... or https://drive.google.com/..."
                 className="w-full px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white focus:outline-none focus:border-[#b85a3a]"
                 autoFocus
               />
+              <p className="text-xs text-[#9ca3af] mt-1">
+                Supports: YouTube videos, Google Drive links, and web pages
+              </p>
             </div>
             <div className="flex gap-3">
               <button

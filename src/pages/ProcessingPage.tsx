@@ -172,12 +172,16 @@ export const ProcessingPage: React.FC = () => {
             navigate(`/note?id=${noteId}`);
           }, 100);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Processing error:', err);
         const errorMessage = err instanceof Error ? err.message : String(err);
         
         // Provide more specific error messages
-        if (errorMessage.includes('too large') || errorMessage.includes('size')) {
+        if (err?.code === 'ACCOUNT_LIMIT_REACHED') {
+          setError('You have already used your one-time AI generation quota. No additional AI generations are available.');
+        } else if (err?.code === 'DAILY_LIMIT_REACHED') {
+          setError('Daily transcription limit reached. Please try again tomorrow or contact support.');
+        } else if (errorMessage.includes('too large') || errorMessage.includes('size')) {
           setError(
             'The audio recording is too large to process. ' +
             'For long recordings (over 2 minutes), please try recording in shorter segments, ' +
@@ -187,10 +191,6 @@ export const ProcessingPage: React.FC = () => {
           setError(
             'The transcription request timed out. This usually happens with very long recordings. ' +
             'Please try recording in shorter segments (under 2 minutes each).'
-          );
-        } else if (errorMessage.includes('DAILY_LIMIT')) {
-          setError(
-            'Daily transcription limit reached. Please try again tomorrow or contact support.'
           );
         } else {
           // Only add "Please try again" if it's not already in the message

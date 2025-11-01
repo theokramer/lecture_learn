@@ -1,18 +1,24 @@
 import { supabase, storageService } from './supabase';
 
-export class DailyLimitError extends Error {
+export class RateLimitError extends Error {
   limit: number;
   remaining: number;
-  resetAt: string;
+  resetAt?: string;
   code: string;
-  constructor(message: string, info: { limit: number; remaining: number; resetAt: string; code: string }) {
+  usedAt?: string;
+  
+  constructor(message: string, info: { limit: number; remaining: number; code: string; resetAt?: string; usedAt?: string }) {
     super(message);
     this.limit = info.limit;
     this.remaining = info.remaining;
     this.resetAt = info.resetAt;
     this.code = info.code;
+    this.usedAt = info.usedAt;
   }
 }
+
+// Keep alias for backwards compatibility
+export const DailyLimitError = RateLimitError;
 
 export const aiGateway = {
   async chatCompletion(
@@ -32,11 +38,19 @@ export const aiGateway = {
       // Supabase wraps non-2xx as error; try to parse limit response shape
       const errBody: any = (error as any)?.context || {};
       if (errBody?.code === 'DAILY_LIMIT_REACHED') {
-        throw new DailyLimitError(errBody?.message || 'Daily limit reached', {
+        throw new RateLimitError(errBody?.message || 'Daily limit reached', {
           limit: errBody.limit ?? 15,
           remaining: errBody.remaining ?? 0,
           resetAt: errBody.resetAt ?? new Date().toISOString(),
           code: 'DAILY_LIMIT_REACHED',
+        });
+      }
+      if (errBody?.code === 'ACCOUNT_LIMIT_REACHED') {
+        throw new RateLimitError(errBody?.message || 'Account limit reached - you have already used your one-time AI generation quota', {
+          limit: 1,
+          remaining: 0,
+          code: 'ACCOUNT_LIMIT_REACHED',
+          usedAt: errBody.usedAt,
         });
       }
       throw error;
@@ -336,13 +350,22 @@ export const aiGateway = {
                       (error as any)?.message || 
                       (typeof error === 'string' ? error : String(error));
         
-        // Check for daily limit
+        // Check for rate limits
         if (errBody?.code === 'DAILY_LIMIT_REACHED' || errorMessage.includes('DAILY_LIMIT')) {
-          throw new DailyLimitError(errBody?.message || 'Daily limit reached', {
+          throw new RateLimitError(errBody?.message || 'Daily limit reached', {
             limit: errBody.limit ?? 15,
             remaining: errBody.remaining ?? 0,
             resetAt: errBody.resetAt ?? new Date().toISOString(),
             code: 'DAILY_LIMIT_REACHED',
+          });
+        }
+        
+        if (errBody?.code === 'ACCOUNT_LIMIT_REACHED' || errorMessage.includes('ACCOUNT_LIMIT')) {
+          throw new RateLimitError(errBody?.message || 'Account limit reached - you have already used your one-time AI generation quota', {
+            limit: 1,
+            remaining: 0,
+            code: 'ACCOUNT_LIMIT_REACHED',
+            usedAt: errBody.usedAt,
           });
         }
         
@@ -386,7 +409,7 @@ export const aiGateway = {
       
       return transcriptionText;
     } catch (error) {
-      if (error instanceof DailyLimitError) {
+      if (error instanceof RateLimitError) {
         throw error;
       }
       

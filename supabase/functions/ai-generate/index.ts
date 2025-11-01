@@ -61,6 +61,78 @@ async function incrementUsageOrThrow(supabase: any, userId: string) {
   return null;
 }
 
+async function checkAccountLevelLimitOrThrow(supabase: any, userId: string) {
+  console.log(`Checking account AI usage limit for user: ${userId}`);
+  
+  // Use upsert to ensure row exists
+  const { error: upsertError } = await supabase
+    .from('account_ai_usage')
+    .upsert(
+      { user_id: userId, has_used_ai_generation: false },
+      { onConflict: 'user_id' }
+    );
+
+  if (upsertError) {
+    console.error(`Upsert error in checkAccountLevelLimitOrThrow:`, upsertError);
+    throw upsertError;
+  }
+
+  // Now check current state
+  const { data: usageData, error: selectError } = await supabase
+    .from('account_ai_usage')
+    .select('has_used_ai_generation, ai_generation_used_at')
+    .eq('user_id', userId)
+    .single();
+
+  if (selectError) {
+    console.error(`Select error in checkAccountLevelLimitOrThrow:`, selectError);
+    throw selectError;
+  }
+
+  console.log(`Current usage state:`, { has_used_ai_generation: usageData?.has_used_ai_generation });
+
+  // Check if limit has been reached
+  if (usageData?.has_used_ai_generation) {
+    console.log(`Account limit reached for user: ${userId}`);
+    const body = {
+      code: 'ACCOUNT_LIMIT_REACHED',
+      message: 'You have already used your one-time AI generation quota. No additional generations are available.',
+      limit: 1,
+      remaining: 0,
+      usedAt: usageData.ai_generation_used_at,
+    };
+    return new Response(JSON.stringify(body), { status: 429, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  console.log(`No limit reached for user: ${userId}, proceeding with generation`);
+  return null; // No limit reached
+}
+
+async function markAccountLimitAsUsed(supabase: any, userId: string) {
+  console.log(`Marking AI generation as used for user: ${userId}`);
+  
+  // Use upsert to ensure we update even if row exists with different state
+  const { data, error: upsertError } = await supabase
+    .from('account_ai_usage')
+    .upsert(
+      { 
+        user_id: userId, 
+        has_used_ai_generation: true, 
+        ai_generation_used_at: new Date().toISOString() 
+      },
+      { onConflict: 'user_id' }
+    );
+
+  console.log(`Upsert result:`, { data, error: upsertError });
+  
+  if (upsertError) {
+    console.error(`Error marking usage as used: ${upsertError.message}`, upsertError);
+    throw upsertError;
+  }
+  
+  console.log(`Successfully marked AI generation as used for user: ${userId}`);
+}
+
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -279,7 +351,7 @@ Deno.serve(async (req: Request) => {
     const requestType = body?.type || 'chat'; // 'chat' or 'transcription'
 
     // Enforce limit for both chat and transcription
-    const limitResponse = await incrementUsageOrThrow(supabase, user.id);
+    const limitResponse = await checkAccountLevelLimitOrThrow(supabase, user.id);
     if (limitResponse) {
       // Ensure CORS headers on limit response
       const lr = limitResponse;
@@ -312,6 +384,13 @@ Deno.serve(async (req: Request) => {
           // Use the authenticated supabase client for storage operations
           const result = await transcribeAudioFromStorage(trimmedPath, supabase);
           console.log('Transcription successful');
+          // Mark account limit as used
+          try {
+            await markAccountLimitAsUsed(supabase, user.id);
+          } catch (markError) {
+            console.error('Error marking account usage as used:', markError);
+            // Still return success as transcription worked, but log the issue
+          }
           return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
         } catch (transcribeError) {
           const errorMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
@@ -404,6 +483,13 @@ Deno.serve(async (req: Request) => {
       
       try {
         const result = await transcribeAudio(audioBase64, mimeType);
+        // Mark account limit as used
+        try {
+          await markAccountLimitAsUsed(supabase, user.id);
+        } catch (markError) {
+          console.error('Error marking account usage as used:', markError);
+          // Still return success as transcription worked, but log the issue
+        }
         return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
       } catch (transcribeError) {
         const errorMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
@@ -425,6 +511,13 @@ Deno.serve(async (req: Request) => {
     const model = body?.model ?? 'gpt-4o-mini';
     const temperature = body?.temperature ?? 0.7;
     const result = await callOpenAI(messages, model, temperature);
+    // Mark account limit as used
+    try {
+      await markAccountLimitAsUsed(supabase, user.id);
+    } catch (markError) {
+      console.error('Error marking account usage as used:', markError);
+      // Still return success as chat completion worked, but log the issue
+    }
     return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

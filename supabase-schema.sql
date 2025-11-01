@@ -233,3 +233,27 @@ CREATE POLICY "Users can update their own daily ai usage"
 
 -- Index for quick lookups
 CREATE INDEX IF NOT EXISTS idx_daily_ai_usage_user_date ON daily_ai_usage(user_id, usage_date);
+
+-- Account-level AI usage tracking (once per account)
+CREATE TABLE IF NOT EXISTS account_ai_usage (
+  user_id UUID NOT NULL PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  has_used_ai_generation BOOLEAN NOT NULL DEFAULT FALSE,
+  ai_generation_used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE account_ai_usage ENABLE ROW LEVEL SECURITY;
+
+-- RLS: users can only see and modify their own usage row
+CREATE POLICY "Users can view their own account ai usage"
+  ON account_ai_usage FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create their own account ai usage"
+  ON account_ai_usage FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own account ai usage"
+  ON account_ai_usage FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
