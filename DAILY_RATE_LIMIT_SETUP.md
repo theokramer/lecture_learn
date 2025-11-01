@@ -61,7 +61,7 @@ LIMIT 10;
 ```sql
 -- Should show count = 1 for today
 SELECT user_id, usage_date, count FROM daily_ai_usage 
-WHERE user_id = 'YOUR_USER_ID' 
+WHERE user_id = '231217f7-d29d-4c91-a6e8-1e39d5b70b83' 
 AND usage_date = CURRENT_DATE AT TIME ZONE 'utc';
 ```
 

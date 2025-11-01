@@ -6,6 +6,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const DAILY_LIMIT = 15;
 
 function getUtcDateString(date = new Date()): string {
@@ -61,48 +62,49 @@ async function incrementUsageOrThrow(supabase: any, userId: string) {
   return null;
 }
 
-async function checkDailyLimitOrThrow(supabase: any, userId: string) {
+async function checkDailyLimitOrThrow(adminSupabase: any, supabase: any, userId: string) {
   const usageDate = getUtcDateString();
 
-  console.log(`Checking daily AI usage limit for user: ${userId}, date: ${usageDate}`);
+  console.log(`[RATE_LIMIT_CHECK] Checking daily AI usage limit for user: ${userId}, date: ${usageDate}`);
 
-  // First, try to fetch current count WITHOUT modifying anything
-  const { data: existingRow, error: selectError } = await supabase
+  // Use admin client to bypass RLS and check rate limit reliably
+  const { data: existingRow, error: selectError } = await adminSupabase
     .from('daily_ai_usage')
     .select('count')
     .eq('user_id', userId)
     .eq('usage_date', usageDate)
     .single();
 
-  // If row doesn't exist (selectError with code PGRST116), create it
+  console.log(`[RATE_LIMIT_CHECK] Select result:`, { hasData: !!existingRow, error: selectError?.message });
+
+  // If row doesn't exist, create it
   if (selectError && selectError.code === 'PGRST116') {
-    console.log(`No existing row, creating new one for user: ${userId}`);
+    console.log(`[RATE_LIMIT_CHECK] No existing row, creating new one for user: ${userId}`);
     const { error: insertError } = await supabase
       .from('daily_ai_usage')
       .insert({ user_id: userId, usage_date: usageDate, count: 0 });
 
     if (insertError) {
-      console.error(`Insert error in checkDailyLimitOrThrow:`, insertError);
+      console.error(`[RATE_LIMIT_CHECK] Insert error:`, insertError);
       throw insertError;
     }
     
-    // New row created with count: 0, so no limit reached
-    console.log(`No limit reached for user: ${userId}, proceeding with generation`);
+    console.log(`[RATE_LIMIT_CHECK] New row created, count will be 0 → Allow generation`);
     return null;
   }
 
   if (selectError) {
-    console.error(`Select error in checkDailyLimitOrThrow:`, selectError);
+    console.error(`[RATE_LIMIT_CHECK] Select error:`, selectError);
     throw selectError;
   }
 
   const currentCount = existingRow?.count ?? 0;
-  console.log(`Current daily usage count: ${currentCount}`);
+  console.log(`[RATE_LIMIT_CHECK] Current daily usage count: ${currentCount}`);
 
   // Allow only 1 generation per day
   const DAILY_LIMIT = 1;
   if (currentCount >= DAILY_LIMIT) {
-    console.log(`Daily limit reached for user: ${userId}`);
+    console.log(`[RATE_LIMIT_CHECK] ⛔ LIMIT REACHED - User has already generated today`);
     const body = {
       code: 'DAILY_LIMIT_REACHED',
       message: 'You have already generated AI content today. Please try again tomorrow.',
@@ -113,7 +115,7 @@ async function checkDailyLimitOrThrow(supabase: any, userId: string) {
     return new Response(JSON.stringify(body), { status: 429, headers: { 'Content-Type': 'application/json' } });
   }
 
-  console.log(`No limit reached for user: ${userId}, proceeding with generation`);
+  console.log(`[RATE_LIMIT_CHECK] ✅ Allow - User can generate`);
   return null; // No limit reached
 }
 
@@ -349,6 +351,9 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: req.headers.get('Authorization')! } },
     });
 
+    // Create admin client for rate limit checks (bypasses RLS)
+    const adminSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY);
+
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
@@ -368,7 +373,7 @@ Deno.serve(async (req: Request) => {
     const requestType = body?.type || 'chat'; // 'chat' or 'transcription'
 
     // Enforce limit for both chat and transcription
-    const limitResponse = await checkDailyLimitOrThrow(supabase, user.id);
+    const limitResponse = await checkDailyLimitOrThrow(adminSupabase, supabase, user.id);
     if (limitResponse) {
       // Ensure CORS headers on limit response
       const lr = limitResponse;
