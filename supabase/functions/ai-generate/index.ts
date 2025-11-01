@@ -23,20 +23,29 @@ function getResetAtIso(): string {
 async function checkDailyLimitOrThrow(supabase: any, userId: string) {
   const usageDate = getUtcDateString();
 
-  console.log(`[RATE_LIMIT_CHECK] Checking daily AI usage limit for user: ${userId}, date: ${usageDate}`);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('[RATE_LIMIT_CHECK] 🔍 Starting Rate Limit Check');
+  console.log(`[RATE_LIMIT_CHECK] User ID: ${userId}`);
+  console.log(`[RATE_LIMIT_CHECK] Date: ${usageDate}`);
 
   // Fetch custom limit from account_limits table
+  console.log('[RATE_LIMIT_CHECK] Fetching custom limit from account_limits...');
   const { data: accountLimit, error: limitError } = await supabase
     .from('account_limits')
     .select('daily_ai_limit')
     .eq('user_id', userId)
     .single();
 
+  if (limitError && limitError.code !== 'PGRST116') {
+    console.log(`[RATE_LIMIT_CHECK] ⚠️  Error fetching custom limit:`, limitError);
+  }
+
   // Use custom limit if found, otherwise default to 1
   const DAILY_LIMIT = accountLimit?.daily_ai_limit ?? 1;
-  console.log(`[RATE_LIMIT_CHECK] User daily limit: ${DAILY_LIMIT} (${accountLimit ? 'custom' : 'default'})`);
+  console.log(`[RATE_LIMIT_CHECK] 📊 Daily Limit: ${DAILY_LIMIT} (${accountLimit ? '✨ custom' : '📌 default'})`);
 
   // Select current count (RLS disabled on this table, so always reliable)
+  console.log('[RATE_LIMIT_CHECK] Checking current usage from daily_ai_usage...');
   const { data: existingRow, error: selectError } = await supabase
     .from('daily_ai_usage')
     .select('count')
@@ -44,36 +53,39 @@ async function checkDailyLimitOrThrow(supabase: any, userId: string) {
     .eq('usage_date', usageDate)
     .single();
 
-  console.log(`[RATE_LIMIT_CHECK] Select result:`, { hasData: !!existingRow, error: selectError?.message });
-
   // If row doesn't exist, create it
   if (selectError && selectError.code === 'PGRST116') {
-    console.log(`[RATE_LIMIT_CHECK] No existing row, creating new one for user: ${userId}`);
+    console.log(`[RATE_LIMIT_CHECK] 🆕 No usage row found for today, creating new entry...`);
     const { error: insertError } = await supabase
       .from('daily_ai_usage')
       .insert({ user_id: userId, usage_date: usageDate, count: 0 });
 
     if (insertError) {
-      console.error(`[RATE_LIMIT_CHECK] Insert error:`, insertError);
+      console.error(`[RATE_LIMIT_CHECK] ❌ Error creating new usage row:`, insertError);
       throw insertError;
     }
     
-    console.log(`[RATE_LIMIT_CHECK] New row created, count will be 0 → Allow generation`);
+    console.log(`[RATE_LIMIT_CHECK] ✅ New usage row created (count: 0)`);
+    console.log(`[RATE_LIMIT_CHECK] ✅ ALLOW - First generation of the day`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     return null;
   }
 
   if (selectError) {
-    console.error(`[RATE_LIMIT_CHECK] Select error:`, selectError);
+    console.error(`[RATE_LIMIT_CHECK] ❌ Unexpected error fetching usage:`, selectError);
     throw selectError;
   }
 
   const currentCount = existingRow?.count ?? 0;
   const remaining = Math.max(0, DAILY_LIMIT - currentCount);
-  console.log(`[RATE_LIMIT_CHECK] Current daily usage count: ${currentCount}/${DAILY_LIMIT} (${remaining} remaining)`);
+  console.log(`[RATE_LIMIT_CHECK] 📈 Current Usage: ${currentCount}/${DAILY_LIMIT}`);
+  console.log(`[RATE_LIMIT_CHECK] 🎯 Remaining: ${remaining}`);
 
   // Check if limit is reached
   if (currentCount >= DAILY_LIMIT) {
-    console.log(`[RATE_LIMIT_CHECK] ⛔ LIMIT REACHED - User has used ${currentCount}/${DAILY_LIMIT} generations today`);
+    console.log(`[RATE_LIMIT_CHECK] ⛔ LIMIT REACHED!`);
+    console.log(`[RATE_LIMIT_CHECK] User has exhausted their daily limit (${currentCount}/${DAILY_LIMIT})`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     const body = {
       code: 'DAILY_LIMIT_REACHED',
       message: `You have reached your daily AI generation limit (${DAILY_LIMIT}). Please try again tomorrow.`,
@@ -91,14 +103,18 @@ async function checkDailyLimitOrThrow(supabase: any, userId: string) {
     });
   }
 
-  console.log(`[RATE_LIMIT_CHECK] ✅ Allow - User can generate (${remaining} remaining)`);
+  console.log(`[RATE_LIMIT_CHECK] ✅ ALLOW - User under limit (${remaining} remaining)`);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   return null; // No limit reached
 }
 
 async function incrementDailyUsage(supabase: any, userId: string) {
   const usageDate = getUtcDateString();
   
-  console.log(`Incrementing daily usage for user: ${userId}, date: ${usageDate}`);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('[INCREMENT_USAGE] 📝 Incrementing daily usage count');
+  console.log(`[INCREMENT_USAGE] User ID: ${userId}`);
+  console.log(`[INCREMENT_USAGE] Date: ${usageDate}`);
 
   // Fetch current count
   const { data: row, error: selectError } = await supabase
@@ -109,23 +125,28 @@ async function incrementDailyUsage(supabase: any, userId: string) {
     .single();
 
   if (selectError) {
-    console.error(`Select error in incrementDailyUsage:`, selectError);
+    console.error(`[INCREMENT_USAGE] ❌ Error fetching current count:`, selectError);
     throw selectError;
   }
+
+  const oldCount = row?.count ?? 0;
+  const newCount = oldCount + 1;
+  console.log(`[INCREMENT_USAGE] Count: ${oldCount} → ${newCount}`);
 
   // Increment
   const { error: updateError } = await supabase
     .from('daily_ai_usage')
-    .update({ count: (row?.count ?? 0) + 1 })
+    .update({ count: newCount })
     .eq('user_id', userId)
     .eq('usage_date', usageDate);
 
   if (updateError) {
-    console.error(`Update error in incrementDailyUsage:`, updateError);
+    console.error(`[INCREMENT_USAGE] ❌ Error updating count:`, updateError);
     throw updateError;
   }
   
-  console.log(`Successfully incremented daily usage for user: ${userId}`);
+  console.log(`[INCREMENT_USAGE] ✅ Successfully incremented (new count: ${newCount})`);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 
 const corsHeaders: Record<string, string> = {
@@ -329,15 +350,21 @@ Deno.serve(async (req: Request) => {
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
+      console.log('[AUTH] ❌ Unauthorized request');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
+    console.log(`[AUTH] ✅ User authenticated: ${user.id}`);
+
     // ⚠️ CHECK RATE LIMIT BEFORE ANY AI GENERATION
+    console.log('[RATE_LIMIT] Starting rate limit check...');
     const limitCheck = await checkDailyLimitOrThrow(supabase, user.id);
     if (limitCheck) {
       // Rate limit exceeded - return 429 error response
+      console.log('[RATE_LIMIT] ❌ Request blocked due to rate limit');
       return limitCheck;
     }
+    console.log('[RATE_LIMIT] ✅ Rate limit check passed, proceeding with request');
 
     let body: any;
     try {
@@ -351,9 +378,11 @@ Deno.serve(async (req: Request) => {
     }
     
     const requestType = body?.type || 'chat'; // 'chat' or 'transcription'
+    console.log(`[REQUEST] Type: ${requestType}`);
 
     // Handle transcription
     if (requestType === 'transcription') {
+      console.log('[TRANSCRIPTION] Starting transcription request...');
       const storagePath = body?.storagePath;
       const audioBase64 = body?.audioBase64;
       const mimeType = body?.mimeType || 'audio/webm';
@@ -373,17 +402,18 @@ Deno.serve(async (req: Request) => {
       if (storagePath && typeof storagePath === 'string' && storagePath.trim().length > 0) {
         const trimmedPath = storagePath.trim();
         try {
-          console.log(`Starting transcription from storage path: "${trimmedPath}"`);
+          console.log(`[TRANSCRIPTION] 🎤 Starting transcription from storage: "${trimmedPath}"`);
           // Use the authenticated supabase client for storage operations
           const result = await transcribeAudioFromStorage(trimmedPath, supabase);
-          console.log('Transcription successful');
+          console.log('[TRANSCRIPTION] ✅ Transcription successful');
           // Increment usage count after successful generation
           try {
             await incrementDailyUsage(supabase, user.id);
           } catch (markError) {
-            console.error('Error incrementing daily usage:', markError);
+            console.error('[TRANSCRIPTION] ⚠️  Error incrementing daily usage:', markError);
             // Still return success as transcription worked, but log the issue
           }
+          console.log('[TRANSCRIPTION] ✅ Returning result to client');
           return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
         } catch (transcribeError) {
           const errorMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
@@ -475,14 +505,17 @@ Deno.serve(async (req: Request) => {
       }
       
       try {
+        console.log('[TRANSCRIPTION] 🎤 Starting transcription from base64 audio');
         const result = await transcribeAudio(audioBase64, mimeType);
+        console.log('[TRANSCRIPTION] ✅ Transcription successful');
         // Increment usage count after successful generation
         try {
           await incrementDailyUsage(supabase, user.id);
         } catch (markError) {
-          console.error('Error incrementing daily usage:', markError);
+          console.error('[TRANSCRIPTION] ⚠️  Error incrementing daily usage:', markError);
           // Still return success as transcription worked, but log the issue
         }
+        console.log('[TRANSCRIPTION] ✅ Returning result to client');
         return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
       } catch (transcribeError) {
         const errorMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
@@ -500,17 +533,21 @@ Deno.serve(async (req: Request) => {
     }
 
     // Handle chat completion
+    console.log('[CHAT] 💬 Starting chat completion request');
     const messages = body?.messages ?? [];
     const model = body?.model ?? 'gpt-4o-mini';
     const temperature = body?.temperature ?? 0.7;
+    console.log(`[CHAT] Model: ${model}, Messages: ${messages.length}`);
     const result = await callOpenAI(messages, model, temperature);
+    console.log('[CHAT] ✅ Chat completion successful');
     // Increment usage count after successful generation
     try {
       await incrementDailyUsage(supabase, user.id);
     } catch (markError) {
-      console.error('Error incrementing daily usage:', markError);
+      console.error('[CHAT] ⚠️  Error incrementing daily usage:', markError);
       // Still return success as chat completion worked, but log the issue
     }
+    console.log('[CHAT] ✅ Returning result to client');
     return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
