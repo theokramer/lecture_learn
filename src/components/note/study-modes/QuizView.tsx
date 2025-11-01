@@ -121,7 +121,7 @@ export const QuizView: React.FC<QuizViewProps> = React.memo(function QuizView({ 
       } else if (error?.code === 'DAILY_LIMIT_REACHED') {
         setError('Daily AI limit reached. Please try again tomorrow.');
       } else {
-        setError(error instanceof Error ? error.message : 'Failed to generate quiz');
+      setError(error instanceof Error ? error.message : 'Failed to generate quiz');
       }
     } finally {
       setIsGenerating(false);

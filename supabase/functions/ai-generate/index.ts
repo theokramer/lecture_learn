@@ -1,13 +1,11 @@
 // Supabase Edge Function: ai-generate
-// Enforces a per-user daily cap (15) on AI generations, then proxies to OpenAI Chat Completions
+// Proxies to OpenAI Chat Completions and Whisper APIs
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-const DAILY_LIMIT = 15;
 
 function getUtcDateString(date = new Date()): string {
   const y = date.getUTCFullYear();
@@ -40,11 +38,11 @@ async function incrementUsageOrThrow(supabase: any, userId: string) {
 
   if (selectError) throw selectError;
 
-  if ((row?.count ?? 0) >= DAILY_LIMIT) {
+  if ((row?.count ?? 0) >= 15) {
     const body = {
       code: 'DAILY_LIMIT_REACHED',
       message: 'Daily AI generation limit reached',
-      limit: DAILY_LIMIT,
+      limit: 15,
       remaining: 0,
       resetAt: getResetAtIso(),
     };
@@ -62,13 +60,13 @@ async function incrementUsageOrThrow(supabase: any, userId: string) {
   return null;
 }
 
-async function checkDailyLimitOrThrow(adminSupabase: any, supabase: any, userId: string) {
+async function checkDailyLimitOrThrow(supabase: any, userId: string) {
   const usageDate = getUtcDateString();
 
   console.log(`[RATE_LIMIT_CHECK] Checking daily AI usage limit for user: ${userId}, date: ${usageDate}`);
 
-  // Use admin client to bypass RLS and check rate limit reliably
-  const { data: existingRow, error: selectError } = await adminSupabase
+  // Select current count (RLS disabled on this table, so always reliable)
+  const { data: existingRow, error: selectError } = await supabase
     .from('daily_ai_usage')
     .select('count')
     .eq('user_id', userId)
@@ -351,9 +349,6 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: req.headers.get('Authorization')! } },
     });
 
-    // Create admin client for rate limit checks (bypasses RLS)
-    const adminSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY);
-
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
@@ -371,15 +366,6 @@ Deno.serve(async (req: Request) => {
     }
     
     const requestType = body?.type || 'chat'; // 'chat' or 'transcription'
-
-    // Enforce limit for both chat and transcription
-    const limitResponse = await checkDailyLimitOrThrow(adminSupabase, supabase, user.id);
-    if (limitResponse) {
-      // Ensure CORS headers on limit response
-      const lr = limitResponse;
-      const body = await lr.text();
-      return new Response(body, { status: lr.status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-    }
 
     // Handle transcription
     if (requestType === 'transcription') {
@@ -408,7 +394,7 @@ Deno.serve(async (req: Request) => {
           console.log('Transcription successful');
           // Mark account limit as used
           try {
-            await incrementDailyUsage(supabase, user.id);
+            await incrementUsageOrThrow(supabase, user.id);
           } catch (markError) {
             console.error('Error marking account usage as used:', markError);
             // Still return success as transcription worked, but log the issue
@@ -507,7 +493,7 @@ Deno.serve(async (req: Request) => {
         const result = await transcribeAudio(audioBase64, mimeType);
         // Mark account limit as used
         try {
-          await incrementDailyUsage(supabase, user.id);
+          await incrementUsageOrThrow(supabase, user.id);
         } catch (markError) {
           console.error('Error marking account usage as used:', markError);
           // Still return success as transcription worked, but log the issue
@@ -535,7 +521,7 @@ Deno.serve(async (req: Request) => {
     const result = await callOpenAI(messages, model, temperature);
     // Mark account limit as used
     try {
-      await incrementDailyUsage(supabase, user.id);
+      await incrementUsageOrThrow(supabase, user.id);
     } catch (markError) {
       console.error('Error marking account usage as used:', markError);
       // Still return success as chat completion worked, but log the issue

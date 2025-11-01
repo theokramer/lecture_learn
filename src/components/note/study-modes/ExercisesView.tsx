@@ -163,7 +163,7 @@ Be encouraging but honest. If the answer is mostly correct, say so. If it's part
       } else if (error?.code === 'DAILY_LIMIT_REACHED') {
         setAiFeedback("Daily AI limit reached. Please try again tomorrow.");
       } else {
-        setAiFeedback("I couldn't evaluate your answer at this moment. Please try again or check the solution.");
+      setAiFeedback("I couldn't evaluate your answer at this moment. Please try again or check the solution.");
       }
     } finally {
       setIsChecking(false);
