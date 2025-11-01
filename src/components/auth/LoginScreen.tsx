@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../shared/Button';
 import { Input } from '../shared/Input';
 import { useAuth } from '../../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { FaGoogle } from 'react-icons/fa';
 
 export const LoginScreen: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -13,8 +14,17 @@ export const LoginScreen: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const { login, signUp } = useAuth();
+  const { login, signUp, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Check for error in URL params (from OAuth callback)
+  useEffect(() => {
+    const urlError = searchParams.get('error');
+    if (urlError) {
+      setError(decodeURIComponent(urlError));
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,6 +108,36 @@ export const LoginScreen: React.FC = () => {
               {loading ? 'Loading...' : (isLogin ? 'Sign In' : 'Sign Up')}
             </Button>
           </form>
+
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-[#3a3a3a]"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-[#2a2a2a] text-[#9ca3af]">Or continue with</span>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              onClick={async () => {
+                try {
+                  setError('');
+                  await signInWithGoogle();
+                } catch (err) {
+                  setError('Google sign in failed');
+                }
+              }}
+              fullWidth
+              variant="secondary"
+              className="mt-4"
+              disabled={loading}
+            >
+              <FaGoogle className="w-5 h-5" />
+              Sign {isLogin ? 'in' : 'up'} with Google
+            </Button>
+          </div>
 
           <div className="mt-6 text-center">
             <button

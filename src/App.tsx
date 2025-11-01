@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppDataProvider } from './context/AppDataContext';
@@ -19,10 +19,70 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { LearnFlashcardsPage } from './pages/LearnFlashcardsPage';
 import { useGlobalKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
+import { supabase } from './services/supabase';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
+};
+
+// OAuth callback handler component
+const OAuthCallback: React.FC = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    const handleOAuthCallback = async () => {
+      try {
+        // Check for OAuth error in query params
+        const error = searchParams.get('error');
+        const errorDescription = searchParams.get('error_description');
+        
+        if (error) {
+          console.error('OAuth error:', error, errorDescription);
+          navigate('/login?error=' + encodeURIComponent(errorDescription || error));
+          return;
+        }
+
+        // Supabase OAuth uses hash fragments (#access_token=...)
+        // The Supabase client automatically processes these when the page loads
+        // Wait a bit for the session to be established
+        const checkSession = async () => {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            console.log('✅ OAuth session established');
+            navigate('/home');
+          } else {
+            // Try again after a short delay
+            setTimeout(async () => {
+              const { data: { session: retrySession } } = await supabase.auth.getSession();
+              if (retrySession) {
+                navigate('/home');
+              } else {
+                console.error('❌ No session found after OAuth callback');
+                navigate('/login?error=authentication_failed');
+              }
+            }, 1000);
+          }
+        };
+
+        // Small delay to allow Supabase to process the hash fragment
+        setTimeout(checkSession, 300);
+      } catch (err) {
+        console.error('OAuth callback error:', err);
+        navigate('/login?error=authentication_failed');
+      }
+    };
+
+    handleOAuthCallback();
+  }, [navigate, searchParams]);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a]">
+      <div className="text-white">Completing sign in...</div>
+    </div>
+  );
 };
 
 // Global keyboard shortcuts handler
@@ -66,6 +126,7 @@ function App() {
                   />
           <Routes>
             <Route path="/login" element={<LoginScreen />} />
+            <Route path="/auth/callback" element={<OAuthCallback />} />
             <Route
               path="/home"
               element={
