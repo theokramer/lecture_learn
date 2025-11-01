@@ -186,8 +186,6 @@ export const linkProcessor = {
         sourceType: 'google-drive',
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
       // Final fallback
       return {
         title: 'Google Drive Document',
@@ -226,9 +224,7 @@ export const linkProcessor = {
 
       throw new Error('No content received');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      // Fallback with helpful template
+      // Final fallback
       return {
         title: 'Web Page',
         content: `Web Page\nSource: ${url}\n\nNote: The web page content could not be automatically extracted. Please manually add your notes about this page.`,

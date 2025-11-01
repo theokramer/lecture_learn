@@ -409,11 +409,10 @@ async function generateAllStudyContent(noteId: string, content: string) {
     // Clean up duplicates if found
     if (existingRows && existingRows.length > 1) {
       const duplicateIds = existingRows.slice(1).map(row => row.id);
-      supabase
+      await supabase
         .from('study_content')
         .delete()
         .in('id', duplicateIds)
-        .catch(err => console.error('Error cleaning up duplicates:', err));
     }
 
     const hasExistingSummary = existing?.summary && existing.summary.trim() !== '';
@@ -494,7 +493,6 @@ async function generateAllStudyContent(noteId: string, content: string) {
           .from('study_content')
           .delete()
           .in('id', duplicateIds)
-          .catch(err => console.error('Error cleaning up duplicates:', err));
       }
       
       // Update only the most recent row (by ID) - summary will be preserved automatically (not in contentData if it exists)
@@ -595,13 +593,10 @@ export const studyContentService = {
       // Clean up duplicates in background (keep the most recent one)
       const duplicateIds = data.slice(1).map(row => row.id);
       if (duplicateIds.length > 0) {
-        supabase
+        await supabase
           .from('study_content')
           .delete()
-          .in('id', duplicateIds)
-          .catch(err => {
-            console.error('Error cleaning up duplicate study_content rows:', err);
-          });
+          .in('id', duplicateIds);
       }
       
       return {
@@ -678,11 +673,14 @@ export const studyContentService = {
     // Clean up duplicates if found
     if (existingRows && existingRows.length > 1) {
       const duplicateIds = existingRows.slice(1).map(row => row.id);
-      supabase
+      const { error: deleteError } = await supabase
         .from('study_content')
         .delete()
-        .in('id', duplicateIds)
-        .catch(err => console.error('Error cleaning up duplicates:', err));
+        .in('id', duplicateIds);
+      
+      if (deleteError) {
+        console.error('Error cleaning up duplicates:', deleteError);
+      }
     }
 
     const contentData: any = {};
@@ -699,11 +697,14 @@ export const studyContentService = {
       // Clean up any duplicates first
       if (existingRows && existingRows.length > 1) {
         const duplicateIds = existingRows.slice(1).map(row => row.id);
-        await supabase
+        const { error: updateError } = await supabase
           .from('study_content')
           .delete()
-          .in('id', duplicateIds)
-          .catch(err => console.error('Error cleaning up duplicates:', err));
+          .in('id', duplicateIds);
+        
+        if (updateError) {
+          console.error('Error cleaning up duplicates:', updateError);
+        }
       }
       
       // Update only the most recent row (by ID)
