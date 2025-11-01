@@ -74,7 +74,6 @@ export const HomePage: React.FC = () => {
             >
               <HiBars3 className="w-6 h-6 text-text-primary" />
             </button>
-            <h1 className="text-xl lg:text-2xl font-bold text-text-primary">Home</h1>
           </div>
           <div className="flex gap-2 lg:gap-3">
             <Button

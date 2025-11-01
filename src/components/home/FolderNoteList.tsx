@@ -200,7 +200,7 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
                   onClick={() => handleBreadcrumbClick(null)}
                   className="hover:text-white transition-colors"
                 >
-                  My notes
+                  Home
                 </button>
                 {breadcrumbPath.map((folder, index) => (
                   <React.Fragment key={folder.id}>
@@ -222,7 +222,7 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
         
         {/* Page Title */}
         <h2 className="text-2xl font-bold text-white mb-6">
-          {currentFolder ? currentFolder.name : 'My notes'}
+          {currentFolder ? currentFolder.name : 'Home'}
         </h2>
         
         <div className="flex gap-4 mb-6">
