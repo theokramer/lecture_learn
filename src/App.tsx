@@ -30,7 +30,6 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 const OAuthCallback: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     const handleOAuthCallback = async () => {
