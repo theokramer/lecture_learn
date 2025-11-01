@@ -6,6 +6,7 @@ import { documentProcessor } from '../services/documentProcessor';
 import { useAuth } from '../context/AuthContext';
 import { openaiService } from '../services/openai';
 import { storageService } from '../services/supabase';
+import { RateLimitError } from '../services/aiGateway';
 import toast from 'react-hot-toast';
 
 export const UploadPage: React.FC = () => {
@@ -77,6 +78,16 @@ export const UploadPage: React.FC = () => {
           }
         } catch (fileError) {
           console.error(`Error processing ${file.name}:`, fileError);
+          
+          // If rate limit is hit during processing, stop everything
+          if (fileError instanceof RateLimitError) {
+            setUploading(false);
+            toast.error('🚫 Daily AI limit reached. You have used your daily quota for AI-powered features. Please try again tomorrow.', {
+              duration: 5000,
+            });
+            return; // Stop processing - don't create note
+          }
+          
           combinedText += `File: ${file.name}\n[Error processing file: ${fileError instanceof Error ? fileError.message : 'Unknown error'}]\n\n`;
         }
       }
@@ -91,7 +102,16 @@ export const UploadPage: React.FC = () => {
       });
     } catch (error) {
       console.error('Upload error:', error);
-      toast.error('Failed to upload files. Please try again.');
+      
+      // Handle rate limit errors specifically
+      if (error instanceof RateLimitError) {
+        toast.error('🚫 Daily AI limit reached. You have used your daily quota for AI-powered features. Please try again tomorrow.', {
+          duration: 5000,
+        });
+      } else {
+        toast.error('Failed to upload files. Please try again.');
+      }
+      
       setUploading(false);
     }
   };

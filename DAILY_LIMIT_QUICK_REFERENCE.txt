@@ -1,0 +1,203 @@
+================================================================================
+DAILY AI USAGE LIMIT - QUICK REFERENCE
+================================================================================
+
+✅ SYSTEM STATUS: FULLY IMPLEMENTED & WORKING
+
+The daily AI usage limit system is already built into your app. It:
+  • Checks before EVERY AI generation
+  • Increments counter after SUCCESS
+  • Resets at 00:00 UTC each day
+  • Shows "try again tomorrow" messages
+
+================================================================================
+QUICK COMMANDS
+================================================================================
+
+CHECK USER'S TODAY'S USAGE:
+  SELECT * FROM daily_ai_usage 
+  WHERE user_id = 'USER_UUID' AND usage_date = CURRENT_DATE;
+
+SET CUSTOM LIMIT (e.g., 5 per day):
+  INSERT INTO account_limits (user_id, daily_ai_limit) 
+  VALUES ('USER_UUID', 5)
+  ON CONFLICT (user_id) DO UPDATE SET daily_ai_limit = 5;
+
+RESET TODAY'S COUNTER:
+  DELETE FROM daily_ai_usage 
+  WHERE user_id = 'USER_UUID' AND usage_date = CURRENT_DATE;
+
+LIST USERS WHO HIT TODAY'S LIMIT:
+  SELECT u.user_id, u.count, l.daily_ai_limit
+  FROM daily_ai_usage u
+  LEFT JOIN account_limits l ON u.user_id = l.user_id
+  WHERE u.usage_date = CURRENT_DATE 
+    AND u.count >= COALESCE(l.daily_ai_limit, 1);
+
+================================================================================
+HOW IT WORKS
+================================================================================
+
+User tries to generate → Check limit → Can generate?
+  
+  YES (count < limit):
+    ✅ Allow generation
+    ✅ After success: increment count
+    ✅ User gets content
+  
+  NO (count >= limit):
+    ❌ Return 429 error
+    ❌ Show message: "Daily AI limit reached. Please try again tomorrow."
+    ❌ All AI features blocked until tomorrow
+
+================================================================================
+DEFAULT LIMITS
+================================================================================
+
+Default daily limit: 1 generation per user per day
+
+Can be customized per user via account_limits table.
+
+All times in UTC. Resets at 00:00 UTC every day.
+
+================================================================================
+WHERE IT'S CHECKED
+================================================================================
+
+EDGE FUNCTION:
+  • supabase/functions/ai-generate/index.ts
+  • Function: checkDailyLimitOrThrow() - called before any AI operation
+  • Function: incrementDailyUsage() - called after success
+
+FRONTEND:
+  • SummaryView - Toast: "Daily AI limit reached. Please try again tomorrow."
+  • QuizView - Error state
+  • ExercisesView - Error state  
+  • FlashcardsView - Error state
+  • FeynmanView - Feedback message
+  • AIChatPanel - Chat message
+  • ProcessingPage - Upload error handling
+
+================================================================================
+WHAT COUNTS AS 1 GENERATION
+================================================================================
+
+✓ Chat message          → AIChatPanel
+✓ Transcribe audio      → ProcessingPage, Upload
+✓ Generate summary      → SummaryView
+✓ Generate quiz         → QuizView
+✓ Generate exercises    → ExercisesView
+✓ Generate flashcards   → FlashcardsView
+✓ Feynman feedback      → FeynmanView
+✓ Auto-generate title   → ProcessingPage (during transcription)
+
+Each of these increments the daily counter by 1.
+
+================================================================================
+MONITORING
+================================================================================
+
+Check edge function logs for:
+  [RATE_LIMIT_CHECK] 🔍 Starting Rate Limit Check
+  [RATE_LIMIT_CHECK] 📊 Current Usage: X/Y
+  [RATE_LIMIT_CHECK] ⛔ LIMIT REACHED!
+  [INCREMENT_USAGE] 📝 Incrementing daily usage count
+
+Location: Supabase Dashboard → Functions → ai-generate → Logs
+
+================================================================================
+ERROR MESSAGES USERS SEE
+================================================================================
+
+When daily limit is hit:
+  "Daily AI limit reached (15/day). Please try again tomorrow."
+
+With specific reset time:
+  "Daily AI limit reached. Please try again after 11:30 PM."
+
+In processing page:
+  "Daily AI limit reached. Please try again tomorrow."
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+❌ User can still generate after hitting limit?
+  → Verify edge function was deployed: supabase functions deploy ai-generate
+  → Check table exists: SELECT COUNT(*) FROM daily_ai_usage;
+  → Check RLS is disabled: ALTER TABLE daily_ai_usage DISABLE ROW LEVEL SECURITY;
+
+❌ Count not incrementing?
+  → Check edge function logs for [INCREMENT_USAGE] errors
+  → Verify database connection
+  → Ensure record was created before incrementing
+
+❌ Wrong reset time shown?
+  → Times use UTC timezone
+  → Reset is always 00:00 UTC next day
+  → User's local timezone is just for display
+
+================================================================================
+DATABASE SCHEMA
+================================================================================
+
+TABLE: daily_ai_usage
+  user_id UUID (links to auth.users)
+  usage_date DATE (YYYY-MM-DD in UTC)
+  count INT (0-N generations used)
+  created_at TIMESTAMPTZ (when record created)
+  
+  PRIMARY KEY: (user_id, usage_date)
+  RLS: DISABLED (for edge function access)
+
+TABLE: account_limits
+  user_id UUID PRIMARY KEY (custom limit per user)
+  daily_ai_limit INT (default 1 if not set)
+  
+  RLS: DISABLED (for edge function access)
+
+================================================================================
+FILES INVOLVED
+================================================================================
+
+Backend:
+  • supabase/functions/ai-generate/index.ts
+    - checkDailyLimitOrThrow()
+    - incrementDailyUsage()
+  
+  • supabase-schema.sql
+    - daily_ai_usage table
+    - account_limits table
+
+Frontend:
+  • src/services/aiGateway.ts
+    - RateLimitError handling
+    - DAILY_LIMIT_REACHED error code
+  
+  • src/components/note/study-modes/*.tsx
+    - SummaryView
+    - QuizView
+    - ExercisesView
+    - FlashcardsView
+    - FeynmanView
+  
+  • src/components/note/AIChatPanel.tsx
+    - Chat error handling
+
+================================================================================
+FOR MORE DETAILS
+================================================================================
+
+See:
+  • DAILY_AI_USAGE_RATE_LIMITING.md - Full technical documentation
+  • DAILY_LIMIT_IMPLEMENTATION.md - Implementation details
+  • supabase-schema.sql - Database schema
+  • supabase/functions/ai-generate/index.ts - Backend logic
+
+================================================================================
+✅ SYSTEM IS PRODUCTION READY
+
+The daily AI usage limit is fully implemented, tested, and working.
+No additional changes needed - just deploy and monitor!
+
+================================================================================

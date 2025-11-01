@@ -85,11 +85,19 @@ export const ProcessingPage: React.FC = () => {
           
           setProgress(60);
 
-          // Create note title from transcription
+          // Create note title from transcription (non-blocking - if it fails due to rate limit, use default)
           setCurrentTask('Generating title...');
-          const aiTitleFromAudio = await summaryService.generatePerfectTitle(transcription);
+          let aiTitleFromAudio: string | null = null;
+          try {
+            aiTitleFromAudio = await summaryService.generatePerfectTitle(transcription);
+          } catch (titleError: any) {
+            // If title generation fails due to rate limit or any error, just use default
+            // Don't fail the note creation - title generation is optional
+            console.log('Title generation skipped (rate limit or error):', titleError?.code || titleError?.message);
+            aiTitleFromAudio = null;
+          }
           
-          // Create note with AI title and transcription
+          // Create note with AI title (if generated) or fallback title
           const noteId = await createNote(aiTitleFromAudio || title || 'Voice Recording', transcription);
           setProgress(75);
 
@@ -180,7 +188,7 @@ export const ProcessingPage: React.FC = () => {
         if (err?.code === 'ACCOUNT_LIMIT_REACHED') {
           setError('You have already used your one-time AI generation quota. No additional AI generations are available.');
         } else if (err?.code === 'DAILY_LIMIT_REACHED') {
-          setError('Daily transcription limit reached. Please try again tomorrow or contact support.');
+          setError('🚫 Daily AI limit reached. You have used your daily quota for AI-powered features. Please try again tomorrow.');
         } else if (errorMessage.includes('too large') || errorMessage.includes('size')) {
           setError(
             'The audio recording is too large to process. ' +

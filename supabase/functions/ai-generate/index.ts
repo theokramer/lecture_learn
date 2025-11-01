@@ -40,8 +40,13 @@ async function checkDailyLimitOrThrow(supabase: any, userId: string) {
     console.log(`[RATE_LIMIT_CHECK] ⚠️  Error fetching custom limit:`, limitError);
   }
 
-  // Use custom limit if found, otherwise default to 1
-  const DAILY_LIMIT = accountLimit?.daily_ai_limit ?? 1;
+  // Use custom limit if found, otherwise default to 30
+  // Ensure limit is at least 1 (never allow 0 or negative)
+  let DAILY_LIMIT = accountLimit?.daily_ai_limit ?? 30;
+  if (DAILY_LIMIT < 1) {
+    console.warn(`[RATE_LIMIT_CHECK] ⚠️  Invalid limit value ${DAILY_LIMIT}, defaulting to 30`);
+    DAILY_LIMIT = 30;
+  }
   console.log(`[RATE_LIMIT_CHECK] 📊 Daily Limit: ${DAILY_LIMIT} (${accountLimit ? '✨ custom' : '📌 default'})`);
 
   // Select current count (RLS disabled on this table, so always reliable)
@@ -406,15 +411,23 @@ Deno.serve(async (req: Request) => {
           // Use the authenticated supabase client for storage operations
           const result = await transcribeAudioFromStorage(trimmedPath, supabase);
           console.log('[TRANSCRIPTION] ✅ Transcription successful');
-          // Increment usage count after successful generation
+          
+          // Prepare response BEFORE incrementing (ensures we have valid result)
+          const responseData = JSON.stringify(result);
+          console.log('[TRANSCRIPTION] ✅ Response prepared');
+          
+          // Increment usage count AFTER successful generation and response preparation
+          // This ensures the generation truly succeeded before counting it
           try {
             await incrementDailyUsage(supabase, user.id);
+            console.log('[TRANSCRIPTION] ✅ Usage count incremented');
           } catch (markError) {
             console.error('[TRANSCRIPTION] ⚠️  Error incrementing daily usage:', markError);
             // Still return success as transcription worked, but log the issue
           }
+          
           console.log('[TRANSCRIPTION] ✅ Returning result to client');
-          return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+          return new Response(responseData, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
         } catch (transcribeError) {
           const errorMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
           console.error('Transcription error:', errorMsg);
@@ -508,15 +521,23 @@ Deno.serve(async (req: Request) => {
         console.log('[TRANSCRIPTION] 🎤 Starting transcription from base64 audio');
         const result = await transcribeAudio(audioBase64, mimeType);
         console.log('[TRANSCRIPTION] ✅ Transcription successful');
-        // Increment usage count after successful generation
+        
+        // Prepare response BEFORE incrementing (ensures we have valid result)
+        const responseData = JSON.stringify(result);
+        console.log('[TRANSCRIPTION] ✅ Response prepared');
+        
+        // Increment usage count AFTER successful generation and response preparation
+        // This ensures the generation truly succeeded before counting it
         try {
           await incrementDailyUsage(supabase, user.id);
+          console.log('[TRANSCRIPTION] ✅ Usage count incremented');
         } catch (markError) {
           console.error('[TRANSCRIPTION] ⚠️  Error incrementing daily usage:', markError);
           // Still return success as transcription worked, but log the issue
         }
+        
         console.log('[TRANSCRIPTION] ✅ Returning result to client');
-        return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+        return new Response(responseData, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
       } catch (transcribeError) {
         const errorMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
         // If OpenAI returns an error about file size, return proper JSON error
@@ -540,15 +561,23 @@ Deno.serve(async (req: Request) => {
     console.log(`[CHAT] Model: ${model}, Messages: ${messages.length}`);
     const result = await callOpenAI(messages, model, temperature);
     console.log('[CHAT] ✅ Chat completion successful');
-    // Increment usage count after successful generation
+    
+    // Prepare response BEFORE incrementing (ensures we have valid result)
+    const responseData = JSON.stringify(result);
+    console.log('[CHAT] ✅ Response prepared');
+    
+    // Increment usage count AFTER successful generation and response preparation
+    // This ensures the generation truly succeeded before counting it
     try {
       await incrementDailyUsage(supabase, user.id);
+      console.log('[CHAT] ✅ Usage count incremented');
     } catch (markError) {
       console.error('[CHAT] ⚠️  Error incrementing daily usage:', markError);
       // Still return success as chat completion worked, but log the issue
     }
+    
     console.log('[CHAT] ✅ Returning result to client');
-    return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    return new Response(responseData, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });

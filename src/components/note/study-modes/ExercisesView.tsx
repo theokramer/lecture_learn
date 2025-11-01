@@ -104,7 +104,11 @@ export const ExercisesView: React.FC<ExercisesViewProps> = React.memo(function E
       }
     } catch (error) {
       console.error('Error generating exercises:', error);
-      setError(error instanceof Error ? error.message : 'Failed to generate exercises');
+      if ((error as any)?.code === 'TOTAL_LIMIT_REACHED') {
+        setError('You have reached your total AI generation limit (5 total). No more AI generations are available.');
+      } else {
+        setError(error instanceof Error ? error.message : 'Failed to generate exercises');
+      }
     } finally {
       setIsGenerating(false);
     }

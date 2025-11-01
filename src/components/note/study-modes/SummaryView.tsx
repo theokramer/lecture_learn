@@ -194,6 +194,10 @@ export const SummaryView: React.FC = () => {
         if (!isAutoGenerate) {
           toast.error('You have already used your one-time AI generation quota. No additional AI generations are available.');
         }
+      } else if (code === 'TOTAL_LIMIT_REACHED') {
+        if (!isAutoGenerate) {
+          toast.error('You have reached your total AI generation limit (5 total). No more AI generations are available.');
+        }
       } else if (code === 'DAILY_LIMIT_REACHED') {
         const resetAt = error?.resetAt ? new Date(error.resetAt) : null;
         const when = resetAt ? ` after ${resetAt.toLocaleTimeString()}` : ' tomorrow';

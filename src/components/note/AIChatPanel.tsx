@@ -122,6 +122,10 @@ ${content.substring(0, 2000)}`;
       setSuggestedQuestions(questions);
     } catch (error) {
       console.error('Error generating suggested questions:', error);
+      // If rate limit, silently fail (don't show suggested questions)
+      if ((error as any)?.code === 'DAILY_LIMIT_REACHED') {
+        console.log('Rate limit reached - suggested questions unavailable');
+      }
     }
   };
 
@@ -272,12 +276,15 @@ ${content.substring(0, 2000)}`;
       console.error('Error getting AI response:', error);
       let errorContent = "I'm sorry, I couldn't process your request at this moment. Please try again.";
       
+      // Check if this is a rate limit error by code OR by the error message/type
+      const isRateLimit = error?.code === 'DAILY_LIMIT_REACHED' || 
+                         error?.message?.includes('Daily limit') ||
+                         (error instanceof Error && error.message.includes('429'));
+      
       if (error?.code === 'ACCOUNT_LIMIT_REACHED') {
         errorContent = "You have already used your one-time AI generation quota. No additional AI generations are available.";
-      } else if (error?.code === 'DAILY_LIMIT_REACHED') {
-        errorContent = "Daily AI limit reached (15/day). Please try again tomorrow.";
-      } else if (error instanceof Error && error.message.includes('429')) {
-        errorContent = "Rate limit reached. Please wait a moment and try again in a few seconds.";
+      } else if (error?.code === 'DAILY_LIMIT_REACHED' || isRateLimit) {
+        errorContent = "Daily AI limit reached. Please try again tomorrow.";
       }
       
       const errorMessage: ChatMessage = {

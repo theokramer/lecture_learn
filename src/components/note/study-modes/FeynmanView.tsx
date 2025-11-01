@@ -227,6 +227,8 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
       
       if (error?.code === 'ACCOUNT_LIMIT_REACHED') {
         feedbackMessage = "You have already used your one-time AI generation quota. No additional AI generations are available.";
+      } else if (error?.code === 'TOTAL_LIMIT_REACHED') {
+        feedbackMessage = "You have reached your total AI generation limit (5 total). No more AI generations are available.";
       } else if (error?.code === 'DAILY_LIMIT_REACHED') {
         feedbackMessage = "Daily AI limit reached. Please try again tomorrow.";
       }

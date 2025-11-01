@@ -228,7 +228,7 @@ CREATE TRIGGER update_study_content_updated_at
 -- Account limits table (per-user custom limits)
 CREATE TABLE IF NOT EXISTS account_limits (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  daily_ai_limit INT NOT NULL DEFAULT 1,
+  daily_ai_limit INT NOT NULL DEFAULT 30,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

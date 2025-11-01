@@ -20,6 +20,72 @@ export class RateLimitError extends Error {
 // Keep alias for backwards compatibility
 export const DailyLimitError = RateLimitError;
 
+/**
+ * Check if user has reached their daily AI usage limit
+ * @param userId - User ID to check
+ * @throws RateLimitError if limit is reached
+ */
+export async function checkRateLimit(userId: string): Promise<void> {
+  try {
+    // Get today's date in UTC (YYYY-MM-DD)
+    const today = new Date();
+    const usageDate = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`;
+    
+    // Get user's daily limit (may not exist, so use maybeSingle)
+    const { data: accountLimit, error: limitError } = await supabase
+      .from('account_limits')
+      .select('daily_ai_limit')
+      .eq('user_id', userId)
+      .maybeSingle();
+    
+    // If error and it's not "no rows", throw it
+    if (limitError && limitError.code !== 'PGRST116') {
+      console.warn('Error checking account limit:', limitError);
+    }
+    
+    const dailyLimit = accountLimit?.daily_ai_limit ?? 1;
+    
+    // Get today's usage count (may not exist yet, so use maybeSingle)
+    const { data: usageData, error: usageError } = await supabase
+      .from('daily_ai_usage')
+      .select('count')
+      .eq('user_id', userId)
+      .eq('usage_date', usageDate)
+      .maybeSingle();
+    
+    // If error and it's not "no rows", throw it
+    if (usageError && usageError.code !== 'PGRST116') {
+      console.warn('Error checking daily usage:', usageError);
+    }
+    
+    const currentCount = usageData?.count ?? 0;
+    
+    // Check if limit reached
+    if (currentCount >= dailyLimit) {
+      // Calculate reset time (tomorrow at 00:00 UTC)
+      const reset = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1, 0, 0, 0));
+      
+      throw new RateLimitError(
+        `You have reached your daily AI generation limit (${dailyLimit}). Please try again tomorrow.`,
+        {
+          limit: dailyLimit,
+          remaining: 0,
+          resetAt: reset.toISOString(),
+          code: 'DAILY_LIMIT_REACHED',
+        }
+      );
+    }
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      throw error; // Re-throw rate limit errors
+    }
+    // If database query fails, don't block - let the actual generation fail instead
+    // This prevents blocking users due to database connectivity issues
+    console.warn('Failed to check rate limit:', error);
+    // Don't throw - let the actual AI call fail if limit is truly reached
+  }
+}
+
 export const aiGateway = {
   async chatCompletion(
     messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
@@ -37,16 +103,27 @@ export const aiGateway = {
     if (error) {
       // Supabase wraps non-2xx as error; try to parse limit response shape
       const errBody: any = (error as any)?.context || {};
-      if (errBody?.code === 'DAILY_LIMIT_REACHED') {
-        throw new RateLimitError(errBody?.message || 'Daily limit reached', {
+      
+      // Also check if error itself is the parsed body
+      let errorCode = errBody?.code;
+      let errorMsg = errBody?.message;
+      
+      // Handle 429 responses (might be wrapped differently)
+      if ((error as any)?.status === 429) {
+        errorCode = 'DAILY_LIMIT_REACHED';
+        errorMsg = 'Daily limit reached';
+      }
+      
+      if (errorCode === 'DAILY_LIMIT_REACHED') {
+        throw new RateLimitError(errorMsg || 'Daily limit reached', {
           limit: errBody.limit ?? 15,
           remaining: errBody.remaining ?? 0,
           resetAt: errBody.resetAt ?? new Date().toISOString(),
           code: 'DAILY_LIMIT_REACHED',
         });
       }
-      if (errBody?.code === 'ACCOUNT_LIMIT_REACHED') {
-        throw new RateLimitError(errBody?.message || 'Account limit reached - you have already used your one-time AI generation quota', {
+      if (errorCode === 'ACCOUNT_LIMIT_REACHED') {
+        throw new RateLimitError(errorMsg || 'Account limit reached - you have already used your one-time AI generation quota', {
           limit: 1,
           remaining: 0,
           code: 'ACCOUNT_LIMIT_REACHED',
@@ -326,32 +403,9 @@ export const aiGateway = {
       }
 
       if (error) {
-        // Try to parse error from different possible formats
-        let errBody: any = {};
-        let errorMessage = '';
-        
-        // Supabase function errors can come in different formats:
-        // 1. error.context (Supabase wrapped error)
-        // 2. error itself is an object with error property
-        // 3. error.message (standard Error)
-        // 4. data might contain error object even when error is set
-        
-        if ((error as any)?.context) {
-          errBody = (error as any).context;
-        } else if (typeof error === 'object' && (error as any)?.error) {
-          errBody = (error as any).error;
-        } else if (data && typeof data === 'object' && (data as any)?.error) {
-          errBody = (data as any).error;
-        }
-        
-        // Try to extract error message from various locations
-        errorMessage = errBody?.error || 
-                      errBody?.message || 
-                      (error as any)?.message || 
-                      (typeof error === 'string' ? error : String(error));
-        
-        // Check for rate limits
-        if (errBody?.code === 'DAILY_LIMIT_REACHED' || errorMessage.includes('DAILY_LIMIT')) {
+        // Supabase wraps non-2xx as error; try to parse limit response shape
+        const errBody: any = (error as any)?.context || {};
+        if (errBody?.code === 'DAILY_LIMIT_REACHED') {
           throw new RateLimitError(errBody?.message || 'Daily limit reached', {
             limit: errBody.limit ?? 15,
             remaining: errBody.remaining ?? 0,
@@ -359,8 +413,7 @@ export const aiGateway = {
             code: 'DAILY_LIMIT_REACHED',
           });
         }
-        
-        if (errBody?.code === 'ACCOUNT_LIMIT_REACHED' || errorMessage.includes('ACCOUNT_LIMIT')) {
+        if (errBody?.code === 'ACCOUNT_LIMIT_REACHED') {
           throw new RateLimitError(errBody?.message || 'Account limit reached - you have already used your one-time AI generation quota', {
             limit: 1,
             remaining: 0,
@@ -368,23 +421,7 @@ export const aiGateway = {
             usedAt: errBody.usedAt,
           });
         }
-        
-        // Check for timeout errors
-        if (errorMessage.includes('timeout') || errorMessage.includes('504')) {
-          throw new Error(
-            'Transcription request timed out. Please try again.'
-          );
-        }
-        
-        // Check for file size errors
-        if (errorMessage.includes('too large') || errorMessage.includes('413') || errorMessage.includes('25MB') || errorMessage.includes('6 MB')) {
-          throw new Error(
-            'Audio file is too large. Please record a shorter audio (under 2 minutes recommended).'
-          );
-        }
-        
-        // Throw with extracted error message
-        throw new Error(errorMessage || 'Transcription failed');
+        throw error;
       }
 
       // Validate that we have transcription data
