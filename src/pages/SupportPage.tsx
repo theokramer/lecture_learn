@@ -34,7 +34,7 @@ export const SupportPage: React.FC = () => {
     documents: [
       {
         q: 'What file types can I upload?',
-        a: 'You can upload PDFs, Word documents (.doc, .docx), text files (.txt), images, and more. The AI will extract and process the content.',
+        a: 'You can upload PDFs, Word documents (.doc, .docx), OpenDocument files (.odt, .ods), Excel files (.xls, .xlsx), PowerPoint (.ppt, .pptx), text files (.txt, .md, .json), images, audio, and video files. The AI will extract and process the content from all supported document formats.',
       },
       {
         q: 'Is there a file size limit?',

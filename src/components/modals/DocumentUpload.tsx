@@ -18,22 +18,48 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen, onClose,
   const [files, setFiles] = useState<File[]>([]);
   const [task, setTask] = useState('Preparing upload...');
 
+  const isValidFileType = (file: File): boolean => {
+    const fileName = file.name.toLowerCase();
+    const fileType = file.type;
+    
+    // Check by file extension for better compatibility
+    const validExtensions = ['.pdf', '.doc', '.docx', '.odt', '.ods', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.md', '.json', '.mp3', '.wav', '.mp4', '.mov', '.avi'];
+    const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
+    
+    // Check by MIME type
+    const validMimeTypes = [
+      'application/pdf',
+      'application/msword', // .doc
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'application/vnd.oasis.opendocument.text', // .odt
+      'application/vnd.oasis.opendocument.spreadsheet', // .ods
+      'application/vnd.ms-excel', // .xls
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-powerpoint', // .ppt
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+      'text/plain',
+      'text/markdown',
+      'application/json',
+      'audio/mpeg',
+      'audio/wav',
+      'video/mp4',
+      'video/quicktime',
+      'video/x-msvideo'
+    ];
+    
+    return hasValidExtension || validMimeTypes.includes(fileType) || fileType === '';
+  };
+
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
-    const validFiles = selectedFiles.filter(file => {
-      const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'audio/mpeg', 'audio/wav', 'video/mp4', 'video/quicktime', 'video/x-msvideo'];
-      return validTypes.includes(file.type);
-    });
+    const validFiles = selectedFiles.filter(isValidFileType);
     setFiles([...files, ...validFiles].slice(0, 3));
   }, [files]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const droppedFiles = Array.from(e.dataTransfer.files);
-    const validFiles = droppedFiles.filter(file => {
-      const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'audio/mpeg', 'audio/wav', 'video/mp4', 'video/quicktime', 'video/x-msvideo'];
-      return validTypes.includes(file.type);
-    });
+    const validFiles = droppedFiles.filter(isValidFileType);
     setFiles([...files, ...validFiles].slice(0, 3));
   }, [files]);
 
@@ -105,11 +131,11 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ isOpen, onClose,
                 multiple
                 onChange={handleFileSelect}
                 className="hidden"
-                accept=".pdf,.doc,.docx,.txt,.mp3,.wav,.mp4,.mov,.avi"
+                accept=".pdf,.doc,.docx,.odt,.ods,.xls,.xlsx,.ppt,.pptx,.txt,.md,.json,.mp3,.wav,.mp4,.mov,.avi"
               />
             </label>
             <p className="text-xs text-[#9ca3af] mt-4">
-              Supported: PDF, DOC, DOCX, TXT, MP3, WAV, MP4, MOV, AVI (Max 3 files)
+              Supported: PDF, DOC, DOCX, ODT, ODS, XLS, XLSX, PPT, PPTX, TXT, MD, JSON, MP3, WAV, MP4, MOV, AVI (Max 3 files)
             </p>
           </div>
 

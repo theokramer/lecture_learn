@@ -272,7 +272,7 @@ export const DocumentManagement: React.FC = React.memo(() => {
           multiple
           onChange={handleFileSelect}
           className="hidden"
-          accept=".pdf,.doc,.docx,.txt,.mp3,.wav,.mp4,.mov,.avi"
+          accept=".pdf,.doc,.docx,.odt,.ods,.xls,.xlsx,.ppt,.pptx,.txt,.md,.json,.mp3,.wav,.mp4,.mov,.avi"
         />
       </div>
 
