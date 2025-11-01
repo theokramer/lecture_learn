@@ -66,33 +66,40 @@ async function checkDailyLimitOrThrow(supabase: any, userId: string) {
 
   console.log(`Checking daily AI usage limit for user: ${userId}, date: ${usageDate}`);
 
-  // Ensure row exists
-  const { error: upsertError } = await supabase
-    .from('daily_ai_usage')
-    .upsert({ user_id: userId, usage_date: usageDate, count: 0 }, { onConflict: 'user_id,usage_date' });
-
-  if (upsertError) {
-    console.error(`Upsert error in checkDailyLimitOrThrow:`, upsertError);
-    throw upsertError;
-  }
-
-  // Fetch current count
-  const { data: row, error: selectError } = await supabase
+  // First, try to fetch current count WITHOUT modifying anything
+  const { data: existingRow, error: selectError } = await supabase
     .from('daily_ai_usage')
     .select('count')
     .eq('user_id', userId)
     .eq('usage_date', usageDate)
     .single();
 
+  // If row doesn't exist (selectError with code PGRST116), create it
+  if (selectError && selectError.code === 'PGRST116') {
+    console.log(`No existing row, creating new one for user: ${userId}`);
+    const { error: insertError } = await supabase
+      .from('daily_ai_usage')
+      .insert({ user_id: userId, usage_date: usageDate, count: 0 });
+
+    if (insertError) {
+      console.error(`Insert error in checkDailyLimitOrThrow:`, insertError);
+      throw insertError;
+    }
+    
+    // New row created with count: 0, so no limit reached
+    console.log(`No limit reached for user: ${userId}, proceeding with generation`);
+    return null;
+  }
+
   if (selectError) {
     console.error(`Select error in checkDailyLimitOrThrow:`, selectError);
     throw selectError;
   }
 
-  const currentCount = row?.count ?? 0;
+  const currentCount = existingRow?.count ?? 0;
   console.log(`Current daily usage count: ${currentCount}`);
 
-  // Allow only 1 generation per day (changed from 15)
+  // Allow only 1 generation per day
   const DAILY_LIMIT = 1;
   if (currentCount >= DAILY_LIMIT) {
     console.log(`Daily limit reached for user: ${userId}`);
