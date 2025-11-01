@@ -196,9 +196,15 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
             {/* Breadcrumb Path */}
             {breadcrumbPath.length > 0 && (
               <div className="flex items-center gap-2 text-sm text-[#9ca3af] flex-wrap">
+                <button
+                  onClick={() => handleBreadcrumbClick(null)}
+                  className="hover:text-white transition-colors"
+                >
+                  My notes
+                </button>
                 {breadcrumbPath.map((folder, index) => (
                   <React.Fragment key={folder.id}>
-                    {index > 0 && <HiChevronRight className="w-4 h-4" />}
+                    <HiChevronRight className="w-4 h-4" />
                     <button
                       onClick={() => handleBreadcrumbClick(folder.id)}
                       className={`hover:text-white transition-colors ${
@@ -215,11 +221,9 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
         )}
         
         {/* Page Title */}
-        {currentFolder && (
-          <h2 className="text-2xl font-bold text-white mb-6">
-            {currentFolder.name}
-          </h2>
-        )}
+        <h2 className="text-2xl font-bold text-white mb-6">
+          {currentFolder ? currentFolder.name : 'My notes'}
+        </h2>
         
         <div className="flex gap-4 mb-6">
           <div className="flex-1 relative">

@@ -381,14 +381,14 @@ Deno.serve(async (req: Request) => {
     const isPremiumUser = user.email && user.email.toLowerCase().endsWith('@premium.de');
     
     if (!isPremiumUser) {
-      console.log('[RATE_LIMIT] Starting rate limit check...');
+    console.log('[RATE_LIMIT] Starting rate limit check...');
       const limitCheck = await checkDailyLimitOrThrow(supabase, user.id, user.email);
-      if (limitCheck) {
-        // Rate limit exceeded - return 429 error response
-        console.log('[RATE_LIMIT] ❌ Request blocked due to rate limit');
-        return limitCheck;
-      }
-      console.log('[RATE_LIMIT] ✅ Rate limit check passed, proceeding with request');
+    if (limitCheck) {
+      // Rate limit exceeded - return 429 error response
+      console.log('[RATE_LIMIT] ❌ Request blocked due to rate limit');
+      return limitCheck;
+    }
+    console.log('[RATE_LIMIT] ✅ Rate limit check passed, proceeding with request');
     } else {
       console.log('[RATE_LIMIT] ⭐ PREMIUM USER - Completely bypassing rate limit checks');
     }
