@@ -63,42 +63,51 @@ ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE study_content ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for folders
+DROP POLICY IF EXISTS "Users can view their own folders" ON folders;
 CREATE POLICY "Users can view their own folders"
   ON folders FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can create their own folders" ON folders;
 CREATE POLICY "Users can create their own folders"
   ON folders FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own folders" ON folders;
 CREATE POLICY "Users can update their own folders"
   ON folders FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own folders" ON folders;
 CREATE POLICY "Users can delete their own folders"
   ON folders FOR DELETE
   USING (auth.uid() = user_id);
 
 -- RLS Policies for notes
+DROP POLICY IF EXISTS "Users can view their own notes" ON notes;
 CREATE POLICY "Users can view their own notes"
   ON notes FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can create their own notes" ON notes;
 CREATE POLICY "Users can create their own notes"
   ON notes FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own notes" ON notes;
 CREATE POLICY "Users can update their own notes"
   ON notes FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own notes" ON notes;
 CREATE POLICY "Users can delete their own notes"
   ON notes FOR DELETE
   USING (auth.uid() = user_id);
 
 -- RLS Policies for documents
+DROP POLICY IF EXISTS "Users can view their own documents" ON documents;
 CREATE POLICY "Users can view their own documents"
   ON documents FOR SELECT
   USING (
@@ -109,6 +118,7 @@ CREATE POLICY "Users can view their own documents"
     )
   );
 
+DROP POLICY IF EXISTS "Users can create their own documents" ON documents;
 CREATE POLICY "Users can create their own documents"
   ON documents FOR INSERT
   WITH CHECK (
@@ -119,6 +129,7 @@ CREATE POLICY "Users can create their own documents"
     )
   );
 
+DROP POLICY IF EXISTS "Users can update their own documents" ON documents;
 CREATE POLICY "Users can update their own documents"
   ON documents FOR UPDATE
   USING (
@@ -129,6 +140,7 @@ CREATE POLICY "Users can update their own documents"
     )
   );
 
+DROP POLICY IF EXISTS "Users can delete their own documents" ON documents;
 CREATE POLICY "Users can delete their own documents"
   ON documents FOR DELETE
   USING (
@@ -140,6 +152,7 @@ CREATE POLICY "Users can delete their own documents"
   );
 
 -- RLS Policies for study_content
+DROP POLICY IF EXISTS "Users can view their own study content" ON study_content;
 CREATE POLICY "Users can view their own study content"
   ON study_content FOR SELECT
   USING (
@@ -150,6 +163,7 @@ CREATE POLICY "Users can view their own study content"
     )
   );
 
+DROP POLICY IF EXISTS "Users can create their own study content" ON study_content;
 CREATE POLICY "Users can create their own study content"
   ON study_content FOR INSERT
   WITH CHECK (
@@ -160,6 +174,7 @@ CREATE POLICY "Users can create their own study content"
     )
   );
 
+DROP POLICY IF EXISTS "Users can update their own study content" ON study_content;
 CREATE POLICY "Users can update their own study content"
   ON study_content FOR UPDATE
   USING (
@@ -170,6 +185,7 @@ CREATE POLICY "Users can update their own study content"
     )
   );
 
+DROP POLICY IF EXISTS "Users can delete their own study content" ON study_content;
 CREATE POLICY "Users can delete their own study content"
   ON study_content FOR DELETE
   USING (
@@ -197,14 +213,43 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_notes_updated_at ON notes;
 CREATE TRIGGER update_notes_updated_at
   BEFORE UPDATE ON notes
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_study_content_updated_at ON study_content;
 CREATE TRIGGER update_study_content_updated_at
   BEFORE UPDATE ON study_content
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- (All rate limiting tables removed)
+-- Account limits table (per-user custom limits)
+CREATE TABLE IF NOT EXISTS account_limits (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  daily_ai_limit INT NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Disable RLS for account_limits (needs to be reliably read by edge function)
+ALTER TABLE account_limits DISABLE ROW LEVEL SECURITY;
+
+-- Create index for better performance
+CREATE INDEX IF NOT EXISTS idx_account_limits_user_id ON account_limits(user_id);
+
+-- Daily AI usage table (rate limiting)
+CREATE TABLE IF NOT EXISTS daily_ai_usage (
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  usage_date DATE NOT NULL,
+  count INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, usage_date)
+);
+
+-- Disable RLS for daily_ai_usage (needs reliable, fast checks)
+ALTER TABLE daily_ai_usage DISABLE ROW LEVEL SECURITY;
+
+-- Create index for better performance
+CREATE INDEX IF NOT EXISTS idx_daily_ai_usage_user_date ON daily_ai_usage(user_id, usage_date);
