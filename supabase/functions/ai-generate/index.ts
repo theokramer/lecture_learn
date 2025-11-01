@@ -61,45 +61,47 @@ async function incrementUsageOrThrow(supabase: any, userId: string) {
   return null;
 }
 
-async function checkAccountLevelLimitOrThrow(supabase: any, userId: string) {
-  console.log(`Checking account AI usage limit for user: ${userId}`);
-  
-  // Use upsert to ensure row exists
+async function checkDailyLimitOrThrow(supabase: any, userId: string) {
+  const usageDate = getUtcDateString();
+
+  console.log(`Checking daily AI usage limit for user: ${userId}, date: ${usageDate}`);
+
+  // Ensure row exists
   const { error: upsertError } = await supabase
-    .from('account_ai_usage')
-    .upsert(
-      { user_id: userId, has_used_ai_generation: false },
-      { onConflict: 'user_id' }
-    );
+    .from('daily_ai_usage')
+    .upsert({ user_id: userId, usage_date: usageDate, count: 0 }, { onConflict: 'user_id,usage_date' });
 
   if (upsertError) {
-    console.error(`Upsert error in checkAccountLevelLimitOrThrow:`, upsertError);
+    console.error(`Upsert error in checkDailyLimitOrThrow:`, upsertError);
     throw upsertError;
   }
 
-  // Now check current state
-  const { data: usageData, error: selectError } = await supabase
-    .from('account_ai_usage')
-    .select('has_used_ai_generation, ai_generation_used_at')
+  // Fetch current count
+  const { data: row, error: selectError } = await supabase
+    .from('daily_ai_usage')
+    .select('count')
     .eq('user_id', userId)
+    .eq('usage_date', usageDate)
     .single();
 
   if (selectError) {
-    console.error(`Select error in checkAccountLevelLimitOrThrow:`, selectError);
+    console.error(`Select error in checkDailyLimitOrThrow:`, selectError);
     throw selectError;
   }
 
-  console.log(`Current usage state:`, { has_used_ai_generation: usageData?.has_used_ai_generation });
+  const currentCount = row?.count ?? 0;
+  console.log(`Current daily usage count: ${currentCount}`);
 
-  // Check if limit has been reached
-  if (usageData?.has_used_ai_generation) {
-    console.log(`Account limit reached for user: ${userId}`);
+  // Allow only 1 generation per day (changed from 15)
+  const DAILY_LIMIT = 1;
+  if (currentCount >= DAILY_LIMIT) {
+    console.log(`Daily limit reached for user: ${userId}`);
     const body = {
-      code: 'ACCOUNT_LIMIT_REACHED',
-      message: 'You have already used your one-time AI generation quota. No additional generations are available.',
-      limit: 1,
+      code: 'DAILY_LIMIT_REACHED',
+      message: 'You have already generated AI content today. Please try again tomorrow.',
+      limit: DAILY_LIMIT,
       remaining: 0,
-      usedAt: usageData.ai_generation_used_at,
+      resetAt: getResetAtIso(),
     };
     return new Response(JSON.stringify(body), { status: 429, headers: { 'Content-Type': 'application/json' } });
   }
@@ -108,29 +110,37 @@ async function checkAccountLevelLimitOrThrow(supabase: any, userId: string) {
   return null; // No limit reached
 }
 
-async function markAccountLimitAsUsed(supabase: any, userId: string) {
-  console.log(`Marking AI generation as used for user: ${userId}`);
+async function incrementDailyUsage(supabase: any, userId: string) {
+  const usageDate = getUtcDateString();
   
-  // Use upsert to ensure we update even if row exists with different state
-  const { data, error: upsertError } = await supabase
-    .from('account_ai_usage')
-    .upsert(
-      { 
-        user_id: userId, 
-        has_used_ai_generation: true, 
-        ai_generation_used_at: new Date().toISOString() 
-      },
-      { onConflict: 'user_id' }
-    );
+  console.log(`Incrementing daily usage for user: ${userId}, date: ${usageDate}`);
 
-  console.log(`Upsert result:`, { data, error: upsertError });
-  
-  if (upsertError) {
-    console.error(`Error marking usage as used: ${upsertError.message}`, upsertError);
-    throw upsertError;
+  // Fetch current count
+  const { data: row, error: selectError } = await supabase
+    .from('daily_ai_usage')
+    .select('count')
+    .eq('user_id', userId)
+    .eq('usage_date', usageDate)
+    .single();
+
+  if (selectError) {
+    console.error(`Select error in incrementDailyUsage:`, selectError);
+    throw selectError;
+  }
+
+  // Increment
+  const { error: updateError } = await supabase
+    .from('daily_ai_usage')
+    .update({ count: (row?.count ?? 0) + 1 })
+    .eq('user_id', userId)
+    .eq('usage_date', usageDate);
+
+  if (updateError) {
+    console.error(`Update error in incrementDailyUsage:`, updateError);
+    throw updateError;
   }
   
-  console.log(`Successfully marked AI generation as used for user: ${userId}`);
+  console.log(`Successfully incremented daily usage for user: ${userId}`);
 }
 
 const corsHeaders: Record<string, string> = {
@@ -351,7 +361,7 @@ Deno.serve(async (req: Request) => {
     const requestType = body?.type || 'chat'; // 'chat' or 'transcription'
 
     // Enforce limit for both chat and transcription
-    const limitResponse = await checkAccountLevelLimitOrThrow(supabase, user.id);
+    const limitResponse = await checkDailyLimitOrThrow(supabase, user.id);
     if (limitResponse) {
       // Ensure CORS headers on limit response
       const lr = limitResponse;
@@ -386,7 +396,7 @@ Deno.serve(async (req: Request) => {
           console.log('Transcription successful');
           // Mark account limit as used
           try {
-            await markAccountLimitAsUsed(supabase, user.id);
+            await incrementDailyUsage(supabase, user.id);
           } catch (markError) {
             console.error('Error marking account usage as used:', markError);
             // Still return success as transcription worked, but log the issue
@@ -485,7 +495,7 @@ Deno.serve(async (req: Request) => {
         const result = await transcribeAudio(audioBase64, mimeType);
         // Mark account limit as used
         try {
-          await markAccountLimitAsUsed(supabase, user.id);
+          await incrementDailyUsage(supabase, user.id);
         } catch (markError) {
           console.error('Error marking account usage as used:', markError);
           // Still return success as transcription worked, but log the issue
@@ -513,7 +523,7 @@ Deno.serve(async (req: Request) => {
     const result = await callOpenAI(messages, model, temperature);
     // Mark account limit as used
     try {
-      await markAccountLimitAsUsed(supabase, user.id);
+      await incrementDailyUsage(supabase, user.id);
     } catch (markError) {
       console.error('Error marking account usage as used:', markError);
       // Still return success as chat completion worked, but log the issue
