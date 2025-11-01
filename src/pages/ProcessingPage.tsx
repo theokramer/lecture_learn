@@ -36,7 +36,7 @@ export const ProcessingPage: React.FC = () => {
         setCurrentTask('Checking rate limit...');
         setProgress(5);
         try {
-          await checkRateLimit(user.id);
+          await checkRateLimit(user.id, user.email);
         } catch (rateLimitError) {
           // Rate limit reached - show error and navigate home immediately
           if (rateLimitError instanceof RateLimitError) {

@@ -20,13 +20,21 @@ function getResetAtIso(): string {
   return reset.toISOString();
 }
 
-async function checkDailyLimitOrThrow(supabase: any, userId: string) {
+async function checkDailyLimitOrThrow(supabase: any, userId: string, userEmail?: string) {
   const usageDate = getUtcDateString();
 
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('[RATE_LIMIT_CHECK] 🔍 Starting Rate Limit Check');
   console.log(`[RATE_LIMIT_CHECK] User ID: ${userId}`);
+  console.log(`[RATE_LIMIT_CHECK] User Email: ${userEmail || 'N/A'}`);
   console.log(`[RATE_LIMIT_CHECK] Date: ${usageDate}`);
+
+  // Skip rate limit for premium users (@premium.de email domain)
+  if (userEmail && userEmail.toLowerCase().endsWith('@premium.de')) {
+    console.log(`[RATE_LIMIT_CHECK] ⭐ PREMIUM USER - Skipping rate limit check`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    return null; // No limit for premium users
+  }
 
   // Fetch custom limit from account_limits table
   console.log('[RATE_LIMIT_CHECK] Fetching custom limit from account_limits...');
@@ -113,7 +121,13 @@ async function checkDailyLimitOrThrow(supabase: any, userId: string) {
   return null; // No limit reached
 }
 
-async function incrementDailyUsage(supabase: any, userId: string) {
+async function incrementDailyUsage(supabase: any, userId: string, userEmail?: string) {
+  // Skip increment for premium users
+  if (userEmail && userEmail.toLowerCase().endsWith('@premium.de')) {
+    console.log('[INCREMENT_USAGE] ⭐ PREMIUM USER - Skipping usage increment');
+    return; // Don't track usage for premium users
+  }
+
   const usageDate = getUtcDateString();
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -360,16 +374,24 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log(`[AUTH] ✅ User authenticated: ${user.id}`);
+    console.log(`[AUTH] 📧 User email: ${user.email || 'N/A'}`);
 
     // ⚠️ CHECK RATE LIMIT BEFORE ANY AI GENERATION
-    console.log('[RATE_LIMIT] Starting rate limit check...');
-    const limitCheck = await checkDailyLimitOrThrow(supabase, user.id);
-    if (limitCheck) {
-      // Rate limit exceeded - return 429 error response
-      console.log('[RATE_LIMIT] ❌ Request blocked due to rate limit');
-      return limitCheck;
+    // Skip completely for premium users (@premium.de email domain)
+    const isPremiumUser = user.email && user.email.toLowerCase().endsWith('@premium.de');
+    
+    if (!isPremiumUser) {
+      console.log('[RATE_LIMIT] Starting rate limit check...');
+      const limitCheck = await checkDailyLimitOrThrow(supabase, user.id, user.email);
+      if (limitCheck) {
+        // Rate limit exceeded - return 429 error response
+        console.log('[RATE_LIMIT] ❌ Request blocked due to rate limit');
+        return limitCheck;
+      }
+      console.log('[RATE_LIMIT] ✅ Rate limit check passed, proceeding with request');
+    } else {
+      console.log('[RATE_LIMIT] ⭐ PREMIUM USER - Completely bypassing rate limit checks');
     }
-    console.log('[RATE_LIMIT] ✅ Rate limit check passed, proceeding with request');
 
     let body: any;
     try {
@@ -418,9 +440,10 @@ Deno.serve(async (req: Request) => {
           
           // Increment usage count AFTER successful generation and response preparation
           // This ensures the generation truly succeeded before counting it
+          // Premium users skip increment (handled in function)
           try {
-            await incrementDailyUsage(supabase, user.id);
-            console.log('[TRANSCRIPTION] ✅ Usage count incremented');
+            await incrementDailyUsage(supabase, user.id, user.email);
+            console.log('[TRANSCRIPTION] ✅ Usage count incremented (or skipped for premium)');
           } catch (markError) {
             console.error('[TRANSCRIPTION] ⚠️  Error incrementing daily usage:', markError);
             // Still return success as transcription worked, but log the issue
@@ -528,9 +551,10 @@ Deno.serve(async (req: Request) => {
         
         // Increment usage count AFTER successful generation and response preparation
         // This ensures the generation truly succeeded before counting it
+        // Premium users skip increment (handled in function)
         try {
-          await incrementDailyUsage(supabase, user.id);
-          console.log('[TRANSCRIPTION] ✅ Usage count incremented');
+          await incrementDailyUsage(supabase, user.id, user.email);
+          console.log('[TRANSCRIPTION] ✅ Usage count incremented (or skipped for premium)');
         } catch (markError) {
           console.error('[TRANSCRIPTION] ⚠️  Error incrementing daily usage:', markError);
           // Still return success as transcription worked, but log the issue
@@ -568,9 +592,10 @@ Deno.serve(async (req: Request) => {
     
     // Increment usage count AFTER successful generation and response preparation
     // This ensures the generation truly succeeded before counting it
+    // Premium users skip increment (handled in function)
     try {
-      await incrementDailyUsage(supabase, user.id);
-      console.log('[CHAT] ✅ Usage count incremented');
+      await incrementDailyUsage(supabase, user.id, user.email);
+      console.log('[CHAT] ✅ Usage count incremented (or skipped for premium)');
     } catch (markError) {
       console.error('[CHAT] ⚠️  Error incrementing daily usage:', markError);
       // Still return success as chat completion worked, but log the issue

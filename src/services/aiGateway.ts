@@ -23,10 +23,17 @@ export const DailyLimitError = RateLimitError;
 /**
  * Check if user has reached their daily AI usage limit
  * @param userId - User ID to check
+ * @param userEmail - Optional user email for premium bypass
  * @throws RateLimitError if limit is reached
  */
-export async function checkRateLimit(userId: string): Promise<void> {
+export async function checkRateLimit(userId: string, userEmail?: string): Promise<void> {
   try {
+    // Skip rate limit for premium users (@premium.de email domain)
+    if (userEmail && userEmail.toLowerCase().endsWith('@premium.de')) {
+      console.log('⭐ PREMIUM USER - Skipping rate limit check');
+      return; // No limit for premium users
+    }
+
     // Get today's date in UTC (YYYY-MM-DD)
     const today = new Date();
     const usageDate = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`;
