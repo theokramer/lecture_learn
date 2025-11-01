@@ -40,12 +40,12 @@ async function checkDailyLimitOrThrow(supabase: any, userId: string) {
     console.log(`[RATE_LIMIT_CHECK] ⚠️  Error fetching custom limit:`, limitError);
   }
 
-  // Use custom limit if found, otherwise default to 30
+  // Use custom limit if found, otherwise default to 150
   // Ensure limit is at least 1 (never allow 0 or negative)
-  let DAILY_LIMIT = accountLimit?.daily_ai_limit ?? 30;
+  let DAILY_LIMIT = accountLimit?.daily_ai_limit ?? 150;
   if (DAILY_LIMIT < 1) {
-    console.warn(`[RATE_LIMIT_CHECK] ⚠️  Invalid limit value ${DAILY_LIMIT}, defaulting to 30`);
-    DAILY_LIMIT = 30;
+    console.warn(`[RATE_LIMIT_CHECK] ⚠️  Invalid limit value ${DAILY_LIMIT}, defaulting to 150`);
+    DAILY_LIMIT = 150;
   }
   console.log(`[RATE_LIMIT_CHECK] 📊 Daily Limit: ${DAILY_LIMIT} (${accountLimit ? '✨ custom' : '📌 default'})`);
 

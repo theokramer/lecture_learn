@@ -72,7 +72,7 @@ export const ContentView: React.FC = () => {
   return (
     <div className="flex-1 bg-[#3a3a3a] overflow-hidden flex flex-col">
       {/* Title Bar - Hidden on mobile (shown in header) */}
-      <div className="hidden lg:flex px-8 py-4 border-b border-[#4a4a4a] items-center gap-3">
+      <div className="hidden lg:flex px-8 py-4 border-b border-[#4a4a4a] items-center gap-3 flex-shrink-0">
         <HiDocument className="w-6 h-6 text-white" />
         <h2 className="text-xl font-semibold text-white">
           {currentNote?.title || 'Note View'}
@@ -80,7 +80,7 @@ export const ContentView: React.FC = () => {
       </div>
 
       {/* Content */}
-      <div className={`flex-1 overflow-hidden ${currentStudyMode === 'ai-chat' ? 'p-0' : 'overflow-auto lg:p-8 lg:pb-12 p-4 pb-8'}`}>
+      <div className={`flex-1 ${currentStudyMode === 'ai-chat' ? 'overflow-hidden p-0' : 'overflow-y-auto overflow-x-hidden lg:p-8 lg:pb-12 p-4 pb-8'}`}>
         <Suspense fallback={<LoadingFallback />}>
           {renderMode()}
         </Suspense>

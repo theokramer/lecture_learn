@@ -13,6 +13,16 @@ export function applyAccentColor(color: string): void {
     // Calculate a complementary gradient end color (slightly lighter/yellower)
     const lighterColor = lightenColor(color, 0.3);
     document.documentElement.style.setProperty('--accent-gradient-end', lighterColor);
+    
+    // Calculate hover and light variants
+    const hoverColor = lightenColor(color, 0.15);
+    const lightColor = lightenColor(color, 0.25);
+    document.documentElement.style.setProperty('--accent-hover', hoverColor);
+    document.documentElement.style.setProperty('--accent-light', lightColor);
+    
+    // Calculate glow color with opacity
+    const glowColor = hexToRgba(color, 0.3);
+    document.documentElement.style.setProperty('--accent-glow', glowColor);
   }
 }
 
@@ -59,6 +69,21 @@ function lightenColor(hex: string, percent: number): string {
   
   // Convert back to hex
   return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+}
+
+/**
+ * Convert hex color to rgba string
+ */
+function hexToRgba(hex: string, alpha: number): string {
+  // Remove # if present
+  hex = hex.replace('#', '');
+  
+  // Parse RGB
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 

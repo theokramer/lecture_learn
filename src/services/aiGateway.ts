@@ -43,8 +43,8 @@ export async function checkRateLimit(userId: string): Promise<void> {
       console.warn('Error checking account limit:', limitError);
     }
     
-    // Default to 30 to match backend default
-    const dailyLimit = accountLimit?.daily_ai_limit ?? 30;
+    // Default to 150 to match backend default
+    const dailyLimit = accountLimit?.daily_ai_limit ?? 150;
     
     // Get today's usage count (may not exist yet, so use maybeSingle)
     const { data: usageData, error: usageError } = await supabase
@@ -117,7 +117,7 @@ export const aiGateway = {
       
       if (errorCode === 'DAILY_LIMIT_REACHED') {
         throw new RateLimitError(errorMsg || 'Daily limit reached', {
-          limit: errBody.limit ?? 15,
+          limit: errBody.limit ?? 150,
           remaining: errBody.remaining ?? 0,
           resetAt: errBody.resetAt ?? new Date().toISOString(),
           code: 'DAILY_LIMIT_REACHED',
@@ -408,7 +408,7 @@ export const aiGateway = {
         const errBody: any = (error as any)?.context || {};
         if (errBody?.code === 'DAILY_LIMIT_REACHED') {
           throw new RateLimitError(errBody?.message || 'Daily limit reached', {
-            limit: errBody.limit ?? 15,
+            limit: errBody.limit ?? 150,
             remaining: errBody.remaining ?? 0,
             resetAt: errBody.resetAt ?? new Date().toISOString(),
             code: 'DAILY_LIMIT_REACHED',

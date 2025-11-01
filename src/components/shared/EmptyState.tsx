@@ -30,16 +30,16 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
       className="flex items-center justify-center h-full min-h-[400px]"
     >
       <div className="text-center max-w-md px-8">
-        <div className="bg-[#2a2a2a] rounded-3xl p-12 border border-[#3a3a3a]">
+        <div className="bg-bg-secondary rounded-3xl p-12 border border-border-primary shadow-lg">
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.1 }}
           >
-            <Icon className="w-20 h-20 text-[#b85a3a] mx-auto mb-6" />
+            <Icon className="w-20 h-20 text-accent mx-auto mb-6" />
           </motion.div>
-          <h2 className="text-3xl font-bold text-white mb-4">{title}</h2>
-          <p className="text-[#9ca3af] text-lg mb-8 leading-relaxed">{description}</p>
+          <h2 className="text-3xl font-bold text-text-primary mb-4">{title}</h2>
+          <p className="text-text-secondary text-lg mb-8 leading-relaxed">{description}</p>
           
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             {action && (
@@ -47,10 +47,10 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={action.onClick}
-                className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
+                className={`px-6 py-3 rounded-lg font-semibold transition-all duration-200 ${
                   action.variant === 'secondary'
-                    ? 'bg-[#3a3a3a] hover:bg-[#4a4a4a] text-white'
-                    : 'bg-[#b85a3a] hover:bg-[#a04a2a] text-white'
+                    ? 'bg-bg-tertiary hover:bg-bg-hover text-text-primary'
+                    : 'bg-accent hover:bg-[var(--accent-hover)] text-white shadow-glow'
                 }`}
               >
                 {action.label}
@@ -61,7 +61,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={secondaryAction.onClick}
-                className="px-6 py-3 rounded-lg font-semibold bg-[#3a3a3a] hover:bg-[#4a4a4a] text-white transition-colors"
+                className="px-6 py-3 rounded-lg font-semibold bg-bg-tertiary hover:bg-bg-hover text-text-primary transition-all duration-200"
               >
                 {secondaryAction.label}
               </motion.button>

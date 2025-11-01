@@ -68,17 +68,17 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed left-0 top-0 bottom-0 w-[280px] bg-[#2a2a2a] border-r border-[#3a3a3a] z-[101] flex flex-col overflow-y-auto lg:hidden"
+              className="fixed left-0 top-0 bottom-0 w-[280px] bg-bg-secondary border-r border-border-primary z-[101] flex flex-col overflow-y-auto lg:hidden shadow-xl"
             >
               {/* Header with Close Button */}
-              <div className="p-4 border-b border-[#3a3a3a] flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-white">Menu</h2>
+              <div className="p-4 border-b border-border-primary flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-text-primary">Menu</h2>
                 <button
                   onClick={onClose}
-                  className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
+                  className="p-2 hover:bg-bg-hover rounded-lg transition-all duration-200"
                   aria-label="Close menu"
                 >
-                  <HiXMark className="w-6 h-6 text-[#9ca3af]" />
+                  <HiXMark className="w-6 h-6 text-text-secondary" />
                 </button>
               </div>
 
@@ -91,7 +91,7 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
                     navigate('/home');
                     onClose?.();
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white"
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-text-secondary hover:bg-bg-hover hover:text-text-primary"
                 >
                   <HiHome className="w-5 h-5" />
                   <span className="font-medium">Home</span>
@@ -114,10 +114,10 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
                         onClose?.();
                       }}
                       className={`
-                        w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
+                        w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
                         ${isActive 
-                          ? 'bg-[#3a3a3a] text-white' 
-                          : 'text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white'
+                          ? 'bg-accent text-white shadow-glow' 
+                          : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
                         }
                       `}
                     >
@@ -129,7 +129,7 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
               </div>
 
               {/* Bottom - Manage Documents */}
-              <div className="p-4 border-t border-[#3a3a3a]">
+              <div className="p-4 border-t border-border-primary">
                 <motion.button
                   whileHover={{ scale: 1.02, x: 4 }}
                   whileTap={{ scale: 0.98 }}
@@ -138,10 +138,10 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
                     onClose?.();
                   }}
                   className={`
-                    w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
+                    w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
                     ${currentMode === 'documents'
-                      ? 'bg-[#3a3a3a] text-white'
-                      : 'text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white'
+                      ? 'bg-accent text-white shadow-glow'
+                      : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
                     }
                   `}
                 >
@@ -158,16 +158,16 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
 
   if (isCollapsed) {
     return (
-      <div className="w-16 bg-[#2a2a2a] border-r border-[#3a3a3a] flex flex-col py-4 h-full">
+      <div className="w-16 bg-bg-secondary border-r border-border-primary flex flex-col py-4 h-full">
         {/* Hamburger Menu */}
         <div className="px-4 mb-6">
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={onToggleCollapse}
-            className="w-full p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors"
+            className="w-full p-2 rounded-lg hover:bg-bg-hover transition-all duration-200"
           >
-            <HiBars3 className="w-6 h-6 text-white mx-auto" />
+            <HiBars3 className="w-6 h-6 text-text-primary mx-auto" />
           </motion.button>
         </div>
 
@@ -184,30 +184,30 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
                 whileTap={{ scale: 0.9 }}
                 onClick={() => onModeChange(item.mode)}
                 className={`
-                  w-full p-2 rounded-lg transition-colors
-                  ${isActive ? 'bg-[#3a3a3a]' : 'hover:bg-[#3a3a3a]'}
+                  w-full p-2 rounded-lg transition-all duration-200
+                  ${isActive ? 'bg-accent shadow-glow' : 'hover:bg-bg-hover'}
                 `}
                 title={item.label}
               >
-                <Icon className="w-6 h-6 text-white mx-auto" />
+                <Icon className={`w-6 h-6 mx-auto ${isActive ? 'text-white' : 'text-text-primary'}`} />
               </motion.button>
             );
           })}
         </div>
 
         {/* Bottom - Documents Button */}
-        <div className="px-4 pt-4 border-t border-[#3a3a3a]">
+        <div className="px-4 pt-4 border-t border-border-primary">
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={() => onModeChange('documents' as StudyMode)}
             className={`
-              w-full p-2 rounded-lg transition-colors
-              ${currentMode === 'documents' ? 'bg-[#3a3a3a]' : 'hover:bg-[#3a3a3a]'}
+              w-full p-2 rounded-lg transition-all duration-200
+              ${currentMode === 'documents' ? 'bg-accent shadow-glow' : 'hover:bg-bg-hover'}
             `}
             title="Documents"
           >
-            <HiFolder className="w-6 h-6 text-white mx-auto" />
+            <HiFolder className={`w-6 h-6 mx-auto ${currentMode === 'documents' ? 'text-white' : 'text-text-primary'}`} />
           </motion.button>
         </div>
       </div>
@@ -219,17 +219,17 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
       initial={{ width: 250 }}
       animate={{ width: 250 }}
       transition={{ duration: 0.3 }}
-      className="bg-[#2a2a2a] border-r border-[#3a3a3a] flex flex-col h-full"
+      className="bg-bg-secondary border-r border-border-primary flex flex-col h-full"
     >
       {/* Header with Hamburger */}
-      <div className="p-4 border-b border-[#3a3a3a] flex items-center justify-end">
+      <div className="p-4 border-b border-border-primary flex items-center justify-end">
         <motion.button
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onClick={onToggleCollapse}
-          className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
+          className="p-2 hover:bg-bg-hover rounded-lg transition-all duration-200"
         >
-          <HiBars3 className="w-5 h-5 text-[#9ca3af]" />
+          <HiBars3 className="w-5 h-5 text-text-secondary" />
         </motion.button>
       </div>
 
@@ -239,7 +239,7 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
           whileHover={{ scale: 1.02, x: 4 }}
           whileTap={{ scale: 0.98 }}
           onClick={() => navigate('/home')}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white"
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-text-secondary hover:bg-bg-hover hover:text-text-primary"
         >
           <HiHome className="w-5 h-5" />
           <span className="font-medium">Home</span>
@@ -259,10 +259,10 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
               whileTap={{ scale: 0.98 }}
               onClick={() => onModeChange(item.mode)}
               className={`
-                w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
+                w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
                 ${isActive 
-                  ? 'bg-[#3a3a3a] text-white' 
-                  : 'text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white'
+                  ? 'bg-accent text-white shadow-glow' 
+                  : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
                 }
               `}
             >
@@ -274,16 +274,16 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
       </div>
 
       {/* Bottom - Manage Documents */}
-      <div className="p-4 border-t border-[#3a3a3a]">
+      <div className="p-4 border-t border-border-primary">
         <motion.button
           whileHover={{ scale: 1.02, x: 4 }}
           whileTap={{ scale: 0.98 }}
           onClick={() => onModeChange('documents' as StudyMode)}
           className={`
-            w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
+            w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
             ${currentMode === 'documents'
-              ? 'bg-[#3a3a3a] text-white'
-              : 'text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white'
+              ? 'bg-accent text-white shadow-glow'
+              : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
             }
           `}
         >

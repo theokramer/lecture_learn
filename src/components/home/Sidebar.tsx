@@ -59,17 +59,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
               animate={{ x: 0 }}
               exit={{ x: -256 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed left-0 top-0 bottom-0 w-64 bg-[#2a2a2a] z-[101] flex flex-col overflow-y-auto p-6"
+              className="fixed left-0 top-0 bottom-0 w-64 bg-bg-secondary z-[101] flex flex-col overflow-y-auto p-6 border-r border-border-primary"
             >
               {/* Header with Close Button */}
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-white">Menu</h2>
+                <h2 className="text-lg font-semibold text-text-primary">Menu</h2>
                 <button
                   onClick={onClose}
-                  className="p-2 hover:bg-[#3a3a3a] rounded-lg transition-colors"
+                  className="p-2 hover:bg-bg-hover rounded-lg transition-all duration-200"
                   aria-label="Close menu"
                 >
-                  <HiXMark className="w-6 h-6 text-[#9ca3af]" />
+                  <HiXMark className="w-6 h-6 text-text-secondary" />
                 </button>
               </div>
 
@@ -82,10 +82,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   const content = (
                     <div
                       className={`
-                        flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
+                        flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
                         ${isActive 
-                          ? 'bg-[#3a3a3a] text-white' 
-                          : 'text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white'
+                          ? 'bg-accent text-white shadow-glow' 
+                          : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
                         }
                       `}
                     >
@@ -114,7 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Desktop sidebar version
   return (
-    <div className="w-64 bg-[#2a2a2a] h-screen p-6 flex flex-col overflow-y-auto">
+    <div className="w-64 bg-bg-secondary h-screen p-6 flex flex-col overflow-y-auto border-r border-border-primary">
       <div className="space-y-2">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -123,10 +123,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           const content = (
             <div
               className={`
-                flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
+                flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
                 ${isActive 
-                  ? 'bg-[#3a3a3a] text-white' 
-                  : 'text-[#9ca3af] hover:bg-[#3a3a3a] hover:text-white'
+                  ? 'bg-accent text-white shadow-glow' 
+                  : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
                 }
               `}
             >

@@ -30,6 +30,7 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 const OAuthCallback: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     const handleOAuthCallback = async () => {
@@ -46,28 +47,46 @@ const OAuthCallback: React.FC = () => {
 
         // Supabase OAuth uses hash fragments (#access_token=...)
         // The Supabase client automatically processes these when the page loads
-        // Wait a bit for the session to be established
+        // Check session immediately and set up listener for auth state changes
         const checkSession = async () => {
           const { data: { session } } = await supabase.auth.getSession();
           if (session) {
             console.log('✅ OAuth session established');
             navigate('/home');
-          } else {
-            // Try again after a short delay
-            setTimeout(async () => {
-              const { data: { session: retrySession } } = await supabase.auth.getSession();
-              if (retrySession) {
-                navigate('/home');
-              } else {
+            return;
+          }
+
+          // Set up listener for auth state changes (faster than polling)
+          const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (session) {
+              console.log('✅ OAuth session established via state change');
+              navigate('/home');
+              subscription.unsubscribe();
+            }
+          });
+
+          // Fallback: check again after a short delay
+          setTimeout(async () => {
+            const { data: { session: retrySession } } = await supabase.auth.getSession();
+            if (retrySession) {
+              subscription.unsubscribe();
+              navigate('/home');
+            } else {
+              // Final timeout - give up after 3 seconds
+              setTimeout(() => {
+                subscription.unsubscribe();
                 console.error('❌ No session found after OAuth callback');
                 navigate('/login?error=authentication_failed');
-              }
-            }, 1000);
-          }
+              }, 2000);
+            }
+          }, 500);
+
+          // Cleanup subscription after 5 seconds max
+          setTimeout(() => subscription.unsubscribe(), 5000);
         };
 
-        // Small delay to allow Supabase to process the hash fragment
-        setTimeout(checkSession, 300);
+        // Check immediately (no delay)
+        checkSession();
       } catch (err) {
         console.error('OAuth callback error:', err);
         navigate('/login?error=authentication_failed');
@@ -77,9 +96,19 @@ const OAuthCallback: React.FC = () => {
     handleOAuthCallback();
   }, [navigate, searchParams]);
 
+  // Also redirect if auth state changes (from AuthContext listener)
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/home');
+    }
+  }, [isAuthenticated, navigate]);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a]">
-      <div className="text-white">Completing sign in...</div>
+      <div className="text-center">
+        <div className="text-white text-lg mb-2">Completing sign in...</div>
+        <div className="w-8 h-8 border-4 border-[#3a3a3a] border-t-white rounded-full animate-spin mx-auto"></div>
+      </div>
     </div>
   );
 };
@@ -103,10 +132,8 @@ function App() {
                     position="top-right"
                     toastOptions={{
                       duration: 4000,
+                      className: 'bg-bg-secondary text-text-primary border-border-primary shadow-xl',
                       style: {
-                        background: '#2a2a2a',
-                        color: '#fff',
-                        border: '1px solid #3a3a3a',
                         borderRadius: '0.5rem',
                       },
                       success: {

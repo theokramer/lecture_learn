@@ -1,11 +1,11 @@
 -- Reset Rate Limit for Testing
 -- Run this in Supabase SQL Editor to reset your usage and set a proper limit
 
--- Step 1: Set daily limit to 30 per day
+-- Step 1: Set daily limit to 150 per day
 -- Replace 'YOUR_USER_ID' with your actual user ID from auth.users
 INSERT INTO account_limits (user_id, daily_ai_limit)
-VALUES ('YOUR_USER_ID', 30)
-ON CONFLICT (user_id) DO UPDATE SET daily_ai_limit = 30;
+VALUES ('YOUR_USER_ID', 150)
+ON CONFLICT (user_id) DO UPDATE SET daily_ai_limit = 150;
 
 -- Step 2: Reset today's count to 0
 DELETE FROM daily_ai_usage 
@@ -30,5 +30,5 @@ WHERE user_id = 'YOUR_USER_ID';
 
 -- If you want to reset ALL users (admin only):
 -- DELETE FROM daily_ai_usage WHERE usage_date = CURRENT_DATE;
--- UPDATE account_limits SET daily_ai_limit = 30;
+-- UPDATE account_limits SET daily_ai_limit = 150;
 

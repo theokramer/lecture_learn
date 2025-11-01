@@ -8,7 +8,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
-  signUp: (email: string, password: string, name: string) => Promise<boolean>;
+  signUp: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
   signInWithGoogle: () => Promise<void>;
   loading: boolean;
 }
@@ -85,7 +85,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const signUp = async (email: string, password: string, name: string): Promise<boolean> => {
+  const signUp = async (email: string, password: string, name: string): Promise<{ success: boolean; error?: string }> => {
     try {
       console.log('📝 Attempting sign up for:', email, 'Name:', name);
       const { data, error } = await supabase.auth.signUp({
@@ -100,12 +100,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (error) {
         console.error('❌ Sign up error:', error);
+        
+        // Check for leaked password error
+        const errorMessage = error.message?.toLowerCase() || '';
+        if (errorMessage.includes('compromised') || 
+            errorMessage.includes('breach') || 
+            errorMessage.includes('pwned') ||
+            errorMessage.includes('leaked')) {
+          return {
+            success: false,
+            error: 'This password has been found in a data breach. Please choose a different, unique password.',
+          };
+        }
+        
         throw error;
       }
       
       if (!data.user) {
         console.error('❌ No user data returned');
-        return false;
+        return { success: false, error: 'Sign up failed. Please try again.' };
       }
 
       console.log('✅ Sign up successful:', data.user.id);
@@ -116,10 +129,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         name,
       });
 
-      return true;
-    } catch (error) {
+      return { success: true };
+    } catch (error: any) {
       console.error('❌ Sign up error:', error);
-      return false;
+      return { 
+        success: false, 
+        error: error.message || 'An error occurred during sign up' 
+      };
     }
   };
 

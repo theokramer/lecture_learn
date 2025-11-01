@@ -202,32 +202,32 @@ export const NoteViewPage: React.FC = () => {
   // Safety check: ensure appData is available
   if (!appData) {
     return (
-      <div className="flex h-screen bg-[#1a1a1a] items-center justify-center">
-        <div className="text-white">Loading...</div>
+      <div className="flex h-screen bg-bg-primary items-center justify-center">
+        <div className="text-text-primary">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen bg-[#1a1a1a] overflow-hidden">
+    <div className="flex h-screen bg-bg-primary overflow-hidden">
       {/* Mobile Header Bar */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-[#2a2a2a] border-b border-[#3a3a3a] px-4 py-3 flex items-center justify-between">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-bg-secondary border-b border-border-primary px-4 py-3 flex items-center justify-between shadow-sm">
         <button
           onClick={() => setMobileSidebarOpen(true)}
-          className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors"
+          className="p-2 rounded-lg hover:bg-bg-hover transition-all duration-200"
           aria-label="Open menu"
         >
-          <HiBars3 className="w-6 h-6 text-white" />
+          <HiBars3 className="w-6 h-6 text-text-primary" />
         </button>
-        <h1 className="text-white font-semibold text-lg truncate flex-1 mx-4">
+        <h1 className="text-text-primary font-semibold text-lg truncate flex-1 mx-4">
           {appData.notes.find(n => n.id === appData.selectedNoteId)?.title || 'Note'}
         </h1>
         <button
           onClick={() => setMobileChatOpen(true)}
-          className="p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors"
+          className="p-2 rounded-lg hover:bg-bg-hover transition-all duration-200"
           aria-label="Open AI chat"
         >
-          <HiChatBubbleLeftRight className="w-6 h-6 text-[#b85a3a]" />
+          <HiChatBubbleLeftRight className="w-6 h-6 text-accent" />
         </button>
       </div>
 

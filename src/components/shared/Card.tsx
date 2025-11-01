@@ -14,15 +14,15 @@ export const Card: React.FC<CardProps> = ({
   onClick,
   hoverable = true,
 }) => {
-  const baseStyles = 'bg-[#2a2a2a] rounded-lg shadow-md';
+  const baseStyles = 'bg-bg-secondary rounded-lg shadow-md border border-border-primary transition-all duration-300';
   
   if (onClick || hoverable) {
     return (
       <motion.div
-        whileHover={hoverable ? { scale: 1.02, backgroundColor: '#2d2d2d' } : {}}
+        whileHover={hoverable ? { scale: 1.02 } : {}}
         whileTap={{ scale: 0.98 }}
         onClick={onClick}
-        className={`${baseStyles} ${className} ${onClick ? 'cursor-pointer' : ''}`}
+        className={`${baseStyles} ${hoverable ? 'hover:bg-bg-hover hover:shadow-lg hover:border-accent/30' : ''} ${onClick ? 'cursor-pointer' : ''} ${className}`}
       >
         {children}
       </motion.div>

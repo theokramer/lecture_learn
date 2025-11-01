@@ -206,7 +206,9 @@ CREATE INDEX IF NOT EXISTS idx_study_content_note_id ON study_content(note_id);
 
 -- Create updated_at trigger for notes
 CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SET search_path = public, pg_catalog
+AS $$
 BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
@@ -228,7 +230,7 @@ CREATE TRIGGER update_study_content_updated_at
 -- Account limits table (per-user custom limits)
 CREATE TABLE IF NOT EXISTS account_limits (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  daily_ai_limit INT NOT NULL DEFAULT 30,
+  daily_ai_limit INT NOT NULL DEFAULT 150,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

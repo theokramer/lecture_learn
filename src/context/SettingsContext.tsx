@@ -49,14 +49,28 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as UserPreferences;
-        setPreferences({ ...DEFAULT_PREFERENCES, ...parsed });
+        const loadedPreferences = { ...DEFAULT_PREFERENCES, ...parsed };
+        setPreferences(loadedPreferences);
+        
+        // Apply theme immediately on load
+        const theme = loadedPreferences.theme || 'dark';
+        if (theme === 'light') {
+          document.documentElement.classList.remove('dark');
+        } else {
+          document.documentElement.classList.add('dark');
+        }
       } catch (error) {
         console.error('Error parsing stored preferences:', error);
+        // Apply default theme on error
+        document.documentElement.classList.add('dark');
       }
+    } else {
+      // No stored preferences, apply default dark theme
+      document.documentElement.classList.add('dark');
     }
   }, []);
 
-  // Apply theme to document
+  // Apply theme to document when preferences change
   useEffect(() => {
     const theme = preferences.theme || 'dark';
     if (theme === 'light') {

@@ -348,10 +348,10 @@ ${content.substring(0, 2000)}`;
               className="fixed inset-0 z-[151] flex flex-col bg-[#2a2a2a] lg:hidden"
             >
               {/* Header */}
-              <div className="p-4 border-b border-[#3a3a3a] flex items-center justify-between flex-shrink-0">
+              <div className="p-4 border-b border-border-primary flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-2">
-                  <HiSparkles className="w-6 h-6 text-[#b85a3a]" />
-                  <h2 className="text-xl font-bold text-white">AI Tutor</h2>
+                  <HiSparkles className="w-6 h-6 text-accent" />
+                  <h2 className="text-xl font-bold text-text-primary">AI Tutor</h2>
                 </div>
                 <button
                   onClick={onClose}
@@ -438,7 +438,7 @@ ${content.substring(0, 2000)}`;
                   <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="px-3 py-2 bg-[#1a1a1a] border border-[#b85a3a] rounded-lg text-xs text-white"
+                    className="px-3 py-2 bg-bg-primary border border-accent rounded-lg text-xs text-text-primary"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate flex-1">
@@ -485,12 +485,12 @@ ${content.substring(0, 2000)}`;
                     onChange={(e) => setInput(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
                     placeholder={pdfSelectedText ? `Ask about "${pdfSelectedText.substring(0, 30)}..."` : "Ask anything..."}
-                    className="flex-1 px-4 py-3 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#b85a3a] transition-colors"
+                    className="flex-1 px-4 py-3 bg-bg-primary border border-border-primary rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
                   />
                   <button
                     onClick={() => handleSend()}
                     disabled={!input.trim() || isLoading}
-                    className="p-3 rounded-lg bg-[#b85a3a] hover:bg-[#a04a2a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-3 rounded-lg bg-accent hover:bg-[var(--accent-hover)] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-glow hover:shadow-glow-lg"
                   >
                     <HiPaperAirplane className="w-5 h-5 text-white" />
                   </button>
@@ -536,7 +536,7 @@ ${content.substring(0, 2000)}`;
           startMouseXRef.current = e.clientX;
           initialMinWidthRef.current = Math.max(380, window.innerWidth * 0.25);
         }}
-        className="absolute left-0 top-0 bottom-0 w-1 hover:w-2 hover:bg-[#b85a3a] cursor-col-resize transition-all z-10"
+        className="absolute left-0 top-0 bottom-0 w-1 hover:w-2 hover:bg-accent cursor-col-resize transition-all z-10"
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -550,10 +550,10 @@ ${content.substring(0, 2000)}`;
             <span className="text-sm">Close</span>
           </button>
           <div className="flex items-center gap-2 mb-2">
-            <HiSparkles className="w-6 h-6 text-[#b85a3a]" />
-            <h2 className="text-3xl font-bold text-white">AI Tutor</h2>
+            <HiSparkles className="w-6 h-6 text-accent" />
+            <h2 className="text-3xl font-bold text-text-primary">AI Tutor</h2>
           </div>
-          <p className="text-[#9ca3af] text-lg">
+          <p className="text-text-secondary text-lg">
             I can help explain concepts, answer questions, and guide your learning!
           </p>
         </div>

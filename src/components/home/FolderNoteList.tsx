@@ -20,7 +20,7 @@ interface FolderNoteListProps {
 }
 
 export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searchInputRef }) => {
-  const { folders, notes, setSelectedNoteId, setCurrentFolderId, currentFolderId, selectedNoteId, loading, createFolder, deleteNote, deleteFolder } = useAppData();
+  const { folders, allFolders, notes, setSelectedNoteId, setCurrentFolderId, currentFolderId, selectedNoteId, loading, createFolder, deleteNote, deleteFolder } = useAppData();
   const { preferences } = useSettings();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,7 +66,7 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
     if (!query) return text;
     const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(`(${q})`, 'ig');
-    return text.replace(re, '<mark class="bg-[#b85a3a]/30 text-white rounded px-1">$1<\/mark>');
+    return text.replace(re, `<mark class="bg-accent/30 text-text-primary rounded px-1">$1</mark>`);
   };
 
   const filteredFolders = folders.filter(f => f.parentId === currentFolderId);
@@ -132,12 +132,38 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
     ];
   }, [debouncedSearchQuery, searchResults, filteredFolders, filteredNotes]);
 
-  const handleBackToParent = () => {
-    const currentFolder = currentFolderId 
-      ? folders.find(f => f.id === currentFolderId)
-      : null;
+  // Get current folder for display and navigation
+  const currentFolder = useMemo(() => {
+    return currentFolderId ? allFolders.find(f => f.id === currentFolderId) : null;
+  }, [currentFolderId, allFolders]);
+
+  // Build breadcrumb path for navigation
+  const breadcrumbPath = useMemo(() => {
+    if (!currentFolderId) return [];
     
-    if (currentFolder && currentFolder.parentId !== null) {
+    const path: Folder[] = [];
+    let folder = currentFolder;
+    
+    // Build path by traversing up the parent chain
+    while (folder) {
+      path.unshift(folder); // Add to beginning
+      if (folder.parentId) {
+        folder = allFolders.find(f => f.id === folder.parentId) || null;
+      } else {
+        folder = null;
+      }
+    }
+    
+    return path;
+  }, [currentFolder, allFolders, currentFolderId]);
+
+  const handleBackToParent = () => {
+    if (!currentFolder) {
+      // Already at root, nothing to do
+      return;
+    }
+    
+    if (currentFolder.parentId !== null) {
       // Go to parent folder
       setCurrentFolderId(currentFolder.parentId);
     } else {
@@ -146,21 +172,58 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
     }
   };
 
+  // Handle breadcrumb navigation
+  const handleBreadcrumbClick = (folderId: string | null) => {
+    setCurrentFolderId(folderId);
+  };
+
   return (
     <div className="min-h-full p-4 sm:p-6 lg:p-8 pb-20 space-y-4">
       {/* Header */}
       <div>
-        {/* Breadcrumb */}
+        {/* Breadcrumb Navigation */}
         {currentFolderId && (
-          <button
-            onClick={handleBackToParent}
-            className="flex items-center gap-2 text-[#9ca3af] hover:text-white mb-4 transition-colors"
-          >
-            <HiChevronLeft className="w-5 h-5" />
-            <span>Back</span>
-          </button>
+          <div className="mb-4">
+            {/* Back Button */}
+            <button
+              onClick={handleBackToParent}
+              className="flex items-center gap-2 text-[#9ca3af] hover:text-white transition-colors mb-2"
+            >
+              <HiChevronLeft className="w-5 h-5" />
+              <span>Back</span>
+            </button>
+            
+            {/* Breadcrumb Path */}
+            {breadcrumbPath.length > 0 && (
+              <div className="flex items-center gap-2 text-sm text-[#9ca3af] flex-wrap">
+                <button
+                  onClick={() => handleBreadcrumbClick(null)}
+                  className="hover:text-white transition-colors"
+                >
+                  My notes
+                </button>
+                {breadcrumbPath.map((folder, index) => (
+                  <React.Fragment key={folder.id}>
+                    <HiChevronRight className="w-4 h-4" />
+                    <button
+                      onClick={() => handleBreadcrumbClick(folder.id)}
+                      className={`hover:text-white transition-colors ${
+                        index === breadcrumbPath.length - 1 ? 'text-white font-medium' : ''
+                      }`}
+                    >
+                      {folder.name}
+                    </button>
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+          </div>
         )}
-        <h2 className="text-2xl font-bold text-white mb-6">My notes</h2>
+        
+        {/* Page Title */}
+        <h2 className="text-2xl font-bold text-white mb-6">
+          {currentFolder ? currentFolder.name : 'My notes'}
+        </h2>
         
         <div className="flex gap-4 mb-6">
           <div className="flex-1 relative">

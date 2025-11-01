@@ -32,20 +32,23 @@ export const LoginScreen: React.FC = () => {
     setLoading(true);
 
     try {
-      let success = false;
       if (isLogin) {
-        success = await login(email, password);
+        const success = await login(email, password);
+        if (success) {
+          navigate('/home');
+        } else {
+          setError('Invalid credentials');
+        }
       } else {
-        success = await signUp(email, password, name);
+        const result = await signUp(email, password, name);
+        if (result.success) {
+          navigate('/home');
+        } else {
+          setError(result.error || 'Sign up failed');
+        }
       }
-
-      if (success) {
-        navigate('/home');
-      } else {
-        setError(isLogin ? 'Invalid credentials' : 'Sign up failed');
-      }
-    } catch (err) {
-      setError('An error occurred');
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
     } finally {
       setLoading(false);
     }

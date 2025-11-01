@@ -421,37 +421,37 @@ export const AIChatView: React.FC = () => {
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => handleQuickAction('explain', selectedPdfText)}
-                className="px-3 py-1.5 bg-[#b85a3a] text-white rounded text-xs font-medium hover:bg-[#a04a2a] transition-colors"
+                className="px-3 py-1.5 bg-accent text-white rounded text-xs font-medium hover:bg-[var(--accent-hover)] transition-all duration-200 shadow-sm"
               >
                 💡 Explain
               </button>
               <button
                 onClick={() => handleQuickAction('example', selectedPdfText)}
-                className="px-3 py-1.5 bg-[#b85a3a] text-white rounded text-xs font-medium hover:bg-[#a04a2a] transition-colors"
+                className="px-3 py-1.5 bg-accent text-white rounded text-xs font-medium hover:bg-[var(--accent-hover)] transition-all duration-200 shadow-sm"
               >
                 📚 Example
               </button>
               <button
                 onClick={() => handleQuickAction('summarize', selectedPdfText)}
-                className="px-3 py-1.5 bg-[#b85a3a] text-white rounded text-xs font-medium hover:bg-[#a04a2a] transition-colors"
+                className="px-3 py-1.5 bg-accent text-white rounded text-xs font-medium hover:bg-[var(--accent-hover)] transition-all duration-200 shadow-sm"
               >
                 📝 Summarize
               </button>
               <button
                 onClick={() => handleQuickAction('details', selectedPdfText)}
-                className="px-3 py-1.5 bg-[#b85a3a] text-white rounded text-xs font-medium hover:bg-[#a04a2a] transition-colors"
+                className="px-3 py-1.5 bg-accent text-white rounded text-xs font-medium hover:bg-[var(--accent-hover)] transition-all duration-200 shadow-sm"
               >
                 🔍 More Details
               </button>
               <button
                 onClick={() => handleQuickAction('why', selectedPdfText)}
-                className="px-3 py-1.5 bg-[#b85a3a] text-white rounded text-xs font-medium hover:bg-[#a04a2a] transition-colors"
+                className="px-3 py-1.5 bg-accent text-white rounded text-xs font-medium hover:bg-[var(--accent-hover)] transition-all duration-200 shadow-sm"
               >
                 ❓ Why Important?
               </button>
               <button
                 onClick={() => handleQuickAction('how', selectedPdfText)}
-                className="px-3 py-1.5 bg-[#b85a3a] text-white rounded text-xs font-medium hover:bg-[#a04a2a] transition-colors"
+                className="px-3 py-1.5 bg-accent text-white rounded text-xs font-medium hover:bg-[var(--accent-hover)] transition-all duration-200 shadow-sm"
               >
                 ⚙️ How It Works
               </button>

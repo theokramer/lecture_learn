@@ -36,6 +36,23 @@ export const folderService = {
     }));
   },
 
+  async getAllFolders(userId: string): Promise<Folder[]> {
+    const { data, error } = await supabase
+      .from('folders')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return data.map((f: any) => ({
+      id: f.id,
+      name: f.name,
+      parentId: f.parent_id,
+      createdAt: new Date(f.created_at),
+    }));
+  },
+
   async createFolder(userId: string, name: string, parentId: string | null): Promise<Folder> {
     const { data, error } = await supabase
       .from('folders')

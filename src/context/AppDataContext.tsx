@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 
 interface AppDataContextType {
   folders: Folder[];
+  allFolders: Folder[];
   notes: Note[];
   currentFolderId: string | null;
   selectedNoteId: string | null;
@@ -31,6 +32,7 @@ const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
 export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [allFolders, setAllFolders] = useState<Folder[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
@@ -46,12 +48,14 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     try {
       setLoading(true);
-      const [foldersData, notesData] = await Promise.all([
+      const [foldersData, allFoldersData, notesData] = await Promise.all([
         folderService.getFolders(user.id, currentFolderId),
+        folderService.getAllFolders(user.id),
         noteService.getNotes(user.id, currentFolderId),
       ]);
 
       setFolders(foldersData);
+      setAllFolders(allFoldersData);
       setNotes(notesData);
       setError(null);
     } catch (err) {
@@ -152,7 +156,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       await folderService.deleteFolder(id);
       if (currentFolderId === id) {
-        const folder = folders.find(f => f.id === id);
+        const folder = allFolders.find(f => f.id === id);
         setCurrentFolderId(folder?.parentId || null);
       }
       await loadData();
@@ -161,7 +165,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       setError('Failed to delete folder');
       throw err;
     }
-  }, [currentFolderId, folders, loadData]);
+  }, [currentFolderId, allFolders, loadData]);
 
   const deleteNote = useCallback(async (id: string) => {
     try {
@@ -180,6 +184,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   const contextValue = useMemo(
     () => ({
       folders,
+      allFolders,
       notes,
       currentFolderId,
       selectedNoteId,
@@ -199,6 +204,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     }),
     [
       folders,
+      allFolders,
       notes,
       currentFolderId,
       selectedNoteId,

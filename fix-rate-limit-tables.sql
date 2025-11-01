@@ -4,7 +4,7 @@
 -- Create account_limits table if it doesn't exist
 CREATE TABLE IF NOT EXISTS account_limits (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  daily_ai_limit INT NOT NULL DEFAULT 30,
+  daily_ai_limit INT NOT NULL DEFAULT 150,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

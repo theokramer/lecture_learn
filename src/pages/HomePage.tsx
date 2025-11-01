@@ -45,7 +45,7 @@ export const HomePage: React.FC = () => {
   });
 
   return (
-    <div className="flex h-screen bg-[#1a1a1a] overflow-hidden">
+    <div className="flex h-screen bg-bg-primary overflow-hidden">
       {/* Desktop Left Sidebar */}
       <div className="hidden lg:block">
         <Sidebar activePage="home" isMobile={false} />
@@ -64,17 +64,17 @@ export const HomePage: React.FC = () => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Bar */}
-        <div className="bg-[#2a2a2a] px-4 lg:px-8 py-3 lg:py-4 border-b border-[#3a3a3a] flex items-center justify-between">
+        <div className="bg-bg-secondary px-4 lg:px-8 py-3 lg:py-4 border-b border-border-primary flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3 lg:gap-4">
             {/* Mobile Menu Button */}
             <button
               onClick={() => setMobileSidebarOpen(true)}
-              className="lg:hidden p-2 rounded-lg hover:bg-[#3a3a3a] transition-colors"
+              className="lg:hidden p-2 rounded-lg hover:bg-bg-hover transition-all duration-200"
               aria-label="Open menu"
             >
-              <HiBars3 className="w-6 h-6 text-white" />
+              <HiBars3 className="w-6 h-6 text-text-primary" />
             </button>
-            <h1 className="text-xl lg:text-2xl font-bold text-white">Home</h1>
+            <h1 className="text-xl lg:text-2xl font-bold text-text-primary">Home</h1>
           </div>
           <div className="flex gap-2 lg:gap-3">
             <Button
@@ -105,9 +105,9 @@ export const HomePage: React.FC = () => {
 
       {/* Create Folder Modal */}
       {showCreateFolder && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#2a2a2a] rounded-lg p-6 w-full max-w-md border border-[#3a3a3a]">
-            <h2 className="text-xl font-bold text-white mb-4">Create Folder</h2>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-bg-secondary rounded-lg p-6 w-full max-w-md border border-border-primary shadow-xl">
+            <h2 className="text-xl font-bold text-text-primary mb-4">Create Folder</h2>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -118,7 +118,7 @@ export const HomePage: React.FC = () => {
                   if (e.key === 'Enter') handleCreateFolder();
                   if (e.key === 'Escape') setShowCreateFolder(false);
                 }}
-                className="flex-1 px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white focus:outline-none focus:border-[#b85a3a]"
+                className="flex-1 px-4 py-2 bg-bg-primary border border-border-primary rounded-lg text-text-primary focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
                 autoFocus
               />
               <Button
