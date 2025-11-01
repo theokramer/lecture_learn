@@ -148,7 +148,7 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
     while (folder) {
       path.unshift(folder); // Add to beginning
       if (folder.parentId) {
-        folder = allFolders.find(f => f.id === folder.parentId) || null;
+        folder = allFolders.find(f => f.id === folder!.parentId) || null;
       } else {
         folder = null;
       }
