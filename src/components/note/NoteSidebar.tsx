@@ -1,8 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { HiHome, HiDocument, HiMicrophone, HiRectangleStack, HiQuestionMarkCircle, HiBookOpen, HiBars3, HiFolder, HiDocumentText, HiSparkles, HiXMark } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 import type { StudyMode } from '../../types';
+import { useAppData } from '../../context/AppDataContext';
 
 interface NoteSidebarProps {
   currentMode: StudyMode;
@@ -24,6 +25,15 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
   onClose,
 }) => {
   const navigate = useNavigate();
+  const { selectedNoteId, notes } = useAppData();
+  
+  // Get current note to check if it has content
+  const currentNote = useMemo(() => {
+    return notes?.find(n => n.id === selectedNoteId) || null;
+  }, [notes, selectedNoteId]);
+  
+  // Check if note has content (transcript should only show if there's content to transcribe)
+  const hasContent = currentNote?.content && currentNote.content.trim().length > 0;
 
   // Prevent body scroll when mobile drawer is open
   useEffect(() => {
@@ -37,15 +47,26 @@ export const NoteSidebar: React.FC<NoteSidebarProps> = ({
     };
   }, [isMobile, isOpen]);
 
-  const menuItems = [
-    { icon: HiDocument, label: 'Summary', mode: 'summary' as StudyMode },
-    { icon: HiMicrophone, label: 'Feynman', mode: 'feynman' as StudyMode },
-    { icon: HiRectangleStack, label: 'Flashcards', mode: 'flashcards' as StudyMode },
-    { icon: HiQuestionMarkCircle, label: 'Quiz', mode: 'quiz' as StudyMode },
-    { icon: HiBookOpen, label: 'Exercises', mode: 'exercises' as StudyMode },
-    { icon: HiDocumentText, label: 'Transcript', mode: 'transcript' as StudyMode },
-    { icon: HiSparkles, label: 'AI Chat', mode: 'ai-chat' as StudyMode },
-  ];
+  // Filter menu items based on note content
+  const menuItems = useMemo(() => {
+    const allItems = [
+      { icon: HiDocument, label: 'Summary', mode: 'summary' as StudyMode },
+      { icon: HiMicrophone, label: 'Feynman', mode: 'feynman' as StudyMode },
+      { icon: HiRectangleStack, label: 'Flashcards', mode: 'flashcards' as StudyMode },
+      { icon: HiQuestionMarkCircle, label: 'Quiz', mode: 'quiz' as StudyMode },
+      { icon: HiBookOpen, label: 'Exercises', mode: 'exercises' as StudyMode },
+      { icon: HiDocumentText, label: 'Transcript', mode: 'transcript' as StudyMode },
+      { icon: HiSparkles, label: 'AI Chat', mode: 'ai-chat' as StudyMode },
+    ];
+    
+    // Hide transcript if note has no content
+    return allItems.filter(item => {
+      if (item.mode === 'transcript' && !hasContent) {
+        return false;
+      }
+      return true;
+    });
+  }, [hasContent]);
 
   // Mobile drawer version
   if (isMobile) {

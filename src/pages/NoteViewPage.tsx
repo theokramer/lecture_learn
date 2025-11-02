@@ -49,16 +49,22 @@ export const NoteViewPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // Set default study mode when opening a note (if no explicit mode is set)
+  // Set study mode when opening a note (from URL param or default)
   useEffect(() => {
     const noteId = appData.selectedNoteId;
     const modeParam = searchParams.get('mode') as StudyMode | null;
     
-    // Only set default if:
-    // 1. We have a note selected
-    // 2. No explicit mode in URL
-    // 3. We haven't set default mode for this note yet
-    if (noteId && !modeParam && hasSetDefaultModeRef.current !== noteId) {
+    if (!noteId) return;
+    
+    // If explicit mode is in URL, use it
+    if (modeParam && hasSetDefaultModeRef.current !== noteId) {
+      if (appData.currentStudyMode !== modeParam) {
+        appData.setCurrentStudyMode(modeParam);
+      }
+      hasSetDefaultModeRef.current = noteId;
+    } 
+    // Otherwise, set default mode if we haven't set it for this note yet
+    else if (!modeParam && hasSetDefaultModeRef.current !== noteId) {
       const defaultMode = preferences.defaultStudyMode || 'summary';
       if (appData.currentStudyMode !== defaultMode) {
         appData.setCurrentStudyMode(defaultMode);
@@ -100,6 +106,7 @@ export const NoteViewPage: React.FC = () => {
 
   // Auto-generate study content (including summary) when opening a note that doesn't have it
   // IMPORTANT: Only generate what's missing, don't regenerate existing content
+  // SKIP generation entirely for empty notes (manually created notes)
   useEffect(() => {
     const autoGenerateStudyContent = async () => {
       const noteId = appData.selectedNoteId;
@@ -109,7 +116,12 @@ export const NoteViewPage: React.FC = () => {
       if (!currentNote) return;
 
       const content = currentNote.content || '';
-      if (content.trim().length < 50) return; // Not enough content
+      // For empty notes (manually created), mark as generated immediately and skip all generation
+      if (!content || content.trim().length === 0 || content.trim().length < 50) {
+        // Mark as generated to prevent any further attempts
+        hasGeneratedStudyContentRef.current = noteId;
+        return; // Not enough content - don't generate anything
+      }
 
       try {
         // Check what study content already exists

@@ -55,6 +55,22 @@ export const SummaryView: React.FC = () => {
     loadedNoteIdRef.current = selectedNoteId;
     initializationCompleteRef.current = false;
     
+    // Check if note is empty - for empty notes, set flags immediately to show editor
+    const content = currentNote?.content || '';
+    const isNoteEmpty = !content || content.trim().length === 0 || content.trim().length < 50;
+    
+    if (isNoteEmpty) {
+      // Empty note - set flags immediately to show editor, no loading or generation
+      setSummary('');
+      setHasSummary(false);
+      setHasAttemptedAutoGenerate(true);
+      setIsGenerating(false);
+      setIsLoading(false);
+      setGenerationFailed(false);
+      initializationCompleteRef.current = true;
+      return;
+    }
+    
     // Try to load from sessionStorage for instant display
     const cacheKey = `summary_cache_${selectedNoteId}`;
     const cachedSummary = sessionStorage.getItem(cacheKey);
@@ -74,7 +90,7 @@ export const SummaryView: React.FC = () => {
         initializationCompleteRef.current = true;
       }, 100);
     }
-  }, [selectedNoteId]);
+  }, [selectedNoteId, currentNote]);
 
   // Load existing summary from database (runs after initialization)
   const loadSummary = useCallback(async () => {
@@ -121,19 +137,33 @@ export const SummaryView: React.FC = () => {
         sessionStorage.removeItem(cacheKey);
         setSummary('');
         setHasSummary(false);
-        setHasAttemptedAutoGenerate(false);
+        
+        // For empty notes (manually created), mark as attempted immediately to show editor
+        const content = currentNote?.content || '';
+        if (content.trim().length < 50) {
+          setHasAttemptedAutoGenerate(true);
+        } else {
+          setHasAttemptedAutoGenerate(false);
+        }
       }
       initializationCompleteRef.current = true;
     } catch (error) {
       console.error('Error loading summary:', error);
       setSummary('');
       setHasSummary(false);
-      setHasAttemptedAutoGenerate(false);
+      
+      // For empty notes (manually created), mark as attempted immediately to show editor
+      const content = currentNote?.content || '';
+      if (content.trim().length < 50) {
+        setHasAttemptedAutoGenerate(true);
+      } else {
+        setHasAttemptedAutoGenerate(false);
+      }
       initializationCompleteRef.current = true;
     } finally {
       setIsLoading(false);
     }
-  }, [selectedNoteId, hasSummary]);
+  }, [selectedNoteId, hasSummary, currentNote]);
 
   // Auto-save summary changes
   const saveSummary = useCallback(async (content: string) => {
@@ -161,6 +191,16 @@ export const SummaryView: React.FC = () => {
       return;
     }
 
+    // Check if note has content - skip generation for empty notes
+    const content = currentNote.content || '';
+    if (!content || content.trim().length === 0 || content.trim().length < 50) {
+      // Empty note - don't generate, just mark as attempted
+      setIsGenerating(false);
+      setHasAttemptedAutoGenerate(true);
+      setGenerationFailed(false);
+      return;
+    }
+
     // Only set isGenerating if not already set (for auto-generate case, it's set before calling)
     if (!isGenerating) {
       setIsGenerating(true);
@@ -174,7 +214,7 @@ export const SummaryView: React.FC = () => {
       // Generate and save in background via service (faster model under the hood)
       const generatedSummary = await studyContentService.generateAndSaveSummary(
         selectedNoteId,
-        currentNote.content || '',
+        content,
         preferences.summaryDetailLevel || 'standard'
       );
 
@@ -220,14 +260,23 @@ export const SummaryView: React.FC = () => {
   }, [loadSummary, currentStudyMode, selectedNoteId]);
 
   // Auto-generate summary in background when no summary exists
+  // SKIP generation entirely for empty notes (manually created notes)
   useEffect(() => {
     // Wait for initialization to complete before checking
     if (!initializationCompleteRef.current) return;
     if (!selectedNoteId || !currentNote || hasSummary || isLoading || isGenerating || hasAttemptedAutoGenerate) return;
     
     // Only auto-generate if there's enough content
+    // For empty notes (manually created), mark as attempted but don't generate
     const content = currentNote.content || '';
-    if (content.trim().length < 50) return;
+    // Check if note is truly empty - if so, skip generation completely
+    if (!content || content.trim().length === 0 || content.trim().length < 50) {
+      // Mark as attempted so the editor shows immediately instead of loading screen
+      // Also prevent any future generation attempts for this empty note
+      setHasAttemptedAutoGenerate(true);
+      setIsGenerating(false); // Ensure we're not in generating state
+      return;
+    }
 
     // Double-check database before generating to avoid race conditions
     const checkAndGenerate = async () => {
@@ -243,7 +292,16 @@ export const SummaryView: React.FC = () => {
           return; // Don't generate if summary exists
         }
 
-        // No summary exists, proceed with generation
+        // Double-check content length before generating (defensive check)
+        const currentContent = currentNote?.content || '';
+        if (!currentContent || currentContent.trim().length === 0 || currentContent.trim().length < 50) {
+          // Content is empty, skip generation
+          setHasAttemptedAutoGenerate(true);
+          setIsGenerating(false);
+          return;
+        }
+
+        // No summary exists and we have content, proceed with generation
         setIsGenerating(true);
         setHasAttemptedAutoGenerate(true);
 
@@ -254,7 +312,17 @@ export const SummaryView: React.FC = () => {
         });
       } catch (error) {
         console.error('Error checking for existing summary:', error);
-        // On error, still try to generate (might be network issue)
+        
+        // Double-check content before attempting generation on error
+        const currentContent = currentNote?.content || '';
+        if (!currentContent || currentContent.trim().length === 0 || currentContent.trim().length < 50) {
+          // Content is empty, skip generation even on error
+          setHasAttemptedAutoGenerate(true);
+          setIsGenerating(false);
+          return;
+        }
+        
+        // On error with valid content, still try to generate (might be network issue)
         setIsGenerating(true);
         setHasAttemptedAutoGenerate(true);
         generateSummary(true).catch(err => {
@@ -325,8 +393,12 @@ export const SummaryView: React.FC = () => {
     );
   }
 
+  // Check if note is empty - for empty notes, always show editor (no generating screen)
+  const isNoteEmpty = !currentNote?.content || currentNote.content.trim().length === 0 || currentNote.content.trim().length < 50;
+
   // Show generating screen when generating OR when we've attempted auto-generation but haven't failed yet
-  if (isGenerating || (hasAttemptedAutoGenerate && !hasSummary && !generationFailed)) {
+  // BUT skip this for empty notes - they should show the editor immediately
+  if (!isNoteEmpty && (isGenerating || (hasAttemptedAutoGenerate && !hasSummary && !generationFailed))) {
     return (
       <div className="flex items-center justify-center h-full">
         <motion.div

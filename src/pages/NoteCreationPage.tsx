@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { IoMic, IoLink, IoCloudUpload } from 'react-icons/io5';
-import { HiDocumentText } from 'react-icons/hi2';
+import { IoMic, IoLink } from 'react-icons/io5';
+import { HiDocumentText, HiDocumentPlus } from 'react-icons/hi2';
 import { Modal } from '../components/shared/Modal';
 import toast from 'react-hot-toast';
 import { handleError } from '../utils/errorHandler';
 import { linkProcessor } from '../services/linkProcessor';
+import { useAppData } from '../context/AppDataContext';
 
 export const NoteCreationPage: React.FC = () => {
   const navigate = useNavigate();
+  const { createNote } = useAppData();
   const [showWebLinkModal, setShowWebLinkModal] = useState(false);
   const [webLinkUrl, setWebLinkUrl] = useState('');
   const [processingWebLink, setProcessingWebLink] = useState(false);
@@ -49,6 +51,17 @@ export const NoteCreationPage: React.FC = () => {
     }
   };
 
+  const handleCreateManualNote = async () => {
+    try {
+      const noteId = await createNote('New Note');
+      // Navigate to note with summary mode to show summary tab automatically
+      navigate(`/note?id=${noteId}&mode=summary`);
+    } catch (error) {
+      toast.error('Failed to create note');
+      handleError(error, 'NoteCreationPage: Creating manual note', toast.error);
+    }
+  };
+
   const actions = [
     {
       id: 'record',
@@ -68,19 +81,19 @@ export const NoteCreationPage: React.FC = () => {
     },
     {
       id: 'upload-pdf',
-      title: 'Upload PDF/text',
-      description: 'Upload documents',
+      title: 'Upload documents',
+      description: 'Upload PDF, text, audio, and video files',
       icon: HiDocumentText,
       color: 'bg-[#f5f5f5] text-[#1a1a1a]',
       onClick: () => navigate('/note-creation/upload'),
     },
     {
-      id: 'upload-audio',
-      title: 'Upload audio',
-      description: 'Upload audio files',
-      icon: IoCloudUpload,
+      id: 'manual',
+      title: 'Create note manually',
+      description: 'Start with an empty note',
+      icon: HiDocumentPlus,
       color: 'bg-[#f5f5f5] text-[#1a1a1a]',
-      onClick: () => navigate('/note-creation/upload'),
+      onClick: handleCreateManualNote,
     },
   ];
 
@@ -97,7 +110,7 @@ export const NoteCreationPage: React.FC = () => {
           </button>
           <h1 className="text-4xl font-bold text-white mb-4">New note</h1>
           <p className="text-[#9ca3af] text-lg">
-            Record audio, upload documents, or add a link (YouTube, Google Drive, web pages)
+            Record audio, upload documents, add a link, or create a note manually
           </p>
         </div>
 

@@ -10,7 +10,7 @@ export const SupportPage: React.FC = () => {
     general: [
       {
         q: 'How do I create a new note?',
-        a: 'Click the "New Note" button in the top bar on the home page. You can then choose to record audio, upload a document, or add a web link.',
+        a: 'Click the "New Note" button in the top bar on the home page. You can then choose to record audio, upload documents (including audio files), add a web link, or create a note manually.',
       },
       {
         q: 'Can I organize my notes in folders?',
@@ -28,7 +28,7 @@ export const SupportPage: React.FC = () => {
       },
       {
         q: 'What audio formats are supported?',
-        a: 'We support MP3, WAV, and other common audio formats. You can upload audio files or record directly using your device microphone.',
+        a: 'We support MP3, WAV, and other common audio formats. You can upload audio files via the "Upload documents" option or record directly using your device microphone.',
       },
     ],
     documents: [

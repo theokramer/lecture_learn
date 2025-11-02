@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { IoMic, IoLink, IoCloudUpload } from 'react-icons/io5';
-import { HiDocumentText } from 'react-icons/hi2';
+import { IoMic, IoLink } from 'react-icons/io5';
+import { HiDocumentText, HiDocumentPlus } from 'react-icons/hi2';
 import { Modal } from '../shared/Modal';
 import { DocumentUpload } from '../modals/DocumentUpload';
 import { VoiceRecording } from '../modals/VoiceRecording';
+import { useAppData } from '../../context/AppDataContext';
+import { useNavigate } from 'react-router-dom';
 
 interface NoteCreationProps {
   isOpen: boolean;
@@ -18,6 +20,20 @@ export const NoteCreation: React.FC<NoteCreationProps> = ({
   onNoteCreated,
 }) => {
   const [activeAction, setActiveAction] = useState<string | null>(null);
+  const { createNote } = useAppData();
+  const navigate = useNavigate();
+
+  const handleCreateManualNote = async () => {
+    try {
+      const noteId = await createNote('New Note');
+      onClose();
+      onNoteCreated();
+      // Navigate to note with summary mode to show summary tab automatically
+      navigate(`/note?id=${noteId}&mode=summary`);
+    } catch (error) {
+      console.error('Error creating note:', error);
+    }
+  };
 
   const actions = [
     {
@@ -38,19 +54,19 @@ export const NoteCreation: React.FC<NoteCreationProps> = ({
     },
     {
       id: 'upload-pdf',
-      title: 'Upload PDF/text',
-      description: 'Upload documents',
+      title: 'Upload documents',
+      description: 'Upload PDF, text, audio, and video files',
       icon: HiDocumentText,
       color: 'bg-[#f5f5f5] text-[#1a1a1a]',
       onClick: () => setActiveAction('upload'),
     },
     {
-      id: 'upload-audio',
-      title: 'Upload audio',
-      description: 'Upload audio files',
-      icon: IoCloudUpload,
+      id: 'manual',
+      title: 'Create note manually',
+      description: 'Start with an empty note',
+      icon: HiDocumentPlus,
       color: 'bg-[#f5f5f5] text-[#1a1a1a]',
-      onClick: () => setActiveAction('upload'),
+      onClick: handleCreateManualNote,
     },
   ];
 
@@ -59,7 +75,7 @@ export const NoteCreation: React.FC<NoteCreationProps> = ({
       <Modal isOpen={isOpen} onClose={onClose} size="md" title="New note">
         <div>
           <p className="text-[#6b7280] mb-6 text-sm">
-            Record audio, upload audio, or use a YouTube URL
+            Record audio, upload documents, use a YouTube URL, or create a note manually
           </p>
           
           <div className="grid grid-cols-2 gap-4">
