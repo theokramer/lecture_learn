@@ -32,7 +32,7 @@ export const FeynmanView: React.FC<FeynmanViewProps> = React.memo(function Feynm
   const [isLoading, setIsLoading] = useState(true);
   const [isGettingFeedback, setIsGettingFeedback] = useState(false);
 
-  // Load saved topics from Supabase
+  // Load saved topics from Supabase - DO NOT auto-generate, only load from DB
   useEffect(() => {
     const loadSavedTopics = async () => {
       if (!selectedNoteId) return;
@@ -42,11 +42,9 @@ export const FeynmanView: React.FC<FeynmanViewProps> = React.memo(function Feynm
         
         if (studyContent.feynmanTopics && studyContent.feynmanTopics.length > 0) {
           setSuggestedTopics(studyContent.feynmanTopics);
-        } else if (noteContent && noteContent.trim().length >= 50) {
-          // Only generate if no saved topics and note content exists
-          generateTopics();
         } else {
-          // Not enough content for default topics
+          // No saved topics - use default topics as fallback, but don't auto-generate
+          // User can manually generate topics if they want custom ones
           setSuggestedTopics([
             {
               id: '1',
@@ -67,10 +65,24 @@ export const FeynmanView: React.FC<FeynmanViewProps> = React.memo(function Feynm
         }
       } catch (err) {
         console.error('Error loading saved topics:', err);
-        // Still try to generate if there's an error loading
-        if (noteContent && noteContent.trim().length >= 50) {
-          generateTopics();
-        }
+        // On error, use default topics - don't auto-generate
+        setSuggestedTopics([
+          {
+            id: '1',
+            title: 'Explain the main concept',
+            description: 'Explain the main concept from your notes in simple terms',
+          },
+          {
+            id: '2',
+            title: 'Explain key terms',
+            description: 'Explain the key terms and definitions',
+          },
+          {
+            id: '3',
+            title: 'Explain how concepts relate',
+            description: 'Explain how different concepts from your notes relate to each other',
+          },
+        ]);
       } finally {
         setIsLoading(false);
       }
@@ -93,7 +105,8 @@ export const FeynmanView: React.FC<FeynmanViewProps> = React.memo(function Feynm
     }
   }, [selectedNoteId]);
 
-  // Generate topics from note content
+  // Generate topics from note content (available for manual regeneration via UI button if needed)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const generateTopics = async () => {
     if (!noteContent || noteContent.trim().length < 50) {
         // Not enough content, use default topics
@@ -227,8 +240,6 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
       
       if (error?.code === 'ACCOUNT_LIMIT_REACHED') {
         feedbackMessage = "You have already used your one-time AI generation quota. No additional AI generations are available.";
-      } else if (error?.code === 'TOTAL_LIMIT_REACHED') {
-        feedbackMessage = "You have reached your total AI generation limit (5 total). No more AI generations are available.";
       } else if (error?.code === 'DAILY_LIMIT_REACHED') {
         feedbackMessage = "Daily AI limit reached. Please try again tomorrow.";
       }

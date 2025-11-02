@@ -20,6 +20,47 @@ function getResetAtIso(): string {
   return reset.toISOString();
 }
 
+/**
+ * Logs audit events to audit_log table
+ * Handles errors gracefully to prevent breaking the main flow
+ */
+async function logAuditEvent(
+  supabase: any,
+  eventType: string,
+  userId: string,
+  details: Record<string, any> = {},
+  severity: 'low' | 'medium' | 'high' | 'critical' = 'low',
+  success: boolean = true
+): Promise<void> {
+  try {
+    // Get client IP from request headers if available
+    const ipAddress = details.ipAddress || 'unknown';
+    const userAgent = details.userAgent || 'edge-function';
+
+    const auditEntry = {
+      event_type: eventType,
+      user_id: userId,
+      ip_address: ipAddress,
+      user_agent: userAgent,
+      details: { ...details, ipAddress: undefined, userAgent: undefined }, // Remove from details
+      severity,
+      success,
+      created_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from('audit_log').insert(auditEntry);
+
+    if (error) {
+      console.warn('[AUDIT] Failed to log event:', error.message);
+    } else {
+      console.log(`[AUDIT] ✅ Logged event: ${eventType}`);
+    }
+  } catch (error) {
+    // Silently fail - don't let audit logging break the main flow
+    console.warn('[AUDIT] Error logging event (non-critical):', error);
+  }
+}
+
 async function checkDailyLimitOrThrow(supabase: any, userId: string, userEmail?: string) {
   const usageDate = getUtcDateString();
 
@@ -121,7 +162,12 @@ async function checkDailyLimitOrThrow(supabase: any, userId: string, userEmail?:
   return null; // No limit reached
 }
 
-async function incrementDailyUsage(supabase: any, userId: string, userEmail?: string) {
+async function incrementDailyUsage(
+  supabase: any, 
+  userId: string, 
+  userEmail?: string,
+  tokensUsed: number = 0
+) {
   // Skip increment for premium users
   if (userEmail && userEmail.toLowerCase().endsWith('@premium.de')) {
     console.log('[INCREMENT_USAGE] ⭐ PREMIUM USER - Skipping usage increment');
@@ -134,11 +180,12 @@ async function incrementDailyUsage(supabase: any, userId: string, userEmail?: st
   console.log('[INCREMENT_USAGE] 📝 Incrementing daily usage count');
   console.log(`[INCREMENT_USAGE] User ID: ${userId}`);
   console.log(`[INCREMENT_USAGE] Date: ${usageDate}`);
+  console.log(`[INCREMENT_USAGE] Tokens used: ${tokensUsed}`);
 
-  // Fetch current count
+  // Fetch current count and token_count
   const { data: row, error: selectError } = await supabase
     .from('daily_ai_usage')
-    .select('count')
+    .select('count, token_count')
     .eq('user_id', userId)
     .eq('usage_date', usageDate)
     .single();
@@ -150,12 +197,16 @@ async function incrementDailyUsage(supabase: any, userId: string, userEmail?: st
 
   const oldCount = row?.count ?? 0;
   const newCount = oldCount + 1;
+  const oldTokens = row?.token_count ?? 0;
+  const newTokens = oldTokens + tokensUsed;
+  
   console.log(`[INCREMENT_USAGE] Count: ${oldCount} → ${newCount}`);
+  console.log(`[INCREMENT_USAGE] Tokens: ${oldTokens} → ${newTokens}`);
 
-  // Increment
+  // Increment both count and token_count
   const { error: updateError } = await supabase
     .from('daily_ai_usage')
-    .update({ count: newCount })
+    .update({ count: newCount, token_count: newTokens })
     .eq('user_id', userId)
     .eq('usage_date', usageDate);
 
@@ -164,7 +215,7 @@ async function incrementDailyUsage(supabase: any, userId: string, userEmail?: st
     throw updateError;
   }
   
-  console.log(`[INCREMENT_USAGE] ✅ Successfully incremented (new count: ${newCount})`);
+  console.log(`[INCREMENT_USAGE] ✅ Successfully incremented (count: ${newCount}, tokens: ${newTokens})`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 
@@ -174,24 +225,53 @@ const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-async function callOpenAI(messages: any[], model = 'gpt-4o-mini', temperature = 0.7) {
+async function callOpenAI(
+  messages: any[], 
+  model = 'gpt-4o-mini', 
+  temperature = 0.7,
+  retryCount = 0,
+  maxRetries = 3
+): Promise<{ content: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }> {
   if (!OPENAI_API_KEY) throw new Error('Missing OPENAI_API_KEY');
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ model, messages, temperature })
-  });
+  
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model, messages, temperature })
+    });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`OpenAI error: ${res.status} ${err}`);
+    if (!res.ok) {
+      // Handle 429 (rate limit) with exponential backoff
+      if (res.status === 429 && retryCount < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 30000); // 1s, 2s, 4s, 8s... max 30s
+        console.log(`[OPENAI] Rate limited (429), retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return callOpenAI(messages, model, temperature, retryCount + 1, maxRetries);
+      }
+      
+      const err = await res.text();
+      throw new Error(`OpenAI error: ${res.status} ${err}`);
+    }
+    
+    const json = await res.json();
+    const content = json?.choices?.[0]?.message?.content ?? '';
+    const usage = json?.usage;
+    
+    return { content, usage };
+  } catch (error) {
+    // Re-throw with retry logic for network errors too
+    if (retryCount < maxRetries && error instanceof Error && error.message.includes('fetch')) {
+      const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+      console.log(`[OPENAI] Network error, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return callOpenAI(messages, model, temperature, retryCount + 1, maxRetries);
+    }
+    throw error;
   }
-  const json = await res.json();
-  const content = json?.choices?.[0]?.message?.content ?? '';
-  return { content };
 }
 
 async function transcribeAudio(audioBase64: string, mimeType: string = 'audio/webm') {
@@ -358,6 +438,8 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
+  
+  let userId: string | null = null; // Track userId for audit logging in catch blocks
   try {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       return new Response(JSON.stringify({ error: 'Missing Supabase env' }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
@@ -370,11 +452,21 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
       console.log('[AUTH] ❌ Unauthorized request');
+      // Log unauthorized access attempt (no userId available)
+      await logAuditEvent(
+        supabase,
+        'unauthorized_access_attempt',
+        'anonymous',
+        { error: userError?.message || 'No user found', endpoint: '/ai-generate' },
+        'high',
+        false
+      );
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
     console.log(`[AUTH] ✅ User authenticated: ${user.id}`);
     console.log(`[AUTH] 📧 User email: ${user.email || 'N/A'}`);
+    userId = user.id; // Store for audit logging
 
     // ⚠️ CHECK RATE LIMIT BEFORE ANY AI GENERATION
     // Skip completely for premium users (@premium.de email domain)
@@ -386,6 +478,15 @@ Deno.serve(async (req: Request) => {
     if (limitCheck) {
       // Rate limit exceeded - return 429 error response
       console.log('[RATE_LIMIT] ❌ Request blocked due to rate limit');
+      // Log rate limit event
+      await logAuditEvent(
+        supabase,
+        'rate_limit_exceeded',
+        user.id,
+        { resource: 'ai_generation' },
+        'medium',
+        false
+      );
       return limitCheck;
     }
     console.log('[RATE_LIMIT] ✅ Rate limit check passed, proceeding with request');
@@ -406,6 +507,21 @@ Deno.serve(async (req: Request) => {
     
     const requestType = body?.type || 'chat'; // 'chat' or 'transcription'
     console.log(`[REQUEST] Type: ${requestType}`);
+
+    // Log AI generation request
+    const startTime = Date.now();
+    await logAuditEvent(
+      supabase,
+      'ai_generation_requested',
+      user.id,
+      { 
+        request_type: requestType,
+        ipAddress: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown',
+        userAgent: req.headers.get('user-agent') || 'unknown'
+      },
+      'low',
+      true
+    );
 
     // Handle transcription
     if (requestType === 'transcription') {
@@ -449,11 +565,40 @@ Deno.serve(async (req: Request) => {
             // Still return success as transcription worked, but log the issue
           }
           
+          // Log successful AI generation
+          const duration = Date.now() - startTime;
+          await logAuditEvent(
+            supabase,
+            'ai_generation_completed',
+            user.id,
+            { 
+              request_type: 'transcription',
+              duration_ms: duration,
+              method: 'storage_path'
+            },
+            'low',
+            true
+          );
+          
           console.log('[TRANSCRIPTION] ✅ Returning result to client');
           return new Response(responseData, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
         } catch (transcribeError) {
           const errorMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
           console.error('Transcription error:', errorMsg);
+          
+          // Log failed AI generation
+          await logAuditEvent(
+            supabase,
+            'ai_generation_failed',
+            user.id,
+            { 
+              request_type: 'transcription',
+              error: errorMsg.substring(0, 200),
+              method: 'storage_path'
+            },
+            'medium',
+            false
+          );
           console.error('Error details:', {
             errorType: typeof transcribeError,
             errorName: transcribeError instanceof Error ? transcribeError.name : 'N/A',
@@ -560,10 +705,39 @@ Deno.serve(async (req: Request) => {
           // Still return success as transcription worked, but log the issue
         }
         
+        // Log successful AI generation
+        const duration = Date.now() - startTime;
+        await logAuditEvent(
+          supabase,
+          'ai_generation_completed',
+          user.id,
+          { 
+            request_type: 'transcription',
+            duration_ms: duration,
+            method: 'base64'
+          },
+          'low',
+          true
+        );
+        
         console.log('[TRANSCRIPTION] ✅ Returning result to client');
         return new Response(responseData, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
       } catch (transcribeError) {
         const errorMsg = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
+        
+        // Log failed AI generation
+        await logAuditEvent(
+          supabase,
+          'ai_generation_failed',
+          user.id,
+          { 
+            request_type: 'transcription',
+            error: errorMsg.substring(0, 200),
+            method: 'base64'
+          },
+          'medium',
+          false
+        );
         // If OpenAI returns an error about file size, return proper JSON error
         if (errorMsg.includes('too large') || errorMsg.includes('413') || errorMsg.includes('25MB')) {
           return new Response(
@@ -582,29 +756,165 @@ Deno.serve(async (req: Request) => {
     const messages = body?.messages ?? [];
     const model = body?.model ?? 'gpt-4o-mini';
     const temperature = body?.temperature ?? 0.7;
-    console.log(`[CHAT] Model: ${model}, Messages: ${messages.length}`);
-    const result = await callOpenAI(messages, model, temperature);
-    console.log('[CHAT] ✅ Chat completion successful');
+    const fileHash = body?.fileHash ?? ''; // Optional file hash for caching
+    const prompt = messages.map((m: any) => m.content).join('\n'); // Extract prompt for cache key
     
-    // Prepare response BEFORE incrementing (ensures we have valid result)
-    const responseData = JSON.stringify(result);
-    console.log('[CHAT] ✅ Response prepared');
+    console.log(`[CHAT] Model: ${model}, Messages: ${messages.length}, FileHash: ${fileHash || 'none'}`);
     
-    // Increment usage count AFTER successful generation and response preparation
-    // This ensures the generation truly succeeded before counting it
-    // Premium users skip increment (handled in function)
     try {
-      await incrementDailyUsage(supabase, user.id, user.email);
-      console.log('[CHAT] ✅ Usage count incremented (or skipped for premium)');
-    } catch (markError) {
-      console.error('[CHAT] ⚠️  Error incrementing daily usage:', markError);
-      // Still return success as chat completion worked, but log the issue
+      // Check cache before calling OpenAI
+      let result: { content: string; usage?: any };
+      let fromCache = false;
+      
+      if (fileHash) {
+        // Generate cache key (in Deno, we use Web Crypto API)
+        const keyString = `${fileHash}|${prompt}|${model}`;
+        const encoder = new TextEncoder();
+        const data = encoder.encode(keyString);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const cacheKey = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        // Check cache
+        const { data: cachedData, error: cacheError } = await supabase
+          .from('model_cache')
+          .select('response, expires_at')
+          .eq('cache_key', cacheKey)
+          .eq('user_id', user.id)
+          .gte('expires_at', new Date().toISOString())
+          .maybeSingle();
+        
+        if (!cacheError && cachedData) {
+          console.log('[CHAT] ✅ Cache hit! Using cached response');
+          result = { content: cachedData.response.content, usage: cachedData.response.usage };
+          fromCache = true;
+        } else {
+          console.log('[CHAT] Cache miss or expired, calling OpenAI');
+        }
+      }
+      
+      // Call OpenAI if not from cache
+      if (!fromCache) {
+        result = await callOpenAI(messages, model, temperature);
+        console.log('[CHAT] ✅ Chat completion successful');
+        
+        // Store in cache if fileHash provided
+        if (fileHash && result.content) {
+          try {
+            const keyString = `${fileHash}|${prompt}|${model}`;
+            const encoder = new TextEncoder();
+            const data = encoder.encode(keyString);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const cacheKey = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            
+            const expiresAt = new Date();
+            expiresAt.setDate(expiresAt.getDate() + 7);
+            
+            await supabase
+              .from('model_cache')
+              .upsert({
+                cache_key: cacheKey,
+                user_id: user.id,
+                response: { content: result.content, usage: result.usage, model },
+                expires_at: expiresAt.toISOString(),
+              }, {
+                onConflict: 'cache_key'
+              });
+            
+            console.log('[CHAT] ✅ Response cached');
+          } catch (cacheError) {
+            console.warn('[CHAT] ⚠️  Failed to cache response:', cacheError);
+            // Don't fail the request if caching fails
+          }
+        }
+      }
+      
+      // Extract token usage
+      const tokensUsed = result.usage?.total_tokens ?? 0;
+      
+      // Prepare response BEFORE incrementing (ensures we have valid result)
+      const responseData = JSON.stringify({ content: result.content });
+      console.log('[CHAT] ✅ Response prepared');
+      
+      // Increment usage count and tokens AFTER successful generation and response preparation
+      // This ensures the generation truly succeeded before counting it
+      // Premium users skip increment (handled in function)
+      try {
+        await incrementDailyUsage(supabase, user.id, user.email, tokensUsed);
+        console.log('[CHAT] ✅ Usage count incremented (or skipped for premium)');
+      } catch (markError) {
+        console.error('[CHAT] ⚠️  Error incrementing daily usage:', markError);
+        // Still return success as chat completion worked, but log the issue
+      }
+      
+      // Log successful AI generation
+      const duration = Date.now() - startTime;
+      await logAuditEvent(
+        supabase,
+        'ai_generation_completed',
+        user.id,
+        { 
+          request_type: 'chat',
+          duration_ms: duration,
+          model,
+          messages_count: messages.length,
+          tokens_used: tokensUsed,
+          from_cache: fromCache
+        },
+        'low',
+        true
+      );
+      
+      console.log('[CHAT] ✅ Returning result to client');
+      return new Response(responseData, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    } catch (chatError) {
+      const errorMsg = chatError instanceof Error ? chatError.message : String(chatError);
+      
+      // Log failed AI generation
+      await logAuditEvent(
+        supabase,
+        'ai_generation_failed',
+        user.id,
+        { 
+          request_type: 'chat',
+          error: errorMsg.substring(0, 200),
+          model,
+          messages_count: messages.length
+        },
+        'medium',
+        false
+      );
+      
+      throw chatError; // Re-throw to be caught by outer try-catch
     }
-    
-    console.log('[CHAT] ✅ Returning result to client');
-    return new Response(responseData, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    
+    // Log general error if not already logged
+    // (Some errors might have been logged above, but catch-all ensures we log everything)
+    if (userId) {
+      try {
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        if (currentUser) {
+          await logAuditEvent(
+            supabase,
+            'error_occurred',
+            currentUser.id,
+            { 
+              error: msg.substring(0, 200),
+              endpoint: '/ai-generate'
+            },
+            'medium',
+            false
+          );
+        }
+      } catch (auditError) {
+        // Silently fail audit logging
+        console.warn('[AUDIT] Failed to log error:', auditError);
+      }
+    }
+    
     return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 });

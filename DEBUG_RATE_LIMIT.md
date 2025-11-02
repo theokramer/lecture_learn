@@ -51,7 +51,7 @@ Successfully marked AI generation as used for user: {user-id}
 -- Check your account usage
 SELECT user_id, has_used_ai_generation, ai_generation_used_at, created_at 
 FROM account_ai_usage 
-WHERE user_id = 'YOUR_USER_ID_HERE';
+WHERE user_id = '20039264-3526-43fc-911a-8a8624267dbc';
 ```
 
 **Expected Results After First Generation**:

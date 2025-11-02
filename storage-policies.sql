@@ -1,4 +1,4 @@
--- Supabase Storage Bucket RLS Policies for React Learning Notes App
+-- Supabase Storage Bucket RLS Policies for Nano AI App
 -- Run this in your Supabase SQL Editor to configure storage bucket security
 --
 -- UPDATED: Uses LIKE pattern matching for more reliable path checking

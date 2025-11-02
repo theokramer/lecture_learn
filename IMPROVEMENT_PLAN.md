@@ -1,4 +1,4 @@
-# App Improvement Plan - React Learning Notes
+# App Improvement Plan - Nano AI
 
 ## Overview
 This plan includes ONLY features that are NOT yet implemented. Based on comprehensive codebase analysis, many core features already exist. This plan focuses on enhancements and missing functionality.

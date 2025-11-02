@@ -22,6 +22,8 @@ interface AppDataContextType {
   createNote: (title: string, content?: string) => Promise<string>;
   uploadDocumentToNote: (noteId: string, file: File) => Promise<void>;
   updateNote: (id: string, updates: Partial<Note>) => Promise<void>;
+  moveFolder: (id: string, newParentId: string | null) => Promise<void>;
+  moveNote: (id: string, newFolderId: string | null) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
   refreshData: () => Promise<void>;
@@ -152,6 +154,28 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [loadData]);
 
+  const moveFolder = useCallback(async (id: string, newParentId: string | null) => {
+    try {
+      await folderService.moveFolder(id, newParentId);
+      await loadData();
+    } catch (err) {
+      handleError(err, 'AppDataContext: Moving folder', toast.error);
+      setError('Failed to move folder');
+      throw err;
+    }
+  }, [loadData]);
+
+  const moveNote = useCallback(async (id: string, newFolderId: string | null) => {
+    try {
+      await noteService.updateNote(id, { folderId: newFolderId });
+      await loadData();
+    } catch (err) {
+      handleError(err, 'AppDataContext: Moving note', toast.error);
+      setError('Failed to move note');
+      throw err;
+    }
+  }, [loadData]);
+
   const deleteFolder = useCallback(async (id: string) => {
     try {
       await folderService.deleteFolder(id);
@@ -198,6 +222,8 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       createNote,
       uploadDocumentToNote,
       updateNote,
+      moveFolder,
+      moveNote,
       deleteFolder,
       deleteNote,
       refreshData,
@@ -215,6 +241,8 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       createNote,
       uploadDocumentToNote,
       updateNote,
+      moveFolder,
+      moveNote,
       deleteFolder,
       deleteNote,
       refreshData,

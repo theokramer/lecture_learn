@@ -1,6 +1,6 @@
 # Deploying to Vercel
 
-This guide will help you deploy your React Learning Notes app to Vercel.
+This guide will help you deploy your Nano AI app to Vercel.
 
 ## Prerequisites
 

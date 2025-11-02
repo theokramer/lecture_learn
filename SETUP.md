@@ -1,6 +1,6 @@
-# React Learning Notes - Setup Instructions
+# Nano AI - Setup Instructions
 
-This document provides step-by-step instructions to set up the React Learning Notes app with Supabase and OpenAI integration.
+This document provides step-by-step instructions to set up the Nano AI app with Supabase and OpenAI integration.
 
 ## Prerequisites
 

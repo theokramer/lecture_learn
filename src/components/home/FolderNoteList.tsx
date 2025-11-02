@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { HiFolder, HiChevronRight, HiMagnifyingGlass, HiChevronLeft, HiAcademicCap, HiDocumentPlus, HiTrash } from 'react-icons/hi2';
+import { HiFolder, HiChevronRight, HiMagnifyingGlass, HiChevronLeft, HiAcademicCap, HiDocumentPlus } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 import { useAppData } from '../../context/AppDataContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -10,6 +10,8 @@ import { studyContentService } from '../../services/supabase';
 import { NoteListSkeleton } from '../shared/SkeletonLoader';
 import { EmptyState } from '../shared/EmptyState';
 import { ConfirmModal } from '../shared/ConfirmModal';
+import { SwipeableItem } from '../shared/SwipeableItem';
+import { FolderSelectorModal } from '../shared/FolderSelectorModal';
 import toast from 'react-hot-toast';
 import { useDebounce } from '../../hooks/useDebounce';
 
@@ -20,7 +22,7 @@ interface FolderNoteListProps {
 }
 
 export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searchInputRef }) => {
-  const { folders, allFolders, notes, setSelectedNoteId, setCurrentFolderId, currentFolderId, selectedNoteId, loading, createFolder, deleteNote, deleteFolder } = useAppData();
+  const { folders, allFolders, notes, setSelectedNoteId, setCurrentFolderId, currentFolderId, selectedNoteId, loading, createFolder, deleteNote, deleteFolder, moveNote, moveFolder } = useAppData();
   const { preferences } = useSettings();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,6 +30,7 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
   const [summariesByNoteId, setSummariesByNoteId] = useState<Record<string, string>>({});
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [itemToDelete, setItemToDelete] = useState<{ type: 'note' | 'folder'; id: string; name: string } | null>(null);
+  const [itemToMove, setItemToMove] = useState<{ type: 'note' | 'folder'; id: string; name: string; currentParentId: string | null } | null>(null);
   
   const isCompact = preferences.noteListDensity === 'compact';
 
@@ -306,10 +309,28 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
           const isFolder = item.type === 'folder';
           const Icon = isFolder ? HiFolder : HiChevronRight;
           const isSelected = selectedIndex === index;
+          const itemName = (item.data as Note).title || (item.data as Folder).name;
+          const currentParentId = isFolder ? (item.data as Folder).parentId : (item.data as Note).folderId;
           
           return (
-            <div
+            <SwipeableItem
               key={item.data.id}
+              onDelete={() => {
+                setItemToDelete({
+                  type: isFolder ? 'folder' : 'note',
+                  id: item.data.id,
+                  name: itemName,
+                });
+              }}
+              onMove={() => {
+                setItemToMove({
+                  type: isFolder ? 'folder' : 'note',
+                  id: item.data.id,
+                  name: itemName,
+                  currentParentId,
+                });
+              }}
+              isCompact={isCompact}
               className={`w-full ${isCompact ? 'p-2' : 'p-4'} rounded-lg transition-colors ${
                 isSelected 
                   ? 'bg-[#3a3a3a] border-2 border-[#b85a3a]' 
@@ -317,52 +338,52 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
               }`}
             >
               <motion.button
-              whileHover={{ scale: 1.01, x: 4 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => {
-                if (isFolder) {
-                  // Navigate into folder instead of toggling
-                  setCurrentFolderId(item.data.id);
-                } else {
-                  setSelectedNoteId(item.data.id);
-                  navigate('/note');
-                }
-              }}
+                whileHover={{ scale: 1.01, x: 4 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => {
+                  if (isFolder) {
+                    // Navigate into folder instead of toggling
+                    setCurrentFolderId(item.data.id);
+                  } else {
+                    setSelectedNoteId(item.data.id);
+                    navigate('/note');
+                  }
+                }}
                 className="w-full text-left"
-            >
-              <div className={`flex items-center ${isCompact ? 'gap-2' : 'gap-3'}`}>
-                <div className={`${isCompact ? 'w-6 h-6' : 'w-10 h-10'} flex items-center justify-center`}>
-                  {isFolder ? (
-                    <HiFolder className={`${isCompact ? 'w-4 h-4' : 'w-6 h-6'} text-[#b85a3a]`} />
-                  ) : (
-                    <Icon className={`${isCompact ? 'w-4 h-4' : 'w-5 h-5'} text-[#9ca3af]`} />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className={`font-medium text-white ${isCompact ? 'text-sm' : ''} truncate`}>
-                    {(item.data as Note).title || (item.data as Folder).name}
-                  </p>
-                  {!isFolder && 'createdAt' in item.data && (
-                    <p className={`${isCompact ? 'text-xs' : 'text-sm'} text-[#9ca3af]`}>
-                      {isCompact 
-                        ? format((item.data as Note).createdAt, 'MMM d')
-                        : format((item.data as Note).createdAt, 'MMM d, yyyy')
-                      }
+              >
+                <div className={`flex items-center ${isCompact ? 'gap-2' : 'gap-3'}`}>
+                  <div className={`${isCompact ? 'w-6 h-6' : 'w-10 h-10'} flex items-center justify-center`}>
+                    {isFolder ? (
+                      <HiFolder className={`${isCompact ? 'w-4 h-4' : 'w-6 h-6'} text-[#b85a3a]`} />
+                    ) : (
+                      <Icon className={`${isCompact ? 'w-4 h-4' : 'w-5 h-5'} text-[#9ca3af]`} />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`font-medium text-white ${isCompact ? 'text-sm' : ''} truncate`}>
+                      {itemName}
                     </p>
-                  )}
-                  {!isCompact && debouncedSearchQuery.trim() !== '' && !isFolder && (item as any).meta && (
-                    <div
-                      className="mt-1 text-sm text-gray-300 line-clamp-1"
-                      dangerouslySetInnerHTML={{ __html: (item as any).meta.snippetHtml }}
-                    />
-                  )}
+                    {!isFolder && 'createdAt' in item.data && (
+                      <p className={`${isCompact ? 'text-xs' : 'text-sm'} text-[#9ca3af]`}>
+                        {isCompact 
+                          ? format((item.data as Note).createdAt, 'MMM d')
+                          : format((item.data as Note).createdAt, 'MMM d, yyyy')
+                        }
+                      </p>
+                    )}
+                    {!isCompact && debouncedSearchQuery.trim() !== '' && !isFolder && (item as any).meta && (
+                      <div
+                        className="mt-1 text-sm text-gray-300 line-clamp-1"
+                        dangerouslySetInnerHTML={{ __html: (item as any).meta.snippetHtml }}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
-            </motion.button>
+              </motion.button>
               
               {/* Actions */}
-              <div className={`flex items-center gap-2 ${isCompact ? 'mt-1 ml-8' : 'mt-2 ml-12'}`}>
-                {isFolder && (
+              {isFolder && (
+                <div className={`flex items-center gap-2 ${isCompact ? 'mt-1 ml-8' : 'mt-2 ml-12'}`}>
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
@@ -375,23 +396,9 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
                     <HiAcademicCap className="w-4 h-4" />
                     Learn Flashcards
                   </motion.button>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setItemToDelete({
-                      type: isFolder ? 'folder' : 'note',
-                      id: item.data.id,
-                      name: (item.data as Note).title || (item.data as Folder).name,
-                    });
-                  }}
-                  className="p-2 rounded-lg hover:bg-[#3a3a3a] hover:text-red-400 transition-colors text-[#9ca3af]"
-                  title={`Delete ${isFolder ? 'folder' : 'note'}`}
-                >
-                  <HiTrash className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
+                </div>
+              )}
+            </SwipeableItem>
           );
           })
         )}
@@ -432,6 +439,57 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
         confirmLabel="Delete"
         cancelLabel="Cancel"
         variant="danger"
+      />
+
+      {/* Move Folder/Note Modal */}
+      <FolderSelectorModal
+        isOpen={!!itemToMove}
+        onClose={() => setItemToMove(null)}
+        onSelect={async (newParentId) => {
+          if (!itemToMove) return;
+          
+          try {
+            // Prevent moving folder into itself or into its own children
+            if (itemToMove.type === 'folder' && newParentId === itemToMove.id) {
+              toast.error('Cannot move folder into itself');
+              return;
+            }
+            
+            // Check if moving into a child folder (would create circular reference)
+            if (itemToMove.type === 'folder' && newParentId) {
+              const checkCircular = (folderId: string, targetParentId: string | null): boolean => {
+                if (folderId === targetParentId) return true;
+                if (!targetParentId) return false;
+                const targetFolder = allFolders.find(f => f.id === targetParentId);
+                if (!targetFolder) return false;
+                return checkCircular(folderId, targetFolder.parentId);
+              };
+              
+              if (checkCircular(itemToMove.id, newParentId)) {
+                toast.error('Cannot move folder into its own subfolder');
+                return;
+              }
+            }
+            
+            if (itemToMove.type === 'folder') {
+              await moveFolder(itemToMove.id, newParentId);
+              toast.success('Folder moved successfully');
+            } else {
+              await moveNote(itemToMove.id, newParentId);
+              toast.success('Note moved successfully');
+            }
+          } catch (error) {
+            console.error(`Error moving ${itemToMove.type}:`, error);
+            toast.error(`Failed to move ${itemToMove.type}`);
+          } finally {
+            setItemToMove(null);
+          }
+        }}
+        folders={allFolders}
+        currentFolderId={itemToMove?.currentParentId || null}
+        excludeFolderId={itemToMove?.type === 'folder' ? itemToMove.id : undefined}
+        itemName={itemToMove?.name || ''}
+        itemType={itemToMove?.type || 'note'}
       />
     </div>
   );

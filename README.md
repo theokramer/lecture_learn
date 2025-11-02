@@ -1,4 +1,4 @@
-# University Learning App
+# Nano AI
 
 A stunning, modern React web application designed for university students to organize notes, manage documents, and study effectively with AI-powered tools.
 

@@ -83,6 +83,15 @@ export const folderService = {
     if (error) throw error;
   },
 
+  async moveFolder(id: string, newParentId: string | null): Promise<void> {
+    const { error } = await supabase
+      .from('folders')
+      .update({ parent_id: newParentId })
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
   async deleteFolder(id: string): Promise<void> {
     const { error } = await supabase
       .from('folders')
@@ -233,7 +242,7 @@ export const documentService = {
     }));
   },
 
-  async createDocument(noteId: string, file: File, storagePath: string): Promise<Document> {
+  async createDocument(noteId: string, file: File, storagePath: string, fileHash?: string): Promise<Document> {
     const documentType = documentService.getFileType(file.type);
     
     const { data, error } = await supabase
@@ -244,6 +253,7 @@ export const documentService = {
         type: documentType,
         storage_path: storagePath,
         size: file.size,
+        file_hash: fileHash || null,
       })
       .select()
       .single();
@@ -413,10 +423,10 @@ async function generateAllStudyContent(noteId: string, content: string) {
     const { openaiService } = await import('./openai');
     const { summaryService } = await import('./summaryService');
 
-    // Check if study_content exists and if summary already exists
+    // Check what study content already exists - load full row to check all fields
     const { data: existingRows } = await supabase
       .from('study_content')
-      .select('id, summary')
+      .select('id, summary, flashcards, quiz_questions, exercises, feynman_topics')
       .eq('note_id', noteId)
       .order('updated_at', { ascending: false });
 
@@ -432,71 +442,130 @@ async function generateAllStudyContent(noteId: string, content: string) {
         .in('id', duplicateIds)
     }
 
+    // Check what content already exists - preserve existing content
     const hasExistingSummary = existing?.summary && existing.summary.trim() !== '';
+    const hasExistingFlashcards = existing?.flashcards && Array.isArray(existing.flashcards) && existing.flashcards.length > 0;
+    const hasExistingQuiz = existing?.quiz_questions && Array.isArray(existing.quiz_questions) && existing.quiz_questions.length > 0;
+    const hasExistingExercises = existing?.exercises && Array.isArray(existing.exercises) && existing.exercises.length > 0;
+    const hasExistingFeynmanTopics = existing?.feynman_topics && Array.isArray(existing.feynman_topics) && existing.feynman_topics.length > 0;
 
     // Fetch documents metadata for summary context (only if we need to generate summary)
     const documentsPromise = !hasExistingSummary 
       ? documentService.getDocuments(noteId)
       : Promise.resolve([]);
 
-    // Generate study materials in parallel
-    // Only generate summary if it doesn't already exist
-    const studyContentPromises = [
-      openaiService.generateFlashcards(content),
-      openaiService.generateQuiz(content),
-      generateExercisesHelper(content),
-      generateFeynmanTopicsHelper(content),
-    ];
+    // Build promises array - only generate what doesn't exist
+    const studyContentPromises: Promise<any>[] = [];
+    const promiseIndices = {
+      flashcards: -1,
+      quiz: -1,
+      exercises: -1,
+      feynmanTopics: -1,
+      summary: -1,
+    };
 
-    // Add summary generation only if it doesn't exist
+    // Only generate flashcards if they don't exist
+    if (!hasExistingFlashcards) {
+      promiseIndices.flashcards = studyContentPromises.length;
+      studyContentPromises.push(openaiService.generateFlashcards(content));
+    } else {
+      studyContentPromises.push(Promise.resolve(null));
+    }
+
+    // Only generate quiz if it doesn't exist
+    if (!hasExistingQuiz) {
+      promiseIndices.quiz = studyContentPromises.length;
+      studyContentPromises.push(openaiService.generateQuiz(content));
+    } else {
+      studyContentPromises.push(Promise.resolve(null));
+    }
+
+    // Only generate exercises if they don't exist
+    if (!hasExistingExercises) {
+      promiseIndices.exercises = studyContentPromises.length;
+      studyContentPromises.push(generateExercisesHelper(content));
+    } else {
+      studyContentPromises.push(Promise.resolve(null));
+    }
+
+    // Only generate feynman topics if they don't exist
+    if (!hasExistingFeynmanTopics) {
+      promiseIndices.feynmanTopics = studyContentPromises.length;
+      studyContentPromises.push(generateFeynmanTopicsHelper(content));
+    } else {
+      studyContentPromises.push(Promise.resolve(null));
+    }
+
+    // Only generate summary if it doesn't exist
     if (!hasExistingSummary) {
+      promiseIndices.summary = studyContentPromises.length;
       const documents = await documentsPromise;
       studyContentPromises.push(
         summaryService.generateIntelligentSummary(content, documents, { detailLevel: 'standard' })
       );
     } else {
-      // Add a resolved promise to keep array alignment
       studyContentPromises.push(Promise.resolve(''));
     }
 
     const [flashcardsData, quizData, exercisesData, feynmanTopicsData, summaryData] = await Promise.allSettled(studyContentPromises);
 
-    const flashcards = flashcardsData.status === 'fulfilled' 
-      ? flashcardsData.value.map((f: any) => ({ id: `gen-${Date.now()}-${Math.random()}`, ...f }))
-      : [];
+    // Process results - only use generated data, preserve existing otherwise
+    const flashcards = hasExistingFlashcards && existing?.flashcards
+      ? existing.flashcards
+      : (flashcardsData.status === 'fulfilled' && flashcardsData.value
+          ? flashcardsData.value.map((f: any) => ({ id: `gen-${Date.now()}-${Math.random()}`, ...f }))
+          : []);
     
-    const quizQuestions = quizData.status === 'fulfilled'
-      ? quizData.value.map((q: any, idx: number) => ({
-          id: `gen-${Date.now()}-${idx}`,
-          question: q.question,
-          options: q.options,
-          correct: q.correctAnswer || q.correct,
-        }))
-      : [];
+    const quizQuestions = hasExistingQuiz && existing?.quiz_questions
+      ? existing.quiz_questions
+      : (quizData.status === 'fulfilled' && quizData.value
+          ? quizData.value.map((q: any, idx: number) => ({
+              id: `gen-${Date.now()}-${idx}`,
+              question: q.question,
+              options: q.options,
+              correct: q.correctAnswer || q.correct,
+            }))
+          : []);
 
-    const exercises = exercisesData.status === 'fulfilled'
-      ? exercisesData.value
-      : [];
+    const exercises = hasExistingExercises && existing?.exercises
+      ? existing.exercises
+      : (exercisesData.status === 'fulfilled' && exercisesData.value
+          ? exercisesData.value
+          : []);
 
-    const feynmanTopics = feynmanTopicsData.status === 'fulfilled'
-      ? feynmanTopicsData.value
-      : [];
+    const feynmanTopics = hasExistingFeynmanTopics && existing?.feynman_topics
+      ? existing.feynman_topics
+      : (feynmanTopicsData.status === 'fulfilled' && feynmanTopicsData.value
+          ? feynmanTopicsData.value
+          : []);
 
     // Only set summary if we generated a new one (and it was successful)
-    const summaryHtml = !hasExistingSummary && summaryData.status === 'fulfilled'
-      ? summaryData.value
-      : '';
+    // Always preserve existing summary
+    const summaryHtml = hasExistingSummary
+      ? existing.summary
+      : (summaryData.status === 'fulfilled' && summaryData.value
+          ? summaryData.value
+          : '');
 
+    // Build content data - only include fields that have content (preserve or newly generated)
     const contentData: any = {};
     
-    contentData.flashcards = flashcards;
-    contentData.quiz_questions = quizQuestions;
-    contentData.exercises = exercises;
-    contentData.feynman_topics = feynmanTopics;
+    // Only update if we have content (either existing or newly generated)
+    if (flashcards.length > 0 || hasExistingFlashcards) {
+      contentData.flashcards = flashcards;
+    }
+    if (quizQuestions.length > 0 || hasExistingQuiz) {
+      contentData.quiz_questions = quizQuestions;
+    }
+    if (exercises.length > 0 || hasExistingExercises) {
+      contentData.exercises = exercises;
+    }
+    if (feynmanTopics.length > 0 || hasExistingFeynmanTopics) {
+      contentData.feynman_topics = feynmanTopics;
+    }
     
-    // Only include summary in update if we generated a new one
-    // Never overwrite existing summary
-    if (summaryHtml && !hasExistingSummary) {
+    // Only include summary if we have one (preserve existing or use newly generated)
+    if (summaryHtml) {
       contentData.summary = summaryHtml;
     }
 

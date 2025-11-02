@@ -40,7 +40,7 @@ export const QuizView: React.FC<QuizViewProps> = React.memo(function QuizView({ 
   const isInitialLoad = React.useRef(true);
   const quizStartTimeRef = useRef<Date | null>(null);
 
-  // Load saved quiz questions from Supabase
+  // Load saved quiz questions from Supabase - DO NOT auto-generate, only load from DB
   useEffect(() => {
     const loadSavedQuiz = async () => {
       if (!selectedNoteId) return;
@@ -50,16 +50,14 @@ export const QuizView: React.FC<QuizViewProps> = React.memo(function QuizView({ 
         
         if (studyContent.quizQuestions && studyContent.quizQuestions.length > 0) {
           setQuestions(studyContent.quizQuestions);
-        } else if (noteContent) {
-          // Only generate if no saved questions and note content exists
-          generateQuiz();
+        } else {
+          // No saved questions - set empty array, user can manually generate if needed
+          setQuestions([]);
         }
       } catch (err) {
         console.error('Error loading saved quiz:', err);
-        // Still try to generate if there's an error loading
-        if (noteContent) {
-          generateQuiz();
-        }
+        // On error, just set empty array - don't auto-generate
+        setQuestions([]);
       } finally {
         setIsLoading(false);
         isInitialLoad.current = false;
@@ -118,8 +116,6 @@ export const QuizView: React.FC<QuizViewProps> = React.memo(function QuizView({ 
       console.error('Error generating quiz:', error);
       if (error?.code === 'ACCOUNT_LIMIT_REACHED') {
         setError('You have already used your one-time AI generation quota. No additional AI generations are available.');
-      } else if (error?.code === 'TOTAL_LIMIT_REACHED') {
-        setError('You have reached your total AI generation limit (5 total). No more AI generations are available.');
       } else if (error?.code === 'DAILY_LIMIT_REACHED') {
         setError('Daily AI limit reached. Please try again tomorrow.');
       } else {

@@ -34,7 +34,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = React.memo(function
   const [isLoading, setIsLoading] = useState(true);
   const isInitialLoad = React.useRef(true);
 
-  // Load saved flashcards from Supabase
+  // Load saved flashcards from Supabase - DO NOT auto-generate, only load from DB
   useEffect(() => {
     const loadSavedFlashcards = async () => {
       if (!selectedNoteId) return;
@@ -60,16 +60,16 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = React.memo(function
           });
           setFlashcards(upgradedCards);
           updateReviewQueue(upgradedCards);
-        } else if (noteContent) {
-          // Only generate if no saved flashcards and note content exists
-          generateFlashcards();
+        } else {
+          // No saved flashcards - set empty array, user can manually generate if needed
+          setFlashcards([]);
+          updateReviewQueue([]);
         }
       } catch (err) {
         console.error('Error loading saved flashcards:', err);
-        // Still try to generate if there's an error loading
-        if (noteContent) {
-          generateFlashcards();
-        }
+        // On error, just set empty array - don't auto-generate
+        setFlashcards([]);
+        updateReviewQueue([]);
       } finally {
         setIsLoading(false);
         isInitialLoad.current = false;

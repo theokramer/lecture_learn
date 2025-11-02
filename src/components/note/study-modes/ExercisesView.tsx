@@ -34,7 +34,7 @@ export const ExercisesView: React.FC<ExercisesViewProps> = React.memo(function E
   const [isLoading, setIsLoading] = useState(true);
   const isInitialLoad = React.useRef(true);
 
-  // Load saved exercises from Supabase
+  // Load saved exercises from Supabase - DO NOT auto-generate, only load from DB
   useEffect(() => {
     const loadSavedExercises = async () => {
       if (!selectedNoteId) return;
@@ -44,16 +44,14 @@ export const ExercisesView: React.FC<ExercisesViewProps> = React.memo(function E
         
         if (studyContent.exercises && studyContent.exercises.length > 0) {
           setExercises(studyContent.exercises);
-        } else if (noteContent) {
-          // Only generate if no saved exercises and note content exists
-          generateExercises();
+        } else {
+          // No saved exercises - set empty array, user can manually generate if needed
+          setExercises([]);
         }
       } catch (err) {
         console.error('Error loading saved exercises:', err);
-        // Still try to generate if there's an error loading
-        if (noteContent) {
-          generateExercises();
-        }
+        // On error, just set empty array - don't auto-generate
+        setExercises([]);
       } finally {
         setIsLoading(false);
         isInitialLoad.current = false;
@@ -104,11 +102,7 @@ export const ExercisesView: React.FC<ExercisesViewProps> = React.memo(function E
       }
     } catch (error) {
       console.error('Error generating exercises:', error);
-      if ((error as any)?.code === 'TOTAL_LIMIT_REACHED') {
-        setError('You have reached your total AI generation limit (5 total). No more AI generations are available.');
-      } else {
-        setError(error instanceof Error ? error.message : 'Failed to generate exercises');
-      }
+      setError(error instanceof Error ? error.message : 'Failed to generate exercises');
     } finally {
       setIsGenerating(false);
     }

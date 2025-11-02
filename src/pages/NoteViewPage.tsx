@@ -99,6 +99,7 @@ export const NoteViewPage: React.FC = () => {
   }, [appData.selectedNoteId, appData.currentStudyMode, preferences.defaultStudyMode]);
 
   // Auto-generate study content (including summary) when opening a note that doesn't have it
+  // IMPORTANT: Only generate what's missing, don't regenerate existing content
   useEffect(() => {
     const autoGenerateStudyContent = async () => {
       const noteId = appData.selectedNoteId;
@@ -111,13 +112,21 @@ export const NoteViewPage: React.FC = () => {
       if (content.trim().length < 50) return; // Not enough content
 
       try {
-        // Check if study content already exists
+        // Check what study content already exists
         const studyContent = await studyContentService.getStudyContent(noteId);
         
-        // Only generate if there's no summary (this means no study content was generated yet)
-        if (!studyContent.summary || studyContent.summary.trim() === '') {
-          // Generate all study content in background (including summary)
-          // This will automatically preserve any existing content
+        // Check if we need to generate anything
+        const hasSummary = studyContent.summary && studyContent.summary.trim() !== '';
+        const hasFlashcards = studyContent.flashcards && studyContent.flashcards.length > 0;
+        const hasQuiz = studyContent.quizQuestions && studyContent.quizQuestions.length > 0;
+        const hasExercises = studyContent.exercises && studyContent.exercises.length > 0;
+        const hasFeynmanTopics = studyContent.feynmanTopics && studyContent.feynmanTopics.length > 0;
+        
+        // Only generate if at least one major content type is missing
+        // Don't regenerate if content already exists
+        if (!hasSummary || !hasFlashcards || !hasQuiz || !hasExercises || !hasFeynmanTopics) {
+          // Generate only missing content in background
+          // generateAllStudyContent will check and preserve existing content
           hasGeneratedStudyContentRef.current = noteId;
           studyContentService.generateAndSaveAllStudyContent(noteId, content).catch(err => {
             console.error('Background study content generation failed:', err);
@@ -125,7 +134,7 @@ export const NoteViewPage: React.FC = () => {
             hasGeneratedStudyContentRef.current = null;
           });
         } else {
-          // Summary exists, mark as generated
+          // All content exists, mark as generated
           hasGeneratedStudyContentRef.current = noteId;
         }
       } catch (error) {

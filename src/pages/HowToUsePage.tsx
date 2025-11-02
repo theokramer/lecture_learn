@@ -59,7 +59,7 @@ export const HowToUsePage: React.FC = () => {
           <div className="max-w-6xl mx-auto">
             {/* Header */}
             <div className="text-center mb-12">
-              <h2 className="text-4xl font-bold text-white mb-4">Welcome to Learning Notes</h2>
+              <h2 className="text-4xl font-bold text-white mb-4">Welcome to Nano AI</h2>
               <p className="text-[#9ca3af] text-lg">
                 Learn how to make the most out of your note-taking app
               </p>

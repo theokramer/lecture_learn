@@ -2,6 +2,8 @@
 // Handles link processing for YouTube transcripts, Google Drive, and web pages
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+// @deno-types="https://esm.sh/youtube-transcript-api@3.0.6"
+import YoutubeTranscript from 'https://esm.sh/youtube-transcript-api@3.0.6';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
@@ -12,7 +14,7 @@ const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// YouTube transcript extraction - Simple and reliable approach
+// YouTube transcript extraction using youtube-transcript-api package
 async function getYouTubeTranscript(videoId: string): Promise<{ transcript: string; title: string }> {
   try {
     // Get video title first
@@ -29,8 +31,56 @@ async function getYouTubeTranscript(videoId: string): Promise<{ transcript: stri
       // Continue without title
     }
 
-    // Use the simple direct API approach
-    // YouTube's timedtext API is the most reliable way to get transcripts
+    // Try using youtube-transcript-api package first (better error handling)
+    try {
+      console.log(`Attempting to fetch transcript using youtube-transcript-api for video: ${videoId}`);
+      
+      // Try English first
+      let transcriptItems = [];
+      const languages = ['en', 'en-US', 'en-GB'];
+      
+      for (const lang of languages) {
+        try {
+          transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, { lang });
+          if (transcriptItems && transcriptItems.length > 0) {
+            console.log(`Successfully fetched transcript in ${lang} (${transcriptItems.length} items)`);
+            break;
+          }
+        } catch (langError) {
+          console.log(`Failed to fetch transcript in ${lang}:`, langError);
+          continue;
+        }
+      }
+      
+      // If English didn't work, try auto-detecting language
+      if (transcriptItems.length === 0) {
+        try {
+          transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
+          console.log(`Successfully fetched transcript (auto-detected language, ${transcriptItems.length} items)`);
+        } catch (autoError) {
+          console.log('Auto-detect also failed:', autoError);
+        }
+      }
+      
+      if (transcriptItems && transcriptItems.length > 0) {
+        // Combine transcript items into a single text
+        const transcript = transcriptItems
+          .map((item: any) => item.text)
+          .join(' ')
+          .trim();
+        
+        if (transcript && transcript.length > 50) {
+          console.log(`Successfully extracted ${transcript.length} characters using youtube-transcript-api`);
+          return { transcript, title };
+        }
+      }
+    } catch (packageError) {
+      console.log('youtube-transcript-api package failed, falling back to direct API:', packageError);
+      // Fall through to fallback method
+    }
+    
+    // Fallback: Use direct timedtext API (original method)
+    console.log('Using fallback: direct timedtext API');
     const languages = ['en', 'en-US', 'en-GB', 'en-AU', 'en-NZ'];
     let transcript = '';
     
@@ -56,7 +106,7 @@ async function getYouTubeTranscript(videoId: string): Promise<{ transcript: stri
           
           if (textMatches && textMatches.length > 0) {
             transcript = textMatches
-              .map(match => {
+              .map((match: string) => {
                 // Extract just the text content between tags
                 const textContent = match.replace(/<text[^>]*>/g, '').replace(/<\/text>/g, '').trim();
                 
@@ -70,11 +120,11 @@ async function getYouTubeTranscript(videoId: string): Promise<{ transcript: stri
                   .replace(/&nbsp;/g, ' ')
                   .trim();
               })
-              .filter(text => text.length > 0)
+              .filter((text: string) => text.length > 0)
               .join(' ');
             
             if (transcript && transcript.length > 50) {
-              console.log(`Successfully extracted ${transcript.length} characters of transcript in ${lang}`);
+              console.log(`Successfully extracted ${transcript.length} characters of transcript in ${lang} (fallback)`);
               return { transcript: transcript.trim(), title };
             }
           }
@@ -82,47 +132,6 @@ async function getYouTubeTranscript(videoId: string): Promise<{ transcript: stri
       } catch (langError) {
         console.log(`Error trying language ${lang}:`, langError);
         continue;
-      }
-    }
-    
-    // If we couldn't get transcripts in English, try any available language
-    if (!transcript) {
-      console.log('English transcript not found, trying to get any available transcript');
-      
-      try {
-        const anyLangUrl = `https://www.youtube.com/api/timedtext?v=${videoId}`;
-        const response = await fetch(anyLangUrl);
-        
-        if (response.ok) {
-          const xml = await response.text();
-          if (xml && xml.length > 100) {
-            const textMatches = xml.match(/<text[^>]*>([^<]*)<\/text>/g);
-            
-            if (textMatches && textMatches.length > 0) {
-              transcript = textMatches
-                .map(match => {
-                  const textContent = match.replace(/<text[^>]*>/g, '').replace(/<\/text>/g, '').trim();
-                  return textContent
-                    .replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&amp;/g, '&')
-                    .replace(/&quot;/g, '"')
-                    .replace(/&#39;/g, "'")
-                    .replace(/&nbsp;/g, ' ')
-                    .trim();
-                })
-                .filter(text => text.length > 0)
-                .join(' ');
-              
-              if (transcript && transcript.length > 50) {
-                console.log(`Successfully extracted ${transcript.length} characters of transcript`);
-                return { transcript: transcript.trim(), title };
-              }
-            }
-          }
-        }
-      } catch (anyLangError) {
-        console.log('Error trying to get any language transcript:', anyLangError);
       }
     }
     

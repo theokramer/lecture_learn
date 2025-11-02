@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/home/Sidebar';
 import { FolderNoteList } from '../components/home/FolderNoteList';
 import { Button } from '../components/shared/Button';
+import { TokenMeter } from '../components/shared/TokenMeter';
 import { HiPlus, HiFolder, HiBars3 } from 'react-icons/hi2';
 import { useAppData } from '../context/AppDataContext';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -74,6 +75,10 @@ export const HomePage: React.FC = () => {
             >
               <HiBars3 className="w-6 h-6 text-text-primary" />
             </button>
+            {/* Token Meter */}
+            <div className="hidden sm:block">
+              <TokenMeter />
+            </div>
           </div>
           <div className="flex gap-2 lg:gap-3">
             <Button

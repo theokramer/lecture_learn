@@ -141,6 +141,9 @@ export const aiGateway = {
       throw error;
     }
 
+    // Dispatch event to refresh token meter
+    window.dispatchEvent(new CustomEvent('ai-request-complete'));
+
     return (data as any)?.content ?? '';
   },
 
@@ -451,6 +454,9 @@ export const aiGateway = {
       if (transcriptionText.length < 10) {
         console.warn('Warning: Transcription seems unusually short. Expected longer text for recording.');
       }
+      
+      // Dispatch event to refresh token meter
+      window.dispatchEvent(new CustomEvent('ai-request-complete'));
       
       return transcriptionText;
     } catch (error) {
