@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { HiLightBulb, HiSparkles, HiXMark } from 'react-icons/hi2';
 import { openaiService } from '../../../services/openai';
@@ -28,7 +28,6 @@ export const FeynmanView: React.FC<FeynmanViewProps> = React.memo(function Feynm
   const [explanation, setExplanation] = useState('');
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [suggestedTopics, setSuggestedTopics] = useState<Topic[]>([]);
-  const [isGeneratingTopics, setIsGeneratingTopics] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isGettingFeedback, setIsGettingFeedback] = useState(false);
 
@@ -92,92 +91,7 @@ export const FeynmanView: React.FC<FeynmanViewProps> = React.memo(function Feynm
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNoteId]);
 
-  // Save topics to Supabase
-  const saveTopics = useCallback(async (topicsToSave: Topic[]) => {
-    if (!selectedNoteId) return;
-    
-    try {
-      await studyContentService.saveStudyContent(selectedNoteId, {
-        feynmanTopics: topicsToSave,
-      });
-    } catch (err) {
-      console.error('Error saving topics:', err);
-    }
-  }, [selectedNoteId]);
-
-  // Generate topics from note content (available for manual regeneration via UI button if needed)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const generateTopics = async () => {
-    if (!noteContent || noteContent.trim().length < 50) {
-        // Not enough content, use default topics
-      setSuggestedTopics([
-        {
-          id: '1',
-          title: 'Explain the main concept',
-          description: 'Explain the main concept from your notes in simple terms',
-        },
-        {
-          id: '2',
-          title: 'Explain key terms',
-          description: 'Explain the key terms and definitions',
-        },
-        {
-          id: '3',
-          title: 'Explain how concepts relate',
-          description: 'Explain how different concepts from your notes relate to each other',
-        },
-      ]);
-      return;
-    }
-
-    setIsGeneratingTopics(true);
-    try {
-      const prompt = `Based on this note content, generate 3-4 specific topics that a student could practice explaining using the Feynman Technique. Focus on the main concepts, terms, or ideas that would be good for teaching.\n\nNote content:\n${noteContent}\n\nReturn a JSON array of objects with "title" (short topic title starting with "Explain:") and "description" (brief description). Keep titles concise (max 50 chars).`;
-      
-      const response = await openaiService.chatCompletions(
-        [{ role: 'user', content: prompt }],
-        'You are an educational assistant helping create practice topics.'
-      );
-      
-      // Try to extract JSON from the response
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const topics = JSON.parse(jsonMatch[0]);
-        const formattedTopics = topics.map((t: any, idx: number) => ({
-          id: (idx + 1).toString(),
-          title: t.title || `Topic ${idx + 1}`,
-          description: t.description || '',
-        }));
-        setSuggestedTopics(formattedTopics);
-        
-        // Save topics to Supabase
-        await saveTopics(formattedTopics);
-      } else {
-        // Fallback topics if parsing fails
-        const fallbackTopics = [
-          {
-            id: '1',
-            title: 'Explain the main concept',
-            description: 'Explain the main concept from your notes',
-          },
-        ];
-        setSuggestedTopics(fallbackTopics);
-        await saveTopics(fallbackTopics);
-      }
-    } catch (error) {
-      console.error('Error generating topics:', error);
-      // Use default topics on error
-      setSuggestedTopics([
-        {
-          id: '1',
-          title: 'Explain the main concept',
-          description: 'Explain the main concept from your notes',
-        },
-      ]);
-    } finally {
-      setIsGeneratingTopics(false);
-    }
-  };
+  // Note: Auto topic generation removed - topics are now loaded from database only
 
   const handleTopicSelect = (topicId: string) => {
     setSelectedTopic(topicId);
@@ -281,7 +195,7 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
             </p>
           </div>
 
-          {isGeneratingTopics ? (
+          {false ? ( // Removed auto-generation, always show topics list
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="p-6 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a] animate-pulse">

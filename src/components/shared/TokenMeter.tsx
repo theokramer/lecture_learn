@@ -117,7 +117,6 @@ export const TokenMeter: React.FC = () => {
   }
 
   const percentage = (usage.count / usage.limit) * 100;
-  const tokenPercentage = usage.token_count > 0 ? Math.min((usage.token_count / (usage.limit * 1000)) * 100, 100) : 0; // Assume ~1000 tokens per request as rough estimate
 
   // Format reset time
   const formatResetTime = (reset: Date) => {

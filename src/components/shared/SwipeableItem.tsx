@@ -23,7 +23,7 @@ export const SwipeableItem: React.FC<SwipeableItemProps> = ({
   children,
   onDelete,
   onMove,
-  isCompact = false,
+  isCompact: _isCompact = false,
   className = '',
 }) => {
   const x = useMotionValue(0);
@@ -45,7 +45,7 @@ export const SwipeableItem: React.FC<SwipeableItemProps> = ({
     setHasDragged(true);
   };
 
-  const handleDragEnd = async (event: MouseEvent | TouchEvent | PointerEvent, info: DragInfo) => {
+  const handleDragEnd = async (_event: MouseEvent | TouchEvent | PointerEvent, info: DragInfo) => {
     const offset = info.offset.x;
     
     // Only trigger swipe actions if user actually dragged

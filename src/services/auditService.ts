@@ -5,42 +5,44 @@
 
 import { supabase } from './supabase';
 
-export enum AuditEventType {
+export const AuditEventType = {
   // Authentication events
-  LOGIN_SUCCESS = 'login_success',
-  LOGIN_FAILURE = 'login_failure',
-  LOGOUT = 'logout',
-  SIGNUP_SUCCESS = 'signup_success',
-  SIGNUP_FAILURE = 'signup_failure',
-  PASSWORD_RESET_REQUEST = 'password_reset_request',
-  PASSWORD_RESET_COMPLETE = 'password_reset_complete',
-  OAUTH_SUCCESS = 'oauth_success',
-  OAUTH_FAILURE = 'oauth_failure',
+  LOGIN_SUCCESS: 'login_success',
+  LOGIN_FAILURE: 'login_failure',
+  LOGOUT: 'logout',
+  SIGNUP_SUCCESS: 'signup_success',
+  SIGNUP_FAILURE: 'signup_failure',
+  PASSWORD_RESET_REQUEST: 'password_reset_request',
+  PASSWORD_RESET_COMPLETE: 'password_reset_complete',
+  OAUTH_SUCCESS: 'oauth_success',
+  OAUTH_FAILURE: 'oauth_failure',
   
   // Security events
-  RATE_LIMIT_EXCEEDED = 'rate_limit_exceeded',
-  UNAUTHORIZED_ACCESS_ATTEMPT = 'unauthorized_access_attempt',
-  SUSPICIOUS_ACTIVITY = 'suspicious_activity',
+  RATE_LIMIT_EXCEEDED: 'rate_limit_exceeded',
+  UNAUTHORIZED_ACCESS_ATTEMPT: 'unauthorized_access_attempt',
+  SUSPICIOUS_ACTIVITY: 'suspicious_activity',
   
   // Data access events
-  NOTE_CREATED = 'note_created',
-  NOTE_UPDATED = 'note_updated',
-  NOTE_DELETED = 'note_deleted',
-  FOLDER_CREATED = 'folder_created',
-  FOLDER_UPDATED = 'folder_updated',
-  FOLDER_DELETED = 'folder_deleted',
-  DOCUMENT_UPLOADED = 'document_uploaded',
-  DOCUMENT_DELETED = 'document_deleted',
+  NOTE_CREATED: 'note_created',
+  NOTE_UPDATED: 'note_updated',
+  NOTE_DELETED: 'note_deleted',
+  FOLDER_CREATED: 'folder_created',
+  FOLDER_UPDATED: 'folder_updated',
+  FOLDER_DELETED: 'folder_deleted',
+  DOCUMENT_UPLOADED: 'document_uploaded',
+  DOCUMENT_DELETED: 'document_deleted',
   
   // API usage events
-  AI_GENERATION_REQUESTED = 'ai_generation_requested',
-  AI_GENERATION_COMPLETED = 'ai_generation_completed',
-  AI_GENERATION_FAILED = 'ai_generation_failed',
+  AI_GENERATION_REQUESTED: 'ai_generation_requested',
+  AI_GENERATION_COMPLETED: 'ai_generation_completed',
+  AI_GENERATION_FAILED: 'ai_generation_failed',
   
   // System events
-  ERROR_OCCURRED = 'error_occurred',
-  CONFIGURATION_CHANGED = 'configuration_changed',
-}
+  ERROR_OCCURRED: 'error_occurred',
+  CONFIGURATION_CHANGED: 'configuration_changed',
+} as const;
+
+export type AuditEventType = typeof AuditEventType[keyof typeof AuditEventType];
 
 export interface AuditLogEntry {
   event_type: AuditEventType;

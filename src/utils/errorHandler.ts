@@ -16,16 +16,18 @@ export interface RetryOptions {
 /**
  * Error categories for better handling and audit logging
  */
-export enum ErrorCategory {
-  NETWORK = 'network',
-  AUTHENTICATION = 'authentication',
-  AUTHORIZATION = 'authorization',
-  VALIDATION = 'validation',
-  STORAGE = 'storage',
-  RATE_LIMIT = 'rate_limit',
-  SYSTEM = 'system',
-  UNKNOWN = 'unknown',
-}
+export const ErrorCategory = {
+  NETWORK: 'network',
+  AUTHENTICATION: 'authentication',
+  AUTHORIZATION: 'authorization',
+  VALIDATION: 'validation',
+  STORAGE: 'storage',
+  RATE_LIMIT: 'rate_limit',
+  SYSTEM: 'system',
+  UNKNOWN: 'unknown',
+} as const;
+
+export type ErrorCategory = typeof ErrorCategory[keyof typeof ErrorCategory];
 
 /**
  * Categorizes errors for proper handling
@@ -225,14 +227,6 @@ export async function logError(error: unknown, context?: string, userId?: string
     if (!userId) {
       const { data: { user } } = await supabase.auth.getUser();
       userId = user?.id;
-    }
-    
-    // Determine severity based on category
-    let severity: 'low' | 'medium' | 'high' = 'low';
-    if (category === ErrorCategory.AUTHORIZATION || category === ErrorCategory.RATE_LIMIT) {
-      severity = 'medium';
-    } else if (category === ErrorCategory.AUTHENTICATION) {
-      severity = 'high';
     }
     
     await logAuditError(error, context || 'unknown', userId);
