@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
 import { HiFolder, HiChevronRight, HiMagnifyingGlass, HiChevronLeft, HiAcademicCap, HiDocumentPlus } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 import { useAppData } from '../../context/AppDataContext';
@@ -10,8 +9,9 @@ import { studyContentService } from '../../services/supabase';
 import { NoteListSkeleton } from '../shared/SkeletonLoader';
 import { EmptyState } from '../shared/EmptyState';
 import { ConfirmModal } from '../shared/ConfirmModal';
-import { SwipeableItem } from '../shared/SwipeableItem';
+import { NativeListItem } from '../shared/NativeListItem';
 import { FolderSelectorModal } from '../shared/FolderSelectorModal';
+import { HiTrash, HiArrowsUpDown } from 'react-icons/hi2';
 import toast from 'react-hot-toast';
 import { useDebounce } from '../../hooks/useDebounce';
 
@@ -181,7 +181,7 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
   };
 
   return (
-    <div className="min-h-full p-4 sm:p-6 lg:p-8 pb-20 space-y-4">
+    <div className="min-h-full px-4 sm:px-6 lg:px-8 py-6 pb-20">
       {/* Header */}
       <div>
         {/* Breadcrumb Navigation */}
@@ -190,18 +190,18 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
             {/* Back Button */}
             <button
               onClick={handleBackToParent}
-              className="flex items-center gap-2 text-[#9ca3af] hover:text-white transition-colors mb-2"
+              className="flex items-center gap-2 text-[#9ca3af] hover:text-white active:text-white transition-colors mb-3 px-2 py-1 -ml-2 rounded-lg active:bg-[#2a2a2a]"
             >
               <HiChevronLeft className="w-5 h-5" />
-              <span>Back</span>
+              <span className="text-[15px] font-medium">Back</span>
             </button>
             
             {/* Breadcrumb Path */}
             {breadcrumbPath.length > 0 && (
-              <div className="flex items-center gap-2 text-sm text-[#9ca3af] flex-wrap">
+              <div className="flex items-center gap-2 text-[15px] text-[#9ca3af] flex-wrap mb-3">
                 <button
                   onClick={() => handleBreadcrumbClick(null)}
-                  className="hover:text-white transition-colors"
+                  className="hover:text-white active:text-white transition-colors px-2 py-1 -ml-2 rounded-lg active:bg-[#2a2a2a]"
                 >
                   Home
                 </button>
@@ -210,8 +210,8 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
                     <HiChevronRight className="w-4 h-4" />
                     <button
                       onClick={() => handleBreadcrumbClick(folder.id)}
-                      className={`hover:text-white transition-colors ${
-                        index === breadcrumbPath.length - 1 ? 'text-white font-medium' : ''
+                      className={`hover:text-white active:text-white transition-colors px-2 py-1 -ml-2 rounded-lg active:bg-[#2a2a2a] ${
+                        index === breadcrumbPath.length - 1 ? 'text-white font-semibold' : ''
                       }`}
                     >
                       {folder.name}
@@ -224,11 +224,11 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
         )}
         
         {/* Page Title */}
-        <h2 className="text-2xl font-bold text-white mb-6">
+        <h2 className="text-[34px] font-bold text-white mb-6 leading-tight">
           {currentFolder ? currentFolder.name : 'Home'}
         </h2>
         
-        <div className="flex gap-4 mb-6">
+        <div className="flex gap-3 mb-6">
           <div className="flex-1 relative">
             <HiMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#9ca3af]" />
             <input
@@ -252,23 +252,32 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
                   e.preventDefault();
                   const item = items[selectedIndex];
                   if (item.type === 'note') {
-                    navigate(`/note?id=${item.data.id}`);
+                    const noteId = item.data.id;
+                    const navigationPath = `/note?id=${noteId}`;
+                    console.log('[FolderNoteList] Keyboard navigation to note view:', {
+                      noteId,
+                      noteTitle: item.data.title,
+                      navigationPath,
+                      hasIdParam: true,
+                      timestamp: new Date().toISOString(),
+                    });
+                    navigate(navigationPath);
                   } else if (item.type === 'folder') {
                     setCurrentFolderId(item.data.id);
                   }
                 }
               }}
-              className="w-full pl-10 pr-4 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder:text-[#9ca3af] focus:outline-none focus:border-[#b85a3a]"
+              className="w-full pl-10 pr-4 py-3 bg-[#2a2a2a] border border-[#3a3a3a] rounded-xl text-white placeholder:text-[#9ca3af] focus:outline-none focus:border-[#b85a3a] text-[17px]"
             />
           </div>
-          <button className="px-4 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white hover:bg-[#3a3a3a] transition-colors">
+          <button className="px-4 py-3 bg-[#2a2a2a] border border-[#3a3a3a] rounded-xl text-white hover:bg-[#3a3a3a] active:bg-[#3a3a3a] active:scale-95 transition-all duration-150 text-[15px] font-medium">
             All notes
           </button>
         </div>
       </div>
 
       {/* Items List */}
-      <div className="space-y-2">
+      <div className="space-y-0">
         {loading ? (
           <NoteListSkeleton />
         ) : filteredItems.length === 0 ? (
@@ -312,93 +321,100 @@ export const FolderNoteList: React.FC<FolderNoteListProps> = React.memo(({ searc
           const itemName = (item.data as Note).title || (item.data as Folder).name;
           const currentParentId = isFolder ? (item.data as Folder).parentId : (item.data as Note).folderId;
           
-          return (
-            <SwipeableItem
-              key={item.data.id}
-              onDelete={() => {
-                setItemToDelete({
-                  type: isFolder ? 'folder' : 'note',
-                  id: item.data.id,
-                  name: itemName,
-                });
-              }}
-              onMove={() => {
+          const contextMenuActions = [
+            {
+              label: 'Move',
+              icon: HiArrowsUpDown,
+              action: () => {
                 setItemToMove({
                   type: isFolder ? 'folder' : 'note',
                   id: item.data.id,
                   name: itemName,
                   currentParentId,
                 });
+              },
+            },
+            {
+              label: `Delete ${isFolder ? 'Folder' : 'Note'}`,
+              icon: HiTrash,
+              action: () => {
+                setItemToDelete({
+                  type: isFolder ? 'folder' : 'note',
+                  id: item.data.id,
+                  name: itemName,
+                });
+              },
+              destructive: true,
+            },
+          ];
+
+          return (
+            <NativeListItem
+              key={item.data.id}
+              onPress={() => {
+                if (isFolder) {
+                  setCurrentFolderId(item.data.id);
+                } else {
+                  const noteId = item.data.id;
+                  const navigationPath = `/note?id=${noteId}`;
+                  console.log('[FolderNoteList] Navigating to note view:', {
+                    noteId,
+                    noteTitle: item.data.title,
+                    navigationPath,
+                    hasIdParam: true,
+                    timestamp: new Date().toISOString(),
+                  });
+                  setSelectedNoteId(noteId);
+                  navigate(navigationPath);
+                }
               }}
-              isCompact={isCompact}
-              className={`w-full ${isCompact ? 'p-2' : 'p-4'} rounded-lg transition-colors ${
-                isSelected 
-                  ? 'bg-[#3a3a3a] border-2 border-[#b85a3a]' 
-                  : 'bg-[#2a2a2a] hover:bg-[#3a3a3a] border-2 border-transparent'
-              }`}
+              contextMenuActions={contextMenuActions}
+              isSelected={isSelected}
+              className={`w-full ${isCompact ? 'px-4 py-3' : 'px-5 py-4'} rounded-xl mb-2`}
             >
-              <motion.button
-                whileHover={{ scale: 1.01, x: 4 }}
-                whileTap={{ scale: 0.99 }}
-                onClick={() => {
-                  if (isFolder) {
-                    // Navigate into folder instead of toggling
-                    setCurrentFolderId(item.data.id);
-                  } else {
-                    setSelectedNoteId(item.data.id);
-                    navigate('/note');
-                  }
-                }}
-                className="w-full text-left"
-              >
-                <div className={`flex items-center ${isCompact ? 'gap-2' : 'gap-3'}`}>
-                  <div className={`${isCompact ? 'w-6 h-6' : 'w-10 h-10'} flex items-center justify-center`}>
-                    {isFolder ? (
-                      <HiFolder className={`${isCompact ? 'w-4 h-4' : 'w-6 h-6'} text-[#b85a3a]`} />
-                    ) : (
-                      <Icon className={`${isCompact ? 'w-4 h-4' : 'w-5 h-5'} text-[#9ca3af]`} />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`font-medium text-white ${isCompact ? 'text-sm' : ''} truncate`}>
-                      {itemName}
+              <div className={`flex items-center ${isCompact ? 'gap-3' : 'gap-4'}`}>
+                <div className={`${isCompact ? 'w-8 h-8' : 'w-10 h-10'} flex items-center justify-center flex-shrink-0`}>
+                  {isFolder ? (
+                    <HiFolder className={`${isCompact ? 'w-5 h-5' : 'w-6 h-6'} text-[#b85a3a]`} />
+                  ) : (
+                    <Icon className={`${isCompact ? 'w-4 h-4' : 'w-5 h-5'} text-[#9ca3af]`} />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`font-semibold text-white ${isCompact ? 'text-[15px]' : 'text-[17px]'} truncate leading-tight`}>
+                    {itemName}
+                  </p>
+                  {!isFolder && 'createdAt' in item.data && (
+                    <p className={`${isCompact ? 'text-xs mt-0.5' : 'text-sm mt-1'} text-[#9ca3af]`}>
+                      {isCompact 
+                        ? format((item.data as Note).createdAt, 'MMM d')
+                        : format((item.data as Note).createdAt, 'MMM d, yyyy')
+                      }
                     </p>
-                    {!isFolder && 'createdAt' in item.data && (
-                      <p className={`${isCompact ? 'text-xs' : 'text-sm'} text-[#9ca3af]`}>
-                        {isCompact 
-                          ? format((item.data as Note).createdAt, 'MMM d')
-                          : format((item.data as Note).createdAt, 'MMM d, yyyy')
-                        }
-                      </p>
-                    )}
-                    {!isCompact && debouncedSearchQuery.trim() !== '' && !isFolder && (item as any).meta && (
-                      <div
-                        className="mt-1 text-sm text-gray-300 line-clamp-1"
-                        dangerouslySetInnerHTML={{ __html: (item as any).meta.snippetHtml }}
-                      />
-                    )}
+                  )}
+                  {!isCompact && debouncedSearchQuery.trim() !== '' && !isFolder && (item as any).meta && (
+                    <div
+                      className="mt-1.5 text-sm text-[#9ca3af] line-clamp-1"
+                      dangerouslySetInnerHTML={{ __html: (item as any).meta.snippetHtml }}
+                    />
+                  )}
+                </div>
+                {isFolder && (
+                  <div className="flex-shrink-0 ml-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/learn-flashcards?folder=${item.data.id}`);
+                      }}
+                      className="px-3 py-1.5 bg-[#10b981] hover:bg-[#059669] rounded-lg text-white text-sm font-medium flex items-center gap-2 transition-colors active:scale-95"
+                    >
+                      <HiAcademicCap className="w-4 h-4" />
+                      <span className="hidden sm:inline">Learn</span>
+                    </button>
                   </div>
-                </div>
-              </motion.button>
-              
-              {/* Actions */}
-              {isFolder && (
-                <div className={`flex items-center gap-2 ${isCompact ? 'mt-1 ml-8' : 'mt-2 ml-12'}`}>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(`/learn-flashcards?folder=${item.data.id}`);
-                    }}
-                    className="px-3 py-1.5 bg-[#10b981] hover:bg-[#059669] rounded-lg text-white text-sm font-medium flex items-center gap-2 transition-colors"
-                  >
-                    <HiAcademicCap className="w-4 h-4" />
-                    Learn Flashcards
-                  </motion.button>
-                </div>
-              )}
-            </SwipeableItem>
+                )}
+              </div>
+            </NativeListItem>
           );
           })
         )}

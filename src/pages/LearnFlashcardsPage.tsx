@@ -322,7 +322,7 @@ export const LearnFlashcardsPage: React.FC = () => {
                   style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
                 >
                   <div className="w-full h-full bg-[#1a1a1a] rounded-lg p-8 flex items-center justify-center border border-[#b85a3a]">
-                    <p className="text-white text-xl leading-relaxed text-center">
+                    <p className="text-white text-xl leading-relaxed text-center" style={{ transform: 'rotateY(180deg)' }}>
                       {card.back}
                     </p>
                   </div>

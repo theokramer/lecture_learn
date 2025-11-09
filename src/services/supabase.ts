@@ -8,7 +8,15 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables. Please check your .env file.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Create Supabase client with localStorage persistence for sessions
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+  },
+});
 
 // Folder operations
 export const folderService = {
@@ -150,6 +158,45 @@ export const noteService = {
     );
 
     return notes;
+  },
+
+  async getNoteById(noteId: string, userId: string): Promise<Note | null> {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('id', noteId)
+      .eq('user_id', userId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null; // Not found
+      throw error;
+    }
+
+    // Fetch documents for the note
+    const { data: documents } = await supabase
+      .from('documents')
+      .select('*')
+      .eq('note_id', noteId)
+      .order('uploaded_at', { ascending: false });
+
+    const parsedDocuments = documents?.map((doc: any) => ({
+      id: doc.id,
+      name: doc.name,
+      type: doc.type,
+      url: doc.storage_path,
+      size: doc.size,
+      uploadedAt: new Date(doc.uploaded_at),
+    })) || [];
+
+    return {
+      id: data.id,
+      title: data.title,
+      content: data.content || '',
+      folderId: data.folder_id,
+      createdAt: new Date(data.created_at),
+      documents: parsedDocuments,
+    };
   },
 
   async createNote(userId: string, title: string, folderId: string | null, content: string = ''): Promise<Note> {

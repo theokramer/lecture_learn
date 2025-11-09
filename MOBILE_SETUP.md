@@ -282,3 +282,4 @@ cd ..
 - [React Navigation](https://reactnavigation.org/)
 - [Supabase React Native Guide](https://supabase.com/docs/guides/getting-started/tutorials/creating-mobile-apps)
 
+

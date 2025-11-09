@@ -27,6 +27,7 @@ interface AppDataContextType {
   deleteFolder: (id: string) => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
   refreshData: () => Promise<void>;
+  ensureNoteLoaded: (noteId: string) => Promise<Note | null>;
 }
 
 const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
@@ -97,6 +98,13 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!user) throw new Error('User not authenticated');
     try {
       const newNote = await noteService.createNote(user.id, title, currentFolderId, content);
+      // Add the note to the list immediately if it's in the current folder context
+      // This handles the case where the note is created but loadData hasn't finished yet
+      const isInCurrentFolder = (newNote.folderId === null && currentFolderId === null) || 
+                                 (newNote.folderId === currentFolderId);
+      if (isInCurrentFolder) {
+        setNotes(prev => [newNote, ...prev]);
+      }
       await loadData();
       return newNote.id;
     } catch (err) {
@@ -105,6 +113,34 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       throw err;
     }
   }, [user, currentFolderId, loadData]);
+
+  // Fetch a note by ID and add it to the notes list if not already present
+  const ensureNoteLoaded = useCallback(async (noteId: string): Promise<Note | null> => {
+    if (!user) return null;
+    
+    // Check if note is already in the list
+    const existingNote = notes.find(n => n.id === noteId);
+    if (existingNote) {
+      return existingNote;
+    }
+    
+    // Fetch the note from the database
+    try {
+      const note = await noteService.getNoteById(noteId, user.id);
+      if (note) {
+        // Add to notes list so it's available for rendering
+        setNotes(prev => {
+          // Check if it's already there (race condition)
+          if (prev.find(n => n.id === noteId)) return prev;
+          return [note, ...prev];
+        });
+      }
+      return note;
+    } catch (err) {
+      handleError(err, 'AppDataContext: Fetching note', toast.error);
+      return null;
+    }
+  }, [user, notes]);
 
   const uploadDocumentToNote = useCallback(async (noteId: string, file: File): Promise<void> => {
     if (!user) throw new Error('User not authenticated');
@@ -227,6 +263,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       deleteFolder,
       deleteNote,
       refreshData,
+      ensureNoteLoaded,
     }),
     [
       folders,
@@ -246,6 +283,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       deleteFolder,
       deleteNote,
       refreshData,
+      ensureNoteLoaded,
     ]
   );
 

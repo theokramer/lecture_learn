@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { IoArrowBack } from 'react-icons/io5';
 import { LoadingBar } from '../components/shared/LoadingBar';
 import { useAppData } from '../context/AppDataContext';
 import { useAuth } from '../context/AuthContext';
@@ -152,10 +153,12 @@ export const ProcessingPage: React.FC = () => {
           
           setProgress(100);
 
+          // Ensure note is loaded before navigating
           // Wait a moment for state to update, then navigate to note view
+          // Use replace: true to replace ProcessingPage in the stack so back button goes to Home
           setTimeout(() => {
-            navigate(`/note?id=${noteId}`);
-          }, 100);
+            navigate(`/note?id=${noteId}`, { replace: true });
+          }, 300);
         } else if (text) {
           // Process text content
           setCurrentTask('Generating title...');
@@ -204,10 +207,12 @@ export const ProcessingPage: React.FC = () => {
 
           setProgress(100);
 
+          // Ensure note is loaded before navigating
           // Wait a moment for state to update, then navigate to note view
+          // Use replace: true to replace ProcessingPage in the stack so back button goes to Home
           setTimeout(() => {
-            navigate(`/note?id=${noteId}`);
-          }, 100);
+            navigate(`/note?id=${noteId}`, { replace: true });
+          }, 300);
         } else {
           // Default: create empty note
           setCurrentTask('Creating note...');
@@ -221,10 +226,12 @@ export const ProcessingPage: React.FC = () => {
           // Don't generate study materials for empty notes
           setProgress(100);
 
+          // Ensure note is loaded before navigating
           // Wait a moment for state to update, then navigate to note view
+          // Use replace: true to replace ProcessingPage in the stack so back button goes to Home
           setTimeout(() => {
-            navigate(`/note?id=${noteId}`);
-          }, 100);
+            navigate(`/note?id=${noteId}`, { replace: true });
+          }, 300);
         }
       } catch (err: any) {
         console.error('Processing error:', err);
@@ -313,25 +320,38 @@ export const ProcessingPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center px-8 py-12">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.3 }}
-        className="w-full max-w-2xl"
-      >
-        <div className="bg-[#1a1a1a] rounded-3xl p-12 pb-16 border border-[#3a3a3a]">
-          <div className="text-center mb-10">
-            <h2 className="text-4xl font-bold text-white mb-4">Creating new notes</h2>
-            <p className="text-[#9ca3af] text-lg">{currentTask}</p>
-          </div>
-          <LoadingBar
-            progress={progress}
-            currentTask={currentTask}
-            estimatedTime="This should take a few seconds..."
-          />
+    <div className="min-h-screen bg-[#1a1a1a] px-8 py-12 pb-20">
+      <div className="max-w-3xl mx-auto">
+        {/* Header with Back Button */}
+        <button
+          onClick={() => navigate('/home')}
+          className="text-[#9ca3af] hover:text-white mb-8 transition-colors inline-flex items-center gap-2"
+        >
+          <IoArrowBack className="w-5 h-5" />
+          Back
+        </button>
+
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="w-full max-w-2xl"
+          >
+            <div className="bg-[#1a1a1a] rounded-3xl p-12 pb-16 border border-[#3a3a3a]">
+              <div className="text-center mb-10">
+                <h2 className="text-4xl font-bold text-white mb-4">Creating new notes</h2>
+                <p className="text-[#9ca3af] text-lg">{currentTask}</p>
+              </div>
+              <LoadingBar
+                progress={progress}
+                currentTask={currentTask}
+                estimatedTime="This should take a few seconds..."
+              />
+            </div>
+          </motion.div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 };

@@ -497,30 +497,57 @@ export const QuizView: React.FC<QuizViewProps> = React.memo(function QuizView({ 
         </h2>
 
         <div className="space-y-3">
-          {questions[currentQuestion].options.map((option, index) => (
-            <motion.button
-              key={index}
-              whileHover={{ scale: 1.02, x: 4 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => !showResult && setSelectedAnswer(index)}
-              className={`w-full p-4 text-left rounded-lg border-2 transition-all ${
-                selectedAnswer === index
-                  ? 'border-[#b85a3a] bg-[#3a3a3a]'
-                  : 'border-[#3a3a3a] hover:border-[#4a4a4a]'
-              } ${
-                showResult
-                  ? index === questions[currentQuestion].correct
-                        ? 'border-green-500 bg-green-500/10'
-                    : index === selectedAnswer
-                        ? 'border-red-500 bg-red-500/10'
-                    : ''
-                  : ''
-              }`}
-            >
-              <span className="text-white">{option}</span>
-            </motion.button>
-          ))}
+          {questions[currentQuestion].options.map((option, index) => {
+            const isCorrect = index === questions[currentQuestion].correct;
+            const isSelected = selectedAnswer === index;
+            const isWrong = showResult && isSelected && !isCorrect;
+            const showCorrect = showResult && isWrong && isCorrect;
+            
+            return (
+              <motion.button
+                key={index}
+                whileHover={{ scale: 1.02, x: 4 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => !showResult && setSelectedAnswer(index)}
+                className={`w-full p-4 text-left rounded-lg border-2 transition-all ${
+                  !showResult && isSelected
+                    ? 'border-[#b85a3a] bg-[#3a3a3a]'
+                    : !showResult
+                    ? 'border-[#3a3a3a] hover:border-[#4a4a4a]'
+                    : isCorrect
+                    ? 'border-green-500 bg-green-500/10'
+                    : isWrong
+                    ? 'border-red-500 bg-red-500/10'
+                    : 'border-[#3a3a3a]'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-white">{option}</span>
+                  {showResult && isCorrect && (
+                    <span className="text-green-500 font-semibold ml-2">✓ Correct</span>
+                  )}
+                  {showResult && isWrong && (
+                    <span className="text-red-500 font-semibold ml-2">✗ Wrong</span>
+                  )}
+                </div>
+              </motion.button>
+            );
+          })}
         </div>
+        
+        {/* Show correct answer explanation when wrong answer is selected */}
+        {showResult && selectedAnswer !== null && selectedAnswer !== questions[currentQuestion].correct && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4 p-4 bg-blue-500/20 border border-blue-500 rounded-lg"
+          >
+            <p className="text-blue-300 font-semibold mb-2">Correct Answer:</p>
+            <p className="text-blue-200">
+              {questions[currentQuestion].options[questions[currentQuestion].correct]}
+            </p>
+          </motion.div>
+        )}
       </div>
 
       {/* Actions */}
@@ -549,6 +576,36 @@ export const QuizView: React.FC<QuizViewProps> = React.memo(function QuizView({ 
               )}
             </div>
           </div>
+          
+          {/* Navigation */}
+          {questions.length > 1 && (
+            <div className="flex justify-between items-center mt-4">
+              {currentQuestion > 0 && (
+                <button
+                  onClick={() => {
+                    setCurrentQuestion(currentQuestion - 1);
+                    setSelectedAnswer(null);
+                    setShowResult(false);
+                  }}
+                  className="px-6 py-2 text-[#9ca3af] hover:text-white transition-colors"
+                >
+                  Previous Question
+                </button>
+              )}
+              {currentQuestion < questions.length - 1 && !showResult && (
+                <button
+                  onClick={() => {
+                    setCurrentQuestion(currentQuestion + 1);
+                    setSelectedAnswer(null);
+                    setShowResult(false);
+                  }}
+                  className="px-6 py-2 text-[#9ca3af] hover:text-white transition-colors"
+                >
+                  Next Question
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );

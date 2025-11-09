@@ -226,4 +226,48 @@ Return exactly ${count} exercises as a JSON array with "question", "solution", a
       throw new Error('Failed to generate exercises. Please try again or upload shorter content.');
     }
   },
+
+  async analyzeExerciseImage(imageFile: File, exerciseQuestion: string, correctSolution: string): Promise<string> {
+    try {
+      // Convert image to base64
+      const base64Image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Remove data URL prefix
+          const base64 = result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(imageFile);
+      });
+
+      const prompt = `You are a helpful teaching assistant. A student has uploaded a photo of their work for this exercise.
+
+Exercise Question: ${exerciseQuestion}
+
+Correct Solution: ${correctSolution}
+
+Please analyze the photo of the student's work and provide constructive feedback. Check if:
+1. The approach/method is correct
+2. The calculations/steps are accurate
+3. The final answer matches the solution
+4. There are any errors or areas for improvement
+
+Provide feedback in this JSON format:
+{
+  "score": <number 0-100>,
+  "feedback": "<positive, constructive feedback about what they did well and what needs improvement>",
+  "isCorrect": <true/false>
+}
+
+Be encouraging but honest. If the work is mostly correct, say so. If it's partially correct, explain what's right and what needs work. If it's incorrect, gently guide them to the right answer.`;
+
+      return await aiGateway.analyzeImage(base64Image, prompt);
+    } catch (error) {
+      if (error instanceof DailyLimitError) throw error;
+      console.error('Error analyzing exercise image:', error);
+      throw new Error('Failed to analyze image. Please try again.');
+    }
+  },
 };

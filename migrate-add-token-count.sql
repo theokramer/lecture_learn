@@ -44,3 +44,4 @@ CREATE POLICY "Users can delete their own cache entries"
   ON model_cache FOR DELETE
   USING (auth.uid() = user_id);
 
+

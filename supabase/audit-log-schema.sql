@@ -72,3 +72,4 @@ GRANT SELECT ON audit_log_security_summary TO authenticated;
 -- The application should use service_role key for inserting audit logs
 -- or use a database function that validates the request
 
+

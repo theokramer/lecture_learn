@@ -392,9 +392,38 @@ async function transcribeAudioFromStorage(storagePath: string, supabaseClient: a
     // Log file info for debugging
     console.log(`Downloaded file from storage: ${storagePath}, size: ${fileData.size} bytes, type: ${fileData.type || 'unknown'}`);
     
+    // Detect MIME type from storage path extension if blob type is not available
+    let mimeType = fileData.type;
+    if (!mimeType || mimeType === 'unknown' || mimeType === 'application/octet-stream') {
+      const extension = storagePath.split('.').pop()?.toLowerCase();
+      const mimeTypeMap: Record<string, string> = {
+        'm4a': 'audio/m4a',
+        'mp3': 'audio/mpeg',
+        'wav': 'audio/wav',
+        'webm': 'audio/webm',
+        'ogg': 'audio/ogg',
+        'flac': 'audio/flac',
+        'mp4': 'audio/mp4',
+        'mpeg': 'audio/mpeg',
+        'mpga': 'audio/mpeg',
+        'oga': 'audio/ogg',
+      };
+      mimeType = extension ? (mimeTypeMap[extension] || 'audio/m4a') : 'audio/m4a';
+      console.log(`Detected MIME type from extension: ${mimeType} (extension: ${extension})`);
+    }
+    
+    // Use appropriate filename based on detected type
+    // OpenAI requires the filename extension to match the actual file format
+    const fileName = mimeType.includes('webm') ? 'audio.webm' : 
+                     mimeType.includes('m4a') ? 'audio.m4a' :
+                     mimeType.includes('mp3') || mimeType.includes('mpeg') ? 'audio.mp3' :
+                     mimeType.includes('wav') ? 'audio.wav' :
+                     mimeType.includes('ogg') ? 'audio.ogg' :
+                     mimeType.includes('flac') ? 'audio.flac' : 'audio.wav'; // Default to wav for compatibility
+    
     // Convert blob to File for FormData
     const formData = new FormData();
-    const file = new File([fileData], 'audio.webm', { type: fileData.type || 'audio/webm' });
+    const file = new File([fileData], fileName, { type: mimeType });
     formData.append('file', file);
     formData.append('model', 'whisper-1');
 
@@ -748,6 +777,85 @@ Deno.serve(async (req: Request) => {
           );
         }
         throw transcribeError; // Re-throw to be caught by outer try-catch
+      }
+    }
+
+    // Handle vision API
+    if (requestType === 'vision') {
+      console.log('[VISION] 👁️ Starting vision API request');
+      const imageBase64 = body?.imageBase64;
+      const prompt = body?.prompt;
+      
+      if (!imageBase64 || !prompt) {
+        return new Response(
+          JSON.stringify({ error: 'Missing imageBase64 or prompt' }),
+          { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+      
+      try {
+        // Call OpenAI Vision API
+        const visionMessages = [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${imageBase64}`
+                }
+              }
+            ]
+          }
+        ];
+        
+        const result = await callOpenAI(visionMessages, 'gpt-4o', 0.7);
+        console.log('[VISION] ✅ Vision analysis successful');
+        
+        const tokensUsed = result.usage?.total_tokens ?? 0;
+        const responseData = JSON.stringify({ content: result.content });
+        
+        // Increment usage
+        try {
+          await incrementDailyUsage(supabase, user.id, user.email, tokensUsed);
+          console.log('[VISION] ✅ Usage count incremented');
+        } catch (markError) {
+          console.error('[VISION] ⚠️  Error incrementing daily usage:', markError);
+        }
+        
+        // Log successful AI generation
+        const duration = Date.now() - startTime;
+        await logAuditEvent(
+          supabase,
+          'ai_generation_completed',
+          user.id,
+          { 
+            request_type: 'vision',
+            duration_ms: duration,
+            tokens_used: tokensUsed
+          },
+          'low',
+          true
+        );
+        
+        return new Response(responseData, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+      } catch (visionError) {
+        const errorMsg = visionError instanceof Error ? visionError.message : String(visionError);
+        
+        await logAuditEvent(
+          supabase,
+          'ai_generation_failed',
+          user.id,
+          { 
+            request_type: 'vision',
+            error: errorMsg.substring(0, 200)
+          },
+          'medium',
+          false
+        );
+        
+        throw visionError;
       }
     }
 

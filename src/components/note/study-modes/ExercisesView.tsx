@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../../shared/Button';
 import { TextArea } from '../../shared/Input';
-import { HiEye, HiCheck, HiAcademicCap } from 'react-icons/hi2';
+import { HiEye, HiCheck, HiAcademicCap, HiCamera, HiX } from 'react-icons/hi2';
 import { openaiService } from '../../../services/openai';
 import { studyContentService } from '../../../services/supabase';
 import { useAppData } from '../../../context/AppDataContext';
@@ -33,6 +33,9 @@ export const ExercisesView: React.FC<ExercisesViewProps> = React.memo(function E
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const isInitialLoad = React.useRef(true);
+  const [uploadedImage, setUploadedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load saved exercises from Supabase - DO NOT auto-generate, only load from DB
   useEffect(() => {
@@ -108,8 +111,28 @@ export const ExercisesView: React.FC<ExercisesViewProps> = React.memo(function E
     }
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      setUploadedImage(file);
+      const reader = new FileReader();
+      reader.onload = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setUploadedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleCheck = async () => {
-    if (!answer.trim()) return;
+    if (!answer.trim() && !uploadedImage) return;
     
     setIsChecking(true);
     setChecked(true);
@@ -117,7 +140,19 @@ export const ExercisesView: React.FC<ExercisesViewProps> = React.memo(function E
     
     try {
       const exercise = exercises[currentExercise];
-      const prompt = `Compare the student's answer with the correct solution and provide constructive feedback.
+      
+      let response: string;
+      
+      if (uploadedImage) {
+        // Analyze image
+        response = await openaiService.analyzeExerciseImage(
+          uploadedImage,
+          exercise.question,
+          exercise.solution
+        );
+      } else {
+        // Analyze text answer
+        const prompt = `Compare the student's answer with the correct solution and provide constructive feedback.
 
 Exercise Question: ${exercise.question}
 
@@ -134,12 +169,13 @@ Provide feedback in this JSON format:
   "isCorrect": <true/false>
 }
 
-Be encouraging but honest. If the answer is mostly correct, say so. If it's partially correct, explain what's right and what needs work. If it's incorrect, gently guide them to the right answer.`;
+Be encouraging but honest. If mostly correct, say so. If partially correct, explain what's right and what needs work. If incorrect, gently guide them to the right answer.`;
 
-      const response = await openaiService.chatCompletions(
-        [{ role: 'user', content: prompt }],
-        'You are a helpful teaching assistant that provides constructive feedback on student answers.'
-      );
+        response = await openaiService.chatCompletions(
+          [{ role: 'user', content: prompt }],
+          'You are a helpful teaching assistant that provides constructive feedback on student answers.'
+        );
+      }
       
       // Parse the response
       const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -232,27 +268,68 @@ Be encouraging but honest. If the answer is mostly correct, say so. If it's part
       </div>
 
       {/* Answer Input */}
-      <div className="bg-[#2a2a2a] rounded-lg p-6">
+      <div className="bg-[#2a2a2a] rounded-lg p-6 space-y-4">
         <TextArea
-          label="Your Answer"
-          rows={12}
+          label="Your Answer (Text)"
+          rows={8}
           value={answer}
           onChange={(e) => setAnswer(e.target.value)}
           placeholder="Write your answer here..."
           className="bg-[#1a1a1a]"
         />
+        
+        {/* Image Upload */}
+        <div>
+          <label className="block text-sm font-medium text-[#9ca3af] mb-2">
+            Or Upload a Photo of Your Work
+          </label>
+          {!imagePreview ? (
+            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[#3a3a3a] rounded-lg cursor-pointer hover:border-[#b85a3a] transition-colors bg-[#1a1a1a]">
+              <HiCamera className="w-8 h-8 text-[#9ca3af] mb-2" />
+              <p className="text-sm text-[#9ca3af]">Click to upload photo</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+            </label>
+          ) : (
+            <div className="relative">
+              <img
+                src={imagePreview}
+                alt="Uploaded work"
+                className="w-full max-h-64 object-contain rounded-lg border border-[#3a3a3a]"
+              />
+              <button
+                onClick={handleRemoveImage}
+                className="absolute top-2 right-2 p-2 bg-red-500/80 hover:bg-red-500 rounded-full text-white transition-colors"
+              >
+                <HiX className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Actions */}
       <div className="flex gap-4">
-        <Button variant="secondary" onClick={handleCheck} disabled={!answer.trim() || isChecking}>
+        <Button 
+          variant="secondary" 
+          onClick={handleCheck} 
+          disabled={(!answer.trim() && !uploadedImage) || isChecking}
+        >
           <HiCheck className="w-5 h-5" />
           {isChecking ? 'Checking...' : 'Check My Work'}
         </Button>
-        <Button variant="secondary" onClick={() => setShowSolution(!showSolution)}>
-          <HiEye className="w-5 h-5" />
-          {showSolution ? 'Hide' : 'Show'} Solution
-        </Button>
+        {/* Only show solution button after getting feedback */}
+        {checked && aiFeedback && (
+          <Button variant="secondary" onClick={() => setShowSolution(!showSolution)}>
+            <HiEye className="w-5 h-5" />
+            {showSolution ? 'Hide' : 'Show'} Solution
+          </Button>
+        )}
       </div>
 
       {/* AI Feedback */}
@@ -266,8 +343,8 @@ Be encouraging but honest. If the answer is mostly correct, say so. If it's part
         </motion.div>
       )}
 
-      {/* Solution */}
-      {showSolution && (
+      {/* Solution - Only show after feedback */}
+      {checked && showSolution && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
@@ -281,37 +358,47 @@ Be encouraging but honest. If the answer is mostly correct, say so. If it's part
       )}
 
       {/* Navigation */}
-      <div className="flex justify-between pt-4 pb-4">
-        <Button
-          variant="secondary"
-          onClick={() => {
-            if (currentExercise > 0) {
-              setCurrentExercise(currentExercise - 1);
-              setAnswer('');
-              setShowSolution(false);
-              setChecked(false);
-              setAiFeedback(null);
-            }
-          }}
-          disabled={currentExercise === 0}
-        >
-          Previous
-        </Button>
-        <Button
-          onClick={() => {
-            if (currentExercise < exercises.length - 1) {
-              setCurrentExercise(currentExercise + 1);
-              setAnswer('');
-              setShowSolution(false);
-              setChecked(false);
-              setAiFeedback(null);
-            }
-          }}
-          disabled={currentExercise === exercises.length - 1}
-        >
-          Next Exercise
-        </Button>
-      </div>
+      {exercises.length > 1 && (
+        <div className="flex justify-between pt-4 pb-4">
+          {currentExercise > 0 && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setCurrentExercise(currentExercise - 1);
+                setAnswer('');
+                setShowSolution(false);
+                setChecked(false);
+                setAiFeedback(null);
+                setUploadedImage(null);
+                setImagePreview(null);
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = '';
+                }
+              }}
+            >
+              Previous
+            </Button>
+          )}
+          {currentExercise < exercises.length - 1 && (
+            <Button
+              onClick={() => {
+                setCurrentExercise(currentExercise + 1);
+                setAnswer('');
+                setShowSolution(false);
+                setChecked(false);
+                setAiFeedback(null);
+                setUploadedImage(null);
+                setImagePreview(null);
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = '';
+                }
+              }}
+            >
+              Next Exercise
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 });

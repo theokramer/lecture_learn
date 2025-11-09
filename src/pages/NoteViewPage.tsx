@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { useSearchParams } from 'react-router-dom';
-import { HiBars3, HiChatBubbleLeftRight } from 'react-icons/hi2';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { HiBars3, HiChatBubbleLeftRight, HiChevronLeft } from 'react-icons/hi2';
 import { NoteSidebar } from '../components/note/NoteSidebar';
 import { ContentView } from '../components/note/ContentView';
 import { AIChatPanel } from '../components/note/AIChatPanel';
@@ -13,10 +13,14 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsModal } from '../components/shared/KeyboardShortcutsModal';
 import { useIsMobile } from '../hooks/useIsMobile';
 
+const DEBUG_PREFIX = '[NoteViewPage]';
+
 export const NoteViewPage: React.FC = () => {
   const appData = useAppData();
   const { preferences } = useSettings();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [chatWidth, setChatWidth] = useState(450);
@@ -28,6 +32,72 @@ export const NoteViewPage: React.FC = () => {
   const hasGeneratedStudyContentRef = useRef<string | null>(null);
   const saveHandlerRef = useRef<(() => void) | null>(null);
   const isMobile = useIsMobile(1024);
+  const mountTimeRef = useRef<number>(Date.now());
+
+  // Debug: Component mount/unmount tracking
+  useEffect(() => {
+    const mountTime = mountTimeRef.current;
+    console.log(`${DEBUG_PREFIX} Component MOUNTED at ${new Date(mountTime).toISOString()}`);
+    console.log(`${DEBUG_PREFIX} Initial location:`, {
+      pathname: location.pathname,
+      search: location.search,
+      hash: location.hash,
+      state: location.state,
+      key: location.key,
+    });
+    console.log(`${DEBUG_PREFIX} Initial searchParams:`, {
+      id: searchParams.get('id'),
+      mode: searchParams.get('mode'),
+      allParams: Object.fromEntries(searchParams.entries()),
+    });
+    console.log(`${DEBUG_PREFIX} Initial appData state:`, {
+      selectedNoteId: appData.selectedNoteId,
+      currentStudyMode: appData.currentStudyMode,
+      notesCount: appData.notes.length,
+      noteExists: appData.notes.find(n => n.id === searchParams.get('id')) ? 'YES' : 'NO',
+    });
+
+    return () => {
+      const unmountTime = Date.now();
+      const lifetime = unmountTime - mountTime;
+      console.log(`${DEBUG_PREFIX} Component UNMOUNTED after ${lifetime}ms`);
+    };
+  }, []); // Only run on mount/unmount
+
+  // Debug: Track location changes
+  useEffect(() => {
+    console.log(`${DEBUG_PREFIX} Location changed:`, {
+      pathname: location.pathname,
+      search: location.search,
+      hash: location.hash,
+      state: location.state,
+      key: location.key,
+      timestamp: new Date().toISOString(),
+    });
+  }, [location]);
+
+  // Debug: Track searchParams changes
+  useEffect(() => {
+    const noteId = searchParams.get('id');
+    const mode = searchParams.get('mode');
+    console.log(`${DEBUG_PREFIX} SearchParams changed:`, {
+      noteId,
+      mode,
+      allParams: Object.fromEntries(searchParams.entries()),
+      timestamp: new Date().toISOString(),
+    });
+  }, [searchParams]);
+
+  // Debug: Track selectedNoteId changes
+  useEffect(() => {
+    console.log(`${DEBUG_PREFIX} SelectedNoteId changed:`, {
+      previous: undefined, // We don't track previous in this simple version
+      current: appData.selectedNoteId,
+      noteExists: appData.notes.find(n => n.id === appData.selectedNoteId) ? 'YES' : 'NO',
+      noteTitle: appData.notes.find(n => n.id === appData.selectedNoteId)?.title || 'N/A',
+      timestamp: new Date().toISOString(),
+    });
+  }, [appData.selectedNoteId, appData.notes]);
 
   // Close mobile drawers when resizing to desktop
   useEffect(() => {
@@ -37,39 +107,121 @@ export const NoteViewPage: React.FC = () => {
     }
   }, [isMobile]);
 
-  // Set the selected note from URL parameter
+  // Set the selected note from URL parameter and ensure it's loaded
   useEffect(() => {
     const noteId = searchParams.get('id');
-    if (noteId && noteId !== appData.selectedNoteId) {
-      appData.setSelectedNoteId(noteId);
-      hasCheckedSummaryRef.current = null; // Reset check for new note
-      hasSetDefaultModeRef.current = null; // Reset default mode for new note
-      hasGeneratedStudyContentRef.current = null; // Reset generation check for new note
+    console.log(`${DEBUG_PREFIX} Processing note selection:`, {
+      noteIdFromUrl: noteId,
+      currentSelectedNoteId: appData.selectedNoteId,
+      notesInContext: appData.notes.length,
+      timestamp: new Date().toISOString(),
+    });
+
+    if (noteId) {
+      // Always set the selected note ID, even if note isn't loaded yet
+      if (noteId !== appData.selectedNoteId) {
+        console.log(`${DEBUG_PREFIX} Setting selected note ID:`, {
+          from: appData.selectedNoteId,
+          to: noteId,
+        });
+        appData.setSelectedNoteId(noteId);
+        hasCheckedSummaryRef.current = null; // Reset check for new note
+        hasSetDefaultModeRef.current = null; // Reset default mode for new note
+        hasGeneratedStudyContentRef.current = null; // Reset generation check for new note
+      } else {
+        console.log(`${DEBUG_PREFIX} Note ID already selected, skipping setSelectedNoteId`);
+      }
+      
+      // Ensure the note is loaded if it's not in the current filtered list
+      const noteExists = appData.notes.find(n => n.id === noteId);
+      console.log(`${DEBUG_PREFIX} Note existence check:`, {
+        noteId,
+        exists: noteExists ? 'YES' : 'NO',
+        noteTitle: noteExists?.title || 'N/A',
+      });
+
+      if (!noteExists) {
+        console.log(`${DEBUG_PREFIX} Note not found in context, loading...`);
+        // Load the note and wait for it to be available
+        appData.ensureNoteLoaded(noteId)
+          .then((note) => {
+            if (note) {
+              // Note is now loaded, component will re-render
+              console.log(`${DEBUG_PREFIX} Note loaded successfully:`, {
+                id: note.id,
+                title: note.title,
+                contentLength: note.content?.length || 0,
+              });
+            } else {
+              console.warn(`${DEBUG_PREFIX} ensureNoteLoaded returned null/undefined`);
+            }
+          })
+          .catch(err => {
+            console.error(`${DEBUG_PREFIX} Error loading note:`, {
+              noteId,
+              error: err,
+              errorMessage: err instanceof Error ? err.message : String(err),
+              stack: err instanceof Error ? err.stack : undefined,
+            });
+          });
+      } else {
+        console.log(`${DEBUG_PREFIX} Note already in context, no loading needed`);
+      }
+    } else {
+      console.warn(`${DEBUG_PREFIX} No note ID in URL parameters!`, {
+        searchParams: location.search,
+        allParams: Object.fromEntries(searchParams.entries()),
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, appData.notes]);
 
   // Set study mode when opening a note (from URL param or default)
   useEffect(() => {
     const noteId = appData.selectedNoteId;
     const modeParam = searchParams.get('mode') as StudyMode | null;
     
-    if (!noteId) return;
+    console.log(`${DEBUG_PREFIX} Setting study mode:`, {
+      noteId,
+      modeParam,
+      currentStudyMode: appData.currentStudyMode,
+      defaultStudyMode: preferences.defaultStudyMode,
+      hasSetDefaultForNote: hasSetDefaultModeRef.current === noteId,
+    });
+    
+    if (!noteId) {
+      console.log(`${DEBUG_PREFIX} No noteId, skipping study mode setup`);
+      return;
+    }
     
     // If explicit mode is in URL, use it
     if (modeParam && hasSetDefaultModeRef.current !== noteId) {
+      console.log(`${DEBUG_PREFIX} Setting mode from URL param:`, {
+        mode: modeParam,
+        currentMode: appData.currentStudyMode,
+        willChange: appData.currentStudyMode !== modeParam,
+      });
       if (appData.currentStudyMode !== modeParam) {
         appData.setCurrentStudyMode(modeParam);
+        console.log(`${DEBUG_PREFIX} Study mode changed to:`, modeParam);
       }
       hasSetDefaultModeRef.current = noteId;
     } 
     // Otherwise, set default mode if we haven't set it for this note yet
     else if (!modeParam && hasSetDefaultModeRef.current !== noteId) {
       const defaultMode = preferences.defaultStudyMode || 'summary';
+      console.log(`${DEBUG_PREFIX} Setting default mode:`, {
+        defaultMode,
+        currentMode: appData.currentStudyMode,
+        willChange: appData.currentStudyMode !== defaultMode,
+      });
       if (appData.currentStudyMode !== defaultMode) {
         appData.setCurrentStudyMode(defaultMode);
+        console.log(`${DEBUG_PREFIX} Study mode changed to default:`, defaultMode);
       }
       hasSetDefaultModeRef.current = noteId;
+    } else {
+      console.log(`${DEBUG_PREFIX} Study mode already set for this note, skipping`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appData.selectedNoteId, searchParams, preferences.defaultStudyMode]);
@@ -104,59 +256,17 @@ export const NoteViewPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appData.selectedNoteId, appData.currentStudyMode, preferences.defaultStudyMode]);
 
-  // Auto-generate study content (including summary) when opening a note that doesn't have it
-  // IMPORTANT: Only generate what's missing, don't regenerate existing content
-  // SKIP generation entirely for empty notes (manually created notes)
+  // Mark note as loaded to prevent unnecessary generation attempts
+  // We don't auto-generate when opening existing notes - only load what exists
+  // Generation should only happen when explicitly requested or when note is first created
   useEffect(() => {
-    const autoGenerateStudyContent = async () => {
-      const noteId = appData.selectedNoteId;
-      if (!noteId || hasGeneratedStudyContentRef.current === noteId) return;
-
-      const currentNote = appData.notes?.find(n => n.id === noteId);
-      if (!currentNote) return;
-
-      const content = currentNote.content || '';
-      // For empty notes (manually created), mark as generated immediately and skip all generation
-      if (!content || content.trim().length === 0 || content.trim().length < 50) {
-        // Mark as generated to prevent any further attempts
-        hasGeneratedStudyContentRef.current = noteId;
-        return; // Not enough content - don't generate anything
-      }
-
-      try {
-        // Check what study content already exists
-        const studyContent = await studyContentService.getStudyContent(noteId);
-        
-        // Check if we need to generate anything
-        const hasSummary = studyContent.summary && studyContent.summary.trim() !== '';
-        const hasFlashcards = studyContent.flashcards && studyContent.flashcards.length > 0;
-        const hasQuiz = studyContent.quizQuestions && studyContent.quizQuestions.length > 0;
-        const hasExercises = studyContent.exercises && studyContent.exercises.length > 0;
-        const hasFeynmanTopics = studyContent.feynmanTopics && studyContent.feynmanTopics.length > 0;
-        
-        // Only generate if at least one major content type is missing
-        // Don't regenerate if content already exists
-        if (!hasSummary || !hasFlashcards || !hasQuiz || !hasExercises || !hasFeynmanTopics) {
-          // Generate only missing content in background
-          // generateAllStudyContent will check and preserve existing content
-          hasGeneratedStudyContentRef.current = noteId;
-          studyContentService.generateAndSaveAllStudyContent(noteId, content).catch(err => {
-            console.error('Background study content generation failed:', err);
-            // Reset on error so we can try again
-            hasGeneratedStudyContentRef.current = null;
-          });
-        } else {
-          // All content exists, mark as generated
-          hasGeneratedStudyContentRef.current = noteId;
-        }
-      } catch (error) {
-        console.error('Error checking/generating study content:', error);
-      }
-    };
-
-    autoGenerateStudyContent();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appData.selectedNoteId, appData.notes]);
+    const noteId = appData.selectedNoteId;
+    if (!noteId) return;
+    
+    // Mark as processed to prevent any auto-generation
+    // Users can still manually trigger generation if needed
+    hasGeneratedStudyContentRef.current = noteId;
+  }, [appData.selectedNoteId]);
 
   // Poll for newly generated summaries (when they finish generating in background)
   // Only if default mode is summary
@@ -222,6 +332,7 @@ export const NoteViewPage: React.FC = () => {
 
   // Safety check: ensure appData is available
   if (!appData) {
+    console.error(`${DEBUG_PREFIX} appData is not available!`);
     return (
       <div className="flex h-screen bg-bg-primary items-center justify-center">
         <div className="text-text-primary">Loading...</div>
@@ -229,18 +340,44 @@ export const NoteViewPage: React.FC = () => {
     );
   }
 
+  // Debug: Log render state
+  const currentNote = appData.notes.find(n => n.id === appData.selectedNoteId);
+  console.log(`${DEBUG_PREFIX} Render state:`, {
+    selectedNoteId: appData.selectedNoteId,
+    currentStudyMode: appData.currentStudyMode,
+    currentNote: currentNote ? {
+      id: currentNote.id,
+      title: currentNote.title,
+      hasContent: !!currentNote.content,
+    } : 'NOT FOUND',
+    location: {
+      pathname: location.pathname,
+      search: location.search,
+    },
+    timestamp: new Date().toISOString(),
+  });
+
   return (
     <div className="flex h-screen bg-bg-primary overflow-hidden">
       {/* Mobile Header Bar */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-bg-secondary border-b border-border-primary px-4 py-3 flex items-center justify-between shadow-sm">
-        <button
-          onClick={() => setMobileSidebarOpen(true)}
-          className="p-2 rounded-lg hover:bg-bg-hover transition-all duration-200"
-          aria-label="Open menu"
-        >
-          <HiBars3 className="w-6 h-6 text-text-primary" />
-        </button>
-        <h1 className="text-text-primary font-semibold text-lg truncate flex-1 mx-4">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/home')}
+            className="p-2 rounded-lg hover:bg-bg-hover transition-all duration-200"
+            aria-label="Back to home"
+          >
+            <HiChevronLeft className="w-6 h-6 text-text-primary" />
+          </button>
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            className="p-2 rounded-lg hover:bg-bg-hover transition-all duration-200"
+            aria-label="Open menu"
+          >
+            <HiBars3 className="w-5 h-5 text-text-primary" />
+          </button>
+        </div>
+        <h1 className="text-text-primary font-semibold text-lg truncate flex-1 mx-4 text-center">
           {appData.notes.find(n => n.id === appData.selectedNoteId)?.title || 'Note'}
         </h1>
         <button

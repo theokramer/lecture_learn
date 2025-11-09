@@ -476,6 +476,48 @@ export const aiGateway = {
       throw new Error(`Failed to transcribe audio: ${errorMessage}`);
     }
   },
+
+  async analyzeImage(base64Image: string, prompt: string): Promise<string> {
+    const { data, error } = await supabase.functions.invoke('ai-generate', {
+      body: {
+        type: 'vision',
+        imageBase64: base64Image,
+        prompt,
+      },
+    } as any);
+
+    if (error) {
+      const errBody: any = (error as any)?.context || {};
+      let errorCode = errBody?.code;
+      let errorMsg = errBody?.message;
+
+      if ((error as any)?.status === 429) {
+        errorCode = 'DAILY_LIMIT_REACHED';
+        errorMsg = 'Daily limit reached';
+      }
+
+      if (errorCode === 'DAILY_LIMIT_REACHED') {
+        throw new RateLimitError(errorMsg || 'Daily limit reached', {
+          limit: errBody.limit ?? 150,
+          remaining: errBody.remaining ?? 0,
+          resetAt: errBody.resetAt ?? new Date().toISOString(),
+          code: 'DAILY_LIMIT_REACHED',
+        });
+      }
+      if (errorCode === 'ACCOUNT_LIMIT_REACHED') {
+        throw new RateLimitError(errorMsg || 'Account limit reached', {
+          limit: 1,
+          remaining: 0,
+          code: 'ACCOUNT_LIMIT_REACHED',
+          usedAt: errBody.usedAt,
+        });
+      }
+      throw error;
+    }
+
+    window.dispatchEvent(new CustomEvent('ai-request-complete'));
+    return (data as any)?.content ?? '';
+  },
 };
 
 

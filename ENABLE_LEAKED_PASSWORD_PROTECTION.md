@@ -152,3 +152,4 @@ Also consider enabling/checking:
 
 **Note**: This feature uses the HaveIBeenPwned API (k-anonymity model) to check passwords without exposing the actual password to the service. This is secure and privacy-preserving.
 
+

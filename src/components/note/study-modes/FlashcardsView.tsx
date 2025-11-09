@@ -572,7 +572,7 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = React.memo(function
                 style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
               >
                 <div className="w-full h-full bg-[#1a1a1a] rounded-lg p-8 flex items-center justify-center border border-[#b85a3a]">
-                  <p className="text-white text-xl leading-relaxed text-center">
+                  <p className="text-white text-xl leading-relaxed text-center" style={{ transform: 'rotateY(180deg)' }}>
                     {card.back}
                   </p>
                 </div>
@@ -624,6 +624,36 @@ export const FlashcardsView: React.FC<FlashcardsViewProps> = React.memo(function
               </motion.button>
               </div>
             </motion.div>
+          )}
+
+          {/* Navigation */}
+          {cardsToStudy.length > 1 && (
+            <div className="flex justify-between items-center mt-4">
+              <button
+                onClick={() => {
+                  if (currentCard > 0) {
+                    setFlipped(false);
+                    setCurrentCard(currentCard - 1);
+                  }
+                }}
+                disabled={currentCard === 0}
+                className="px-6 py-2 text-[#9ca3af] hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => {
+                  if (currentCard < cardsToStudy.length - 1) {
+                    setFlipped(false);
+                    setCurrentCard(currentCard + 1);
+                  }
+                }}
+                disabled={currentCard === cardsToStudy.length - 1}
+                className="px-6 py-2 text-[#9ca3af] hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
           )}
 
           {/* Exit Button */}

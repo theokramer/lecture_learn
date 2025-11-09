@@ -214,3 +214,4 @@ watch -n 3600 'curl -s -X GET "https://api.supabase.com/v1/projects/$PROJECT_REF
 - [Supabase Management API Docs](https://supabase.com/docs/reference/api/post-projects)
 - [Auth Configuration](https://supabase.com/docs/guides/auth)
 - [Rate Limiting Best Practices](https://supabase.com/docs/guides/platform/rate-limits)
+

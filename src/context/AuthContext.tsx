@@ -20,24 +20,44 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session
+    // Check for existing session - restore from localStorage first
     const checkSession = async () => {
-      const currentUser = await userService.getCurrentUser();
-      if (currentUser) {
-        setUser({
-          id: currentUser.id,
-          email: currentUser.email || '',
-          name: currentUser.user_metadata?.name || currentUser.email?.split('@')[0] || 'User',
-        });
+      try {
+        // First, try to get session from storage (this restores persisted sessions)
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user) {
+          setUser({
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+          });
+          setLoading(false);
+          return;
+        }
+
+        // If no session, try getUser (which validates the session)
+        const currentUser = await userService.getCurrentUser();
+        if (currentUser) {
+          setUser({
+            id: currentUser.id,
+            email: currentUser.email || '',
+            name: currentUser.user_metadata?.name || currentUser.email?.split('@')[0] || 'User',
+          });
+        }
+      } catch (error) {
+        console.error('Error checking session:', error);
+      setUser(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     checkSession();
 
-    // Listen for auth changes
+    // Listen for auth changes (this handles session refresh and new logins)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session) {
+      if (session?.user) {
         setUser({
           id: session.user.id,
           email: session.user.email || '',

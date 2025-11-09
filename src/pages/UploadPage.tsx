@@ -4,14 +4,17 @@ import { IoCloudUpload, IoClose, IoArrowBack } from 'react-icons/io5';
 import { HiDocument } from 'react-icons/hi2';
 import { documentProcessor } from '../services/documentProcessor';
 import { useAuth } from '../context/AuthContext';
+import { useAppData } from '../context/AppDataContext';
 import { openaiService } from '../services/openai';
-import { storageService } from '../services/supabase';
-import { RateLimitError } from '../services/aiGateway';
+import { storageService, documentService, studyContentService } from '../services/supabase';
+import { summaryService } from '../services/summaryService';
+import { RateLimitError, checkRateLimit } from '../services/aiGateway';
 import toast from 'react-hot-toast';
 
 export const UploadPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { createNote, refreshData } = useAppData();
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
 
@@ -69,8 +72,23 @@ export const UploadPage: React.FC = () => {
 
     setUploading(true);
     try {
+      // Check rate limit first
+      try {
+        await checkRateLimit(user.id, user.email);
+      } catch (rateLimitError) {
+        if (rateLimitError instanceof RateLimitError) {
+          setUploading(false);
+          const rateLimitMessage = rateLimitError.code === 'ACCOUNT_LIMIT_REACHED'
+            ? '🚫 You have already used your one-time AI generation quota. No additional AI generations are available.'
+            : `🚫 Daily AI limit reached. You have used your daily quota (${rateLimitError.limit} generations). Please try again tomorrow.`;
+          toast.error(rateLimitMessage, { duration: 5000 });
+          return;
+        }
+        throw rateLimitError;
+      }
+
       let combinedText = '';
-      const title = files.length === 1 
+      const defaultTitle = files.length === 1 
         ? files[0].name.replace(/\.[^/.]+$/, '') 
         : `Uploaded ${files.length} files`;
 
@@ -118,14 +136,46 @@ export const UploadPage: React.FC = () => {
         }
       }
 
-      // Navigate to processing with the text and file metadata
-      navigate('/note-creation/processing', {
-        state: {
-          text: combinedText,
-          title: title,
-          fileMetadata: fileMetadata
+      // Generate title (optional, non-blocking)
+      let aiTitle: string | null = null;
+      try {
+        aiTitle = await summaryService.generatePerfectTitle(combinedText);
+      } catch (titleError: any) {
+        // If title generation fails due to rate limit, just use default title
+        if (titleError instanceof RateLimitError || titleError?.code === 'DAILY_LIMIT_REACHED' || titleError?.code === 'ACCOUNT_LIMIT_REACHED') {
+          // Don't abort - just use default title
+          console.log('Title generation skipped due to rate limit');
+        } else {
+          console.log('Title generation skipped (error):', titleError?.code || titleError?.message);
         }
+        aiTitle = null;
+      }
+
+      // Create note with AI title (if generated) or default title
+      const noteId = await createNote(aiTitle || defaultTitle, combinedText);
+
+      // Create document records
+      if (fileMetadata && Array.isArray(fileMetadata)) {
+        for (const { file, storagePath } of fileMetadata) {
+          try {
+            await documentService.createDocument(noteId, file, storagePath);
+          } catch (docError) {
+            console.error('Error creating document record:', docError);
+            // Continue with other documents even if one fails
+          }
+        }
+      }
+
+      // Refresh data to ensure the note is loaded
+      await refreshData();
+
+      // Generate study materials in the background (non-blocking)
+      studyContentService.generateAndSaveAllStudyContent(noteId, combinedText).catch(err => {
+        console.error('Background study content generation failed:', err);
       });
+
+      // Navigate directly to note view - this replaces UploadPage in the stack
+      navigate(`/note?id=${noteId}`, { replace: true });
     } catch (error) {
       console.error('Upload error:', error);
       

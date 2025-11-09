@@ -175,3 +175,4 @@ In case of a data breach affecting your information:
 
 **Note**: This is a template privacy policy. Replace placeholders (marked with brackets) with your actual information before publishing.
 
+
