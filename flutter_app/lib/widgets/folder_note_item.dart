@@ -121,7 +121,7 @@ class FolderNoteItem extends StatelessWidget {
                         title,
                         style: const TextStyle(
                           color: Color(0xFFFFFFFF),
-                          fontSize: 18,
+                          fontSize: 15,
                           fontWeight: FontWeight.bold,
                           letterSpacing: -0.4,
                         ),

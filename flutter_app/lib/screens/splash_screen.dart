@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
+import '../utils/logger.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -72,10 +73,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         data: (user) {
           if (mounted) {
             if (user != null) {
-              print('🎯 [SplashScreen] User logged in, navigating to /home');
+              AppLogger.info('User logged in, navigating to /home', tag: 'SplashScreen');
               context.go('/home');
             } else {
-              print('🎯 [SplashScreen] No user, navigating to /login');
+              AppLogger.info('No user, navigating to /login', tag: 'SplashScreen');
               context.go('/login');
             }
           }
@@ -85,7 +86,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           return false; // Keep waiting
         },
         error: (error, stackTrace) {
-          print('🎯 [SplashScreen] Auth error, navigating to /login: $error');
+          AppLogger.error('Auth error, navigating to /login', error: error, stackTrace: stackTrace, tag: 'SplashScreen');
           if (mounted) {
             context.go('/login');
           }
@@ -102,7 +103,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     
     // If still loading after max attempts, navigate to login
     if (attempts >= maxAttempts && mounted) {
-      print('🎯 [SplashScreen] Auth check timeout, navigating to /login');
+      AppLogger.warning('Auth check timeout, navigating to /login', tag: 'SplashScreen');
       context.go('/login');
     }
   }

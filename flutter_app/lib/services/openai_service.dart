@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/study_content.dart';
+import '../utils/logger.dart';
 
 class OpenAIService {
   static final OpenAIService _instance = OpenAIService._internal();
@@ -110,7 +111,7 @@ Return format: [{"front": "question", "back": "answer"}, ...]''';
         }).toList();
       }
     } catch (e) {
-      print('Error parsing flashcards: $e');
+      AppLogger.warning('Error parsing flashcards', error: e, tag: 'OpenAIService');
     }
     return [];
   }
@@ -142,7 +143,7 @@ Return format: [{"question": "...", "options": ["A", "B", "C", "D"], "correctAns
         }).toList();
       }
     } catch (e) {
-      print('Error parsing quiz: $e');
+      AppLogger.warning('Error parsing quiz', error: e, tag: 'OpenAIService');
     }
     return [];
   }

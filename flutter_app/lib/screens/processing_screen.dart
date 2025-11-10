@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../providers/app_data_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/ai_gateway_service.dart';
+import '../utils/error_handler.dart';
+import '../widgets/error_widget.dart';
 
 class ProcessingScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? audioBlob;
@@ -127,8 +129,9 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
         throw Exception('No content to process');
       }
     } catch (e) {
+      ErrorHandler.logError(e, context: 'Processing content', tag: 'ProcessingScreen');
       setState(() {
-        _error = e.toString();
+        _error = ErrorHandler.getUserFriendlyMessage(e);
       });
     }
   }
@@ -139,44 +142,15 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
       return CupertinoPageScaffold(
         backgroundColor: const Color(0xFF1A1A1A),
         child: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    CupertinoIcons.exclamationmark_triangle,
-                    size: 64,
-                    color: Color(0xFFEF4444),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Error',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFFFFFFFF),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _error!,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: Color(0xFF9CA3AF),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 32),
-                  CupertinoButton.filled(
-                    onPressed: () => context.go('/home'),
-                    color: const Color(0xFFB85A3A),
-                    child: const Text('Back to Home'),
-                  ),
-                ],
-              ),
-            ),
+          child: AppErrorWidget(
+            message: _error,
+            onRetry: () {
+              setState(() {
+                _error = null;
+              });
+              _processContent();
+            },
+            retryLabel: 'Try Again',
           ),
         ),
       );

@@ -5,6 +5,7 @@ import '../models/folder.dart';
 import '../models/document.dart';
 import '../models/user.dart' as app_models;
 import '../models/study_content.dart';
+import '../utils/logger.dart';
 import 'dart:io';
 import 'dart:convert';
 
@@ -21,7 +22,7 @@ class SupabaseService {
 
   Future<void> initialize(String url, String anonKey) async {
     if (_initialized) return;
-    print('🔐 [SupabaseService] Initializing Supabase...');
+    AppLogger.info('Initializing Supabase...', tag: 'SupabaseService');
     
     // Supabase Flutter automatically persists sessions by default
     // The session is stored in secure storage and restored on app restart
@@ -38,12 +39,12 @@ class SupabaseService {
   
   Future<void> _checkAndRestoreSession() async {
     try {
-      print('🔍 [SupabaseService] Checking for persisted session...');
+      AppLogger.debug('Checking for persisted session...', tag: 'SupabaseService');
       
       // Check Supabase's built-in session first
       final currentSession = _client?.auth.currentSession;
       if (currentSession != null) {
-        print('✅ [SupabaseService] Found Supabase session: ${currentSession.user.email}');
+        AppLogger.success('Found Supabase session: ${currentSession.user.email}', tag: 'SupabaseService');
         // Also save it to our secure storage for redundancy
         await _saveSessionToStorage(currentSession);
         return;
@@ -54,29 +55,29 @@ class SupabaseService {
       final savedUser = await _storage.read(key: _userKey);
       
       if (savedSession != null && savedUser != null) {
-        print('📦 [SupabaseService] Found saved session in secure storage');
+        AppLogger.debug('Found saved session in secure storage', tag: 'SupabaseService');
         try {
           final userData = jsonDecode(savedUser) as Map<String, dynamic>;
           
           // Note: Supabase handles session restoration automatically,
           // but we log this for debugging
-          print('✅ [SupabaseService] Session data found for user: ${userData['email']}');
-          print('ℹ️ [SupabaseService] Supabase should have restored this session automatically');
+          AppLogger.success('Session data found for user: ${userData['email']}', tag: 'SupabaseService');
+          AppLogger.info('Supabase should have restored this session automatically', tag: 'SupabaseService');
         } catch (e) {
-          print('❌ [SupabaseService] Error parsing saved session: $e');
+          AppLogger.error('Error parsing saved session', error: e, tag: 'SupabaseService');
           await _clearStoredSession();
         }
       } else {
-        print('ℹ️ [SupabaseService] No persisted session found');
+        AppLogger.info('No persisted session found', tag: 'SupabaseService');
       }
     } catch (e) {
-      print('❌ [SupabaseService] Error checking session: $e');
+      AppLogger.error('Error checking session', error: e, tag: 'SupabaseService');
     }
   }
   
   Future<void> _saveSessionToStorage(Session session) async {
     try {
-      print('💾 [SupabaseService] Saving session to secure storage...');
+      AppLogger.debug('Saving session to secure storage...', tag: 'SupabaseService');
       final sessionData = {
         'access_token': session.accessToken,
         'refresh_token': session.refreshToken ?? '',
@@ -87,20 +88,20 @@ class SupabaseService {
       
       await _storage.write(key: _sessionKey, value: jsonEncode(sessionData));
       await _storage.write(key: _userKey, value: jsonEncode(userData));
-      print('✅ [SupabaseService] Session saved successfully for: ${session.user.email}');
+      AppLogger.success('Session saved successfully for: ${session.user.email}', tag: 'SupabaseService');
     } catch (e) {
-      print('❌ [SupabaseService] Error saving session: $e');
+      AppLogger.error('Error saving session', error: e, tag: 'SupabaseService');
     }
   }
   
   Future<void> _clearStoredSession() async {
     try {
-      print('🗑️ [SupabaseService] Clearing stored session...');
+      AppLogger.debug('Clearing stored session...', tag: 'SupabaseService');
       await _storage.delete(key: _sessionKey);
       await _storage.delete(key: _userKey);
-      print('✅ [SupabaseService] Stored session cleared');
+      AppLogger.success('Stored session cleared', tag: 'SupabaseService');
     } catch (e) {
-      print('❌ [SupabaseService] Error clearing session: $e');
+      AppLogger.error('Error clearing session', error: e, tag: 'SupabaseService');
     }
   }
 
@@ -113,25 +114,25 @@ class SupabaseService {
 
   // Auth
   Future<AuthResponse> signIn(String email, String password) async {
-    print('🔑 [SupabaseService] Signing in user: $email');
+    AppLogger.info('Signing in user: $email', tag: 'SupabaseService');
     final response = await client.auth.signInWithPassword(
       email: email,
       password: password,
     );
     
     if (response.session != null) {
-      print('✅ [SupabaseService] Sign in successful, saving session...');
+      AppLogger.success('Sign in successful, saving session...', tag: 'SupabaseService');
       await _saveSessionToStorage(response.session!);
-      print('✅ [SupabaseService] Session saved for: ${response.user?.email}');
+      AppLogger.success('Session saved for: ${response.user?.email}', tag: 'SupabaseService');
     } else {
-      print('⚠️ [SupabaseService] Sign in response has no session');
+      AppLogger.warning('Sign in response has no session', tag: 'SupabaseService');
     }
     
     return response;
   }
 
   Future<AuthResponse> signUp(String email, String password, String name) async {
-    print('📝 [SupabaseService] Signing up user: $email');
+    AppLogger.info('Signing up user: $email', tag: 'SupabaseService');
     final response = await client.auth.signUp(
       email: email,
       password: password,
@@ -139,30 +140,30 @@ class SupabaseService {
     );
     
     if (response.session != null) {
-      print('✅ [SupabaseService] Sign up successful, saving session...');
+      AppLogger.success('Sign up successful, saving session...', tag: 'SupabaseService');
       await _saveSessionToStorage(response.session!);
-      print('✅ [SupabaseService] Session saved for: ${response.user?.email}');
+      AppLogger.success('Session saved for: ${response.user?.email}', tag: 'SupabaseService');
     } else {
-      print('⚠️ [SupabaseService] Sign up response has no session (may require email confirmation)');
+      AppLogger.warning('Sign up response has no session (may require email confirmation)', tag: 'SupabaseService');
     }
     
     return response;
   }
 
   Future<void> signOut() async {
-    print('🚪 [SupabaseService] Signing out user...');
+    AppLogger.info('Signing out user...', tag: 'SupabaseService');
     await client.auth.signOut();
     await _clearStoredSession();
-    print('✅ [SupabaseService] User signed out and session cleared');
+    AppLogger.success('User signed out and session cleared', tag: 'SupabaseService');
   }
 
   app_models.User? getCurrentUser() {
     final session = client.auth.currentSession;
     if (session == null) {
-      print('ℹ️ [SupabaseService] No current session found');
+      AppLogger.info('No current session found', tag: 'SupabaseService');
       return null;
     }
-    print('✅ [SupabaseService] Current user found: ${session.user.email}');
+    AppLogger.success('Current user found: ${session.user.email}', tag: 'SupabaseService');
     return app_models.User.fromJson(session.user.toJson());
   }
 
@@ -276,7 +277,7 @@ class SupabaseService {
   }
 
   Future<void> moveNote(String id, String? newFolderId) async {
-    print('🔄 [SupabaseService] Moving note $id to folder: ${newFolderId ?? "null (root)"}');
+    AppLogger.info('Moving note $id to folder: ${newFolderId ?? "null (root)"}', tag: 'SupabaseService');
     try {
       // Explicitly set folder_id - including null to clear it
       // Supabase requires null to be explicitly included in the update map
@@ -297,14 +298,14 @@ class SupabaseService {
           .single();
       
       final updatedFolderId = response['folder_id'] as String?;
-      print('✅ [SupabaseService] Note moved successfully. New folder_id: ${updatedFolderId ?? "null (root)"}');
+      AppLogger.success('Note moved successfully. New folder_id: ${updatedFolderId ?? "null (root)"}', tag: 'SupabaseService');
       
       // Verify the update actually worked
       if (updatedFolderId != newFolderId) {
         throw Exception('Update verification failed: expected folder_id ${newFolderId ?? "null"}, got ${updatedFolderId ?? "null"}');
       }
     } catch (e) {
-      print('❌ [SupabaseService] Error moving note: $e');
+      AppLogger.error('Error moving note', error: e, tag: 'SupabaseService');
       rethrow;
     }
   }
@@ -388,17 +389,31 @@ class SupabaseService {
           .order('updated_at', ascending: false);
 
       if ((response as List).isEmpty) {
+        // No content exists - return empty content (this is a valid state, not an error)
+        AppLogger.debug('No study content found for note: $noteId', tag: 'SupabaseService');
         return StudyContent();
       }
 
       // Take the first (most recent) row, similar to web app behavior
       final data = (response as List).first;
-
-      return StudyContent.fromJson(data as Map<String, dynamic>);
+      final content = StudyContent.fromJson(data as Map<String, dynamic>);
+      
+      AppLogger.success('Study content loaded successfully for note: $noteId', 
+        context: {
+          'summary': content.summary.isNotEmpty ? '${content.summary.length} chars' : 'empty',
+          'flashcards': content.flashcards.length,
+          'quiz': content.quizQuestions.length,
+          'exercises': content.exercises.length,
+          'feynman': content.feynmanTopics.length,
+        },
+        tag: 'SupabaseService',
+      );
+      
+      return content;
     } catch (e) {
-      print('Error loading study content: $e');
-      // Return empty content on error rather than crashing
-      return StudyContent();
+      AppLogger.error('Error loading study content for note $noteId', error: e, tag: 'SupabaseService');
+      // Re-throw the error so the UI knows loading failed
+      rethrow;
     }
   }
 

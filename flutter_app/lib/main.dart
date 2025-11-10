@@ -15,6 +15,8 @@ import 'screens/web_link_screen.dart';
 import 'services/supabase_service.dart';
 import 'providers/auth_provider.dart';
 import 'models/user.dart';
+import 'utils/logger.dart';
+import 'utils/environment.dart';
 import 'dart:io';
 
 void main() async {
@@ -25,7 +27,9 @@ void main() async {
     await dotenv.load(fileName: '.env');
   } catch (e) {
     // If .env file doesn't exist, try environment variables
-    print('Warning: .env file not found, using environment variables');
+    if (Environment.isDevelopment) {
+      AppLogger.warning('.env file not found, using environment variables', tag: 'main');
+    }
   }
 
   // Get environment variables (from .env or system environment)
@@ -38,19 +42,19 @@ void main() async {
                           const String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: '');
 
   if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
-    print('⚠️  WARNING: Missing Supabase environment variables!');
-    print('Please create a .env file with:');
-    print('VITE_SUPABASE_URL=your_supabase_url');
-    print('VITE_SUPABASE_ANON_KEY=your_supabase_anon_key');
-    print('(or use SUPABASE_URL and SUPABASE_ANON_KEY without VITE_ prefix)');
-    print('');
-    print('Note: OpenAI API key is handled by Supabase, no need to add it here.');
+    AppLogger.error(
+      'Missing Supabase environment variables!',
+      context: {
+        'message': 'Please create a .env file with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY',
+      },
+      tag: 'main',
+    );
     // Don't throw - let the app start and show error on login screen
   } else {
     // Initialize Supabase
-    print('🚀 [main] Initializing Supabase service...');
+    AppLogger.info('Initializing Supabase service...', tag: 'main');
     await SupabaseService().initialize(supabaseUrl, supabaseAnonKey);
-    print('✅ [main] Supabase service initialized');
+    AppLogger.success('Supabase service initialized', tag: 'main');
     
     // OpenAI key is stored in Supabase, so we don't initialize it here
     // The app will use Supabase Edge Functions or RPC calls for OpenAI features
@@ -91,17 +95,17 @@ class MyApp extends ConsumerWidget {
           return;
         }
         
-        print('🔄 [MyApp] Auth state resolved. User: ${user?.email ?? "null"}');
+        AppLogger.debug('Auth state resolved. User: ${user?.email ?? "null"}', tag: 'MyApp');
         
         // Use a post-frame callback to ensure the router is ready
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (user != null && currentLocation == '/login') {
             // User logged in while on login page
-            print('🔄 [MyApp] User logged in, navigating to /home');
+            AppLogger.info('User logged in, navigating to /home', tag: 'MyApp');
             _router.go('/home');
           } else if (user == null && currentLocation != '/login' && currentLocation != '/splash') {
             // User logged out while on other pages
-            print('🔄 [MyApp] User logged out, navigating to /login');
+            AppLogger.info('User logged out, navigating to /login', tag: 'MyApp');
             _router.go('/login');
           }
         });
@@ -225,32 +229,35 @@ final _router = GoRouter(
     return authState.when(
       data: (user) {
         final isLoggedIn = user != null;
-        print('🛣️ [Router] Auth state: ${isLoggedIn ? "Logged in as ${user.email}" : "Not logged in"}, going to: $currentLocation');
+        AppLogger.debug(
+          'Auth state: ${isLoggedIn ? "Logged in as ${user.email}" : "Not logged in"}, going to: $currentLocation',
+          tag: 'Router',
+        );
         
         // If not logged in and not going to login, redirect to login
         if (!isLoggedIn && !isGoingToLogin) {
-          print('🛣️ [Router] Redirecting to /login (not logged in)');
+          AppLogger.debug('Redirecting to /login (not logged in)', tag: 'Router');
           return '/login';
         }
         // If logged in and trying to go to login, redirect to home
         if (isLoggedIn && isGoingToLogin) {
-          print('🛣️ [Router] Redirecting to /home (already logged in)');
+          AppLogger.debug('Redirecting to /home (already logged in)', tag: 'Router');
           return '/home';
         }
-        print('🛣️ [Router] No redirect needed');
+        AppLogger.debug('No redirect needed', tag: 'Router');
         return null;
       },
       loading: () {
         // While loading, don't redirect - let the current route stay
         // This prevents flickering during session restoration
-        print('🛣️ [Router] Auth state loading, waiting...');
+        AppLogger.debug('Auth state loading, waiting...', tag: 'Router');
         return null;
       },
       error: (error, stackTrace) {
         // On error, redirect to login (unless already on splash)
-        print('🛣️ [Router] Auth state error: $error');
+        AppLogger.error('Auth state error', error: error, stackTrace: stackTrace, tag: 'Router');
         if (!isGoingToLogin && currentLocation != '/splash') {
-          print('🛣️ [Router] Redirecting to /login (error)');
+          AppLogger.debug('Redirecting to /login (error)', tag: 'Router');
           return '/login';
         }
         return null;

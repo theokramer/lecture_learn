@@ -1,10 +1,10 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../services/ai_gateway_service.dart';
 import '../providers/auth_provider.dart';
+import '../utils/error_handler.dart';
 
 class WebLinkScreen extends ConsumerStatefulWidget {
   final String? folderId;
@@ -59,22 +59,13 @@ class _WebLinkScreenState extends ConsumerState<WebLinkScreen> {
         );
       }
     } catch (e) {
+      ErrorHandler.logError(e, context: 'Processing web link', tag: 'WebLinkScreen');
       if (mounted) {
         setState(() {
           _isProcessing = false;
         });
 
-        String errorMessage = 'Failed to process link. Please try again.';
-        if (e is RateLimitError) {
-          errorMessage = e.code == 'ACCOUNT_LIMIT_REACHED'
-              ? 'You have already used your one-time AI generation quota.'
-              : 'Daily AI limit reached. Please try again tomorrow.';
-        } else if (e.toString().contains('YouTube') || e.toString().contains('youtube')) {
-          errorMessage = 'YouTube videos are not supported. Please try a different link.';
-        } else if (e.toString().contains('rate limit') || e.toString().contains('limit')) {
-          errorMessage = 'Rate limit reached. Please try again later.';
-        }
-
+        final errorMessage = ErrorHandler.getUserFriendlyMessage(e);
         showCupertinoDialog(
           context: context,
           builder: (context) => CupertinoAlertDialog(

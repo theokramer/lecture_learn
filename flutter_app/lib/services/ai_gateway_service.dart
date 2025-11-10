@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'supabase_service.dart';
+import '../utils/logger.dart';
 
 class RateLimitError implements Exception {
   final String code;
@@ -42,7 +43,7 @@ class AIGatewayService {
       
       // If storage path is provided, use it (preferred method)
       if (storagePath != null && storagePath.isNotEmpty) {
-        print('Using storage-based transcription for path: $storagePath');
+        AppLogger.debug('Using storage-based transcription for path: $storagePath', tag: 'AIGatewayService');
         
         final result = await supabase.functions.invoke(
           'ai-generate',
@@ -112,7 +113,7 @@ class AIGatewayService {
       }
 
       // Use base64 for small files
-      print('Using direct base64 transcription for small file ($fileSize bytes)');
+      AppLogger.debug('Using direct base64 transcription for small file ($fileSize bytes)', tag: 'AIGatewayService');
       final bytes = await audioFile.readAsBytes();
       final base64 = base64Encode(bytes);
       final mimeType = 'audio/m4a'; // Adjust based on file type
@@ -175,7 +176,7 @@ class AIGatewayService {
         rethrow;
       }
       final errorMessage = e.toString();
-      print('Transcription error: $errorMessage');
+      AppLogger.error('Transcription error', error: e, tag: 'AIGatewayService');
       throw Exception('Failed to transcribe audio: $errorMessage');
     }
   }
@@ -238,7 +239,7 @@ class AIGatewayService {
       }
     } catch (e) {
       if (e is RateLimitError) rethrow;
-      print('Error generating summary: $e');
+      AppLogger.error('Error generating summary', error: e, tag: 'AIGatewayService');
       throw Exception('Failed to generate summary: $e');
     }
   }
@@ -407,7 +408,7 @@ Rules:
       if (finalTitle.isEmpty) return 'New Note';
       return finalTitle.replaceAll(RegExp(r'[\.!?\s]+$'), '');
     } catch (e) {
-      print('Error generating title: $e');
+      AppLogger.warning('Error generating title', error: e, tag: 'AIGatewayService');
       return 'New Note';
     }
   }
@@ -495,7 +496,7 @@ Rules:
         }
       }
       final errorMessage = e.toString();
-      print('Chat completion error: $errorMessage');
+      AppLogger.error('Chat completion error', error: errorMessage, tag: 'AIGatewayService');
       throw Exception('Failed to complete chat: $errorMessage');
     }
   }
@@ -521,7 +522,7 @@ Rules:
       return flashcards.cast<Map<String, dynamic>>().take(count).toList();
     } catch (e) {
       if (e is RateLimitError) rethrow;
-      print('Error generating flashcards: $e');
+      AppLogger.error('Error generating flashcards', error: e, tag: 'AIGatewayService');
       throw Exception('Failed to generate flashcards: $e');
     }
   }
@@ -547,7 +548,7 @@ Rules:
       return questions.cast<Map<String, dynamic>>().take(count).toList();
     } catch (e) {
       if (e is RateLimitError) rethrow;
-      print('Error generating quiz: $e');
+      AppLogger.error('Error generating quiz', error: e, tag: 'AIGatewayService');
       throw Exception('Failed to generate quiz: $e');
     }
   }
@@ -573,7 +574,7 @@ Rules:
       return exercises.cast<Map<String, dynamic>>().take(count).toList();
     } catch (e) {
       if (e is RateLimitError) rethrow;
-      print('Error generating exercises: $e');
+      AppLogger.error('Error generating exercises', error: e, tag: 'AIGatewayService');
       throw Exception('Failed to generate exercises: $e');
     }
   }
@@ -612,7 +613,7 @@ Rules:
     try {
       final supabase = _supabase.client;
       
-      print('🔗 [AIGatewayService] Processing web link: $url');
+      AppLogger.info('Processing web link: $url', tag: 'AIGatewayService');
       
       // Detect link type
       final linkType = detectLinkType(url);
@@ -622,7 +623,7 @@ Rules:
         throw Exception('YouTube videos are not supported. Please use a different link.');
       }
       
-      print('🔍 [AIGatewayService] Detected link type: $linkType');
+      AppLogger.debug('Detected link type: $linkType', tag: 'AIGatewayService');
       
       // Process via backend Edge Function
       final Map<String, dynamic> requestBody = {
@@ -660,7 +661,7 @@ Rules:
           throw Exception('Link processing returned empty content.');
         }
         
-        print('✅ [AIGatewayService] Link processed successfully. Title: $title, Content length: ${content.length}');
+        AppLogger.success('Link processed successfully. Title: $title, Content length: ${content.length}', tag: 'AIGatewayService');
         
         return {
           'title': title,
@@ -691,7 +692,7 @@ Rules:
 
       throw Exception('No link processing data received');
     } catch (e) {
-      print('❌ [AIGatewayService] Error processing web link: $e');
+      AppLogger.error('Error processing web link', error: e, tag: 'AIGatewayService');
       rethrow;
     }
   }
@@ -727,7 +728,7 @@ Rules:
       return [];
     } catch (e) {
       if (e is RateLimitError) rethrow;
-      print('Error generating feynman topics: $e');
+      AppLogger.error('Error generating feynman topics', error: e, tag: 'AIGatewayService');
       return [];
     }
   }

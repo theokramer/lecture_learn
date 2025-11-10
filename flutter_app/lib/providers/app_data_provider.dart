@@ -6,6 +6,9 @@ import '../models/user.dart';
 import '../services/supabase_service.dart';
 import '../services/ai_gateway_service.dart';
 import '../services/document_processor_service.dart';
+import '../utils/logger.dart';
+import '../utils/error_handler.dart';
+import '../utils/environment.dart';
 import 'auth_provider.dart';
 import 'dart:io';
 
@@ -44,10 +47,12 @@ class AppDataNotifier extends Notifier<AppDataState> {
       final folders = await _supabase.getAllFolders(user.id);
       final notes = await _supabase.getNotes(user.id);
       
-      print('📊 [AppDataProvider] Refreshed data: ${folders.length} folders, ${notes.length} notes');
-      // Debug: print notes with their folderIds
-      for (var note in notes) {
-        print('  📝 Note "${note.title}" - folderId: ${note.folderId ?? "null (root)"}');
+      AppLogger.info('Refreshed data: ${folders.length} folders, ${notes.length} notes', tag: 'AppDataProvider');
+      // Debug: log notes with their folderIds
+      if (Environment.isDevelopment) {
+        for (var note in notes) {
+          AppLogger.debug('Note "${note.title}" - folderId: ${note.folderId ?? "null (root)"}', tag: 'AppDataProvider');
+        }
       }
       
       state = state.copyWith(
@@ -57,8 +62,8 @@ class AppDataNotifier extends Notifier<AppDataState> {
         loading: false,
       );
     } catch (e) {
-      print('❌ [AppDataProvider] Error refreshing data: $e');
-      state = state.copyWith(loading: false, error: e.toString());
+      AppLogger.error('Error refreshing data', error: e, tag: 'AppDataProvider');
+      state = state.copyWith(loading: false, error: ErrorHandler.getUserFriendlyMessage(e));
     }
   }
 
@@ -93,14 +98,13 @@ class AppDataNotifier extends Notifier<AppDataState> {
 
   Future<void> moveNote(String id, String? newFolderId) async {
     try {
-      print('🔄 [AppDataProvider] Moving note $id to folder: ${newFolderId ?? "null (root)"}');
+      AppLogger.info('Moving note $id to folder: ${newFolderId ?? "null (root)"}', tag: 'AppDataProvider');
       await _supabase.moveNote(id, newFolderId);
-      print('✅ [AppDataProvider] Note moved, refreshing data...');
+      AppLogger.success('Note moved, refreshing data...', tag: 'AppDataProvider');
       await refreshData();
-      print('✅ [AppDataProvider] Data refreshed after move');
+      AppLogger.success('Data refreshed after move', tag: 'AppDataProvider');
     } catch (e, stackTrace) {
-      print('❌ [AppDataProvider] Error moving note: $e');
-      print('Stack trace: $stackTrace');
+      AppLogger.error('Error moving note', error: e, stackTrace: stackTrace, tag: 'AppDataProvider');
       rethrow;
     }
   }
@@ -153,14 +157,14 @@ class AppDataNotifier extends Notifier<AppDataState> {
       if (fileSize == 0) {
         throw Exception('Audio file is empty');
       }
-      print('Processing audio file: ${audioFile.path}, size: $fileSize bytes');
+      AppLogger.debug('Processing audio file: ${audioFile.path}, size: $fileSize bytes', tag: 'AppDataProvider');
 
       // Check rate limit
       await _aiGateway.checkRateLimit(user.id, user.email);
 
       // Upload audio
       final storagePath = await _supabase.uploadFile(user.id, audioFile);
-      print('Audio uploaded to storage: $storagePath');
+      AppLogger.debug('Audio uploaded to storage: $storagePath', tag: 'AppDataProvider');
 
       // Transcribe using Supabase Edge Function (exactly like website)
       final transcription = await _aiGateway.transcribeAudio(
@@ -175,7 +179,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
         aiTitle = await _aiGateway.generateTitle(transcription);
       } catch (e) {
         // Title generation is optional - will use provided title or default
-        print('Title generation failed (non-critical): $e');
+        AppLogger.warning('Title generation failed (non-critical)', error: e, tag: 'AppDataProvider');
       }
 
       // Create note
@@ -249,7 +253,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
             combinedText += 'File: $fileName\n$text\n\n';
           }
         } catch (fileError) {
-          print('Error processing file ${file.path}: $fileError');
+          AppLogger.error('Error processing file ${file.path}', error: fileError, tag: 'AppDataProvider');
           // Continue with other files even if one fails
           combinedText += 'File: ${file.path.split('/').last}\n[Error processing file: $fileError]\n\n';
         }
@@ -261,7 +265,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
         aiTitle = await _aiGateway.generateTitle(combinedText);
       } catch (e) {
         // Title generation is optional - will use provided title or default
-        print('Title generation failed (non-critical): $e');
+        AppLogger.warning('Title generation failed (non-critical)', error: e, tag: 'AppDataProvider');
       }
 
       // Create note
@@ -299,12 +303,12 @@ class AppDataNotifier extends Notifier<AppDataState> {
     Future(() async {
       try {
         if (content.trim().isEmpty || content.length < 50) {
-          print('⚠️ [AppDataProvider] Not enough content to generate study content');
+          AppLogger.warning('Not enough content to generate study content', tag: 'AppDataProvider');
           return;
         }
 
-        print('🔄 [AppDataProvider] Starting study content generation for note: $noteId');
-        print('📝 [AppDataProvider] NOTE: This is only called during note creation, not when viewing notes');
+        AppLogger.info('Starting study content generation for note: $noteId', tag: 'AppDataProvider');
+        AppLogger.debug('NOTE: This is only called during note creation, not when viewing notes', tag: 'AppDataProvider');
 
         // Check existing study content to avoid regenerating
         final existing = await _supabase.getStudyContent(noteId);
@@ -316,11 +320,11 @@ class AppDataNotifier extends Notifier<AppDataState> {
         
         // If all content already exists, skip generation entirely
         if (hasSummary && hasFlashcards && hasQuiz && hasExercises && hasFeynmanTopics) {
-          print('✅ [AppDataProvider] All study content already exists, skipping generation');
+          AppLogger.success('All study content already exists, skipping generation', tag: 'AppDataProvider');
           return;
         }
         
-        print('📊 [AppDataProvider] Existing content status - Summary: $hasSummary, Flashcards: $hasFlashcards, Quiz: $hasQuiz, Exercises: $hasExercises, Feynman: $hasFeynmanTopics');
+        AppLogger.debug('Existing content status - Summary: $hasSummary, Flashcards: $hasFlashcards, Quiz: $hasQuiz, Exercises: $hasExercises, Feynman: $hasFeynmanTopics', tag: 'AppDataProvider');
         
         // Get documents for summary context
         final note = state.notes.firstWhere((n) => n.id == noteId, orElse: () => throw Exception('Note not found'));
@@ -343,7 +347,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
           futures.add(_aiGateway.generateSummary(content, documents: documents, detailLevel: 'comprehensive').then((generatedSummary) {
             return generatedSummary; // Return the summary string
           }).catchError((e) {
-            print('Error generating summary: $e');
+            AppLogger.error('Error generating summary', error: e, tag: 'AppDataProvider');
             return ''; // Return empty string on error
           }));
         }
@@ -359,7 +363,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
               );
             }).toList();
           }).catchError((e) {
-            print('Error generating flashcards: $e');
+            AppLogger.error('Error generating flashcards', error: e, tag: 'AppDataProvider');
             return <Flashcard>[];
           }));
         }
@@ -376,7 +380,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
               );
             }).toList();
           }).catchError((e) {
-            print('Error generating quiz: $e');
+            AppLogger.error('Error generating quiz', error: e, tag: 'AppDataProvider');
             return <QuizQuestion>[];
           }));
         }
@@ -392,7 +396,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
               );
             }).toList();
           }).catchError((e) {
-            print('Error generating exercises: $e');
+            AppLogger.error('Error generating exercises', error: e, tag: 'AppDataProvider');
             return <Exercise>[];
           }));
         }
@@ -407,7 +411,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
               );
             }).toList();
           }).catchError((e) {
-            print('Error generating feynman topics: $e');
+            AppLogger.error('Error generating feynman topics', error: e, tag: 'AppDataProvider');
             return <FeynmanTopic>[];
           }));
         }
@@ -449,9 +453,9 @@ class AppDataNotifier extends Notifier<AppDataState> {
         );
 
         await _supabase.saveStudyContent(noteId, studyContent);
-        print('Study content generation completed for note: $noteId');
+        AppLogger.success('Study content generation completed for note: $noteId', tag: 'AppDataProvider');
       } catch (e) {
-        print('Background study content generation failed: $e');
+        AppLogger.error('Background study content generation failed', error: e, tag: 'AppDataProvider');
         // Don't throw - this is background processing
       }
     });
@@ -469,7 +473,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
         throw Exception('Not enough content to generate study content');
       }
 
-      print('🔄 [AppDataProvider] Generating $contentType for note: $noteId');
+      AppLogger.info('Generating $contentType for note: $noteId', tag: 'AppDataProvider');
 
       // Get existing content
       final existing = await _supabase.getStudyContent(noteId);
@@ -559,9 +563,9 @@ class AppDataNotifier extends Notifier<AppDataState> {
       );
 
       await _supabase.saveStudyContent(noteId, studyContent);
-      print('✅ [AppDataProvider] $contentType generated and saved for note: $noteId');
+      AppLogger.success('$contentType generated and saved for note: $noteId', tag: 'AppDataProvider');
     } catch (e) {
-      print('❌ [AppDataProvider] Error generating $contentType: $e');
+      AppLogger.error('Error generating $contentType', error: e, tag: 'AppDataProvider');
       rethrow;
     }
   }

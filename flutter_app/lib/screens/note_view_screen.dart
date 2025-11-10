@@ -9,10 +9,13 @@ import '../models/study_content.dart';
 import '../models/note.dart';
 import '../services/supabase_service.dart';
 import '../services/ai_gateway_service.dart';
+import '../services/study_content_polling_service.dart';
 import '../widgets/study_mode_selector.dart';
 import '../widgets/ai_chat_panel.dart';
 import '../widgets/html_with_latex_renderer.dart';
 import '../utils/study_mode_colors.dart';
+import '../utils/logger.dart';
+import '../utils/error_handler.dart';
 
 class NoteViewScreen extends ConsumerStatefulWidget {
   final String? noteId;
@@ -26,10 +29,10 @@ class NoteViewScreen extends ConsumerStatefulWidget {
 class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
   StudyContent? _studyContent;
   bool _loadingContent = false;
-  Timer? _pollTimer;
   bool _hasContent = false;
   String? _generatingContentType; // Track which content type is being generated
   bool _isInitialGeneration = false; // Track if we're in initial generation phase
+  final _pollingService = StudyContentPollingService();
 
   @override
   void initState() {
@@ -49,7 +52,10 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
   void didUpdateWidget(NoteViewScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.noteId != widget.noteId) {
-      _pollTimer?.cancel();
+      // Stop polling for old note
+      if (oldWidget.noteId != null) {
+        _pollingService.stopPolling(oldWidget.noteId!);
+      }
       _hasContent = false;
       if (widget.noteId != null) {
         _loadStudyContent();
@@ -60,14 +66,15 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    // Don't stop polling when widget is disposed - let it continue in background
+    // Polling will stop automatically when content is found or timeout is reached
     super.dispose();
   }
 
   Future<void> _loadStudyContent() async {
     if (widget.noteId == null) return;
 
-    print('📖 [NoteViewScreen] Loading study content from Supabase for note: ${widget.noteId}');
+    AppLogger.info('Loading study content from Supabase for note: ${widget.noteId}', tag: 'NoteViewScreen');
 
     setState(() {
       _loadingContent = true;
@@ -93,6 +100,9 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
       final timeSinceCreation = now.difference(note.createdAt);
       final isNewNote = timeSinceCreation.inMinutes < 5;
 
+      // Check if background polling is already active for this note
+      final isAlreadyPolling = _pollingService.isPolling(widget.noteId!);
+
       // ONLY fetch from Supabase - never regenerate
       final content = await SupabaseService().getStudyContent(widget.noteId!);
       final hasContent = content.flashcards.isNotEmpty ||
@@ -101,20 +111,24 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
           content.feynmanTopics.isNotEmpty ||
           content.summary.isNotEmpty;
 
-      print('✅ [NoteViewScreen] Study content loaded from Supabase. Has content: $hasContent, isNewNote: $isNewNote');
+      AppLogger.success('Study content loaded from Supabase. Has content: $hasContent, isNewNote: $isNewNote, isAlreadyPolling: $isAlreadyPolling', tag: 'NoteViewScreen');
 
       setState(() {
         _studyContent = content;
         _loadingContent = false;
         _hasContent = hasContent;
-        // If note is new and has no content, we're in initial generation phase
-        _isInitialGeneration = isNewNote && !hasContent;
+        // Only show initial generation loading if note is new AND has no content
+        // If content loaded successfully (even if empty), we're not in initial generation
+        // Also check if background polling is active (means generation might still be in progress)
+        _isInitialGeneration = isNewNote && !hasContent && (isAlreadyPolling || timeSinceCreation.inMinutes < 2);
       });
     } catch (e) {
-      print('❌ [NoteViewScreen] Error loading study content: $e');
+      AppLogger.error('Error loading study content', error: e, tag: 'NoteViewScreen');
       setState(() {
         _loadingContent = false;
-        _isInitialGeneration = false;
+        // On error, set empty content so generate buttons can show
+        _studyContent = StudyContent();
+        _isInitialGeneration = false; // Don't show initial generation if load failed
       });
     }
   }
@@ -139,13 +153,15 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
       
       HapticFeedback.selectionClick();
     } catch (e) {
-      print('❌ [NoteViewScreen] Error generating $contentType: $e');
+      AppLogger.error('Error generating $contentType', error: e, tag: 'NoteViewScreen');
+      ErrorHandler.logError(e, context: 'Generating $contentType', tag: 'NoteViewScreen');
       if (mounted) {
+        final errorMessage = ErrorHandler.getUserFriendlyMessage(e);
         showCupertinoDialog(
           context: context,
           builder: (context) => CupertinoAlertDialog(
             title: const Text('Error'),
-            content: Text('Failed to generate ${contentType.replaceAll('_', ' ')}: $e'),
+            content: Text(errorMessage),
             actions: [
               CupertinoDialogAction(
                 onPressed: () => Navigator.pop(context),
@@ -165,69 +181,44 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
   }
 
   void _startPolling() {
-    // Polling is only used to check if background generation (from note creation) has completed
-    // This NEVER triggers regeneration - it only fetches from Supabase
-    _pollTimer?.cancel();
-    int pollCount = 0;
-    const maxPolls = 40; // 40 polls * 3 seconds = 2 minutes max
-    
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
-      if (widget.noteId == null) {
-        timer.cancel();
-        return;
-      }
+    if (widget.noteId == null) return;
 
-      pollCount++;
-      
-      // After 2 minutes of polling with no content, consider generation failed
-      if (pollCount >= maxPolls && !_hasContent) {
-        print('⏱️ [NoteViewScreen] Polling timeout - generation may have failed');
-        setState(() {
-          _isInitialGeneration = false; // Stop showing loading, allow generate buttons
-        });
-        timer.cancel();
-        return;
-      }
+    // Get note creation time
+    final appData = ref.read(appDataProvider);
+    final note = appData.notes.firstWhere(
+      (n) => n.id == widget.noteId,
+      orElse: () => Note(
+        id: widget.noteId!,
+        title: 'Note',
+        content: '',
+        createdAt: DateTime.now(),
+        documents: [],
+      ),
+    );
 
-      // If we have content, stop polling
-      if (_hasContent) {
-        timer.cancel();
-        return;
-      }
-
-      try {
-        // ONLY fetch from Supabase - never regenerate
-        final content = await SupabaseService().getStudyContent(widget.noteId!);
-        final hasContent = content.flashcards.isNotEmpty ||
-            content.quizQuestions.isNotEmpty ||
-            content.exercises.isNotEmpty ||
-            content.feynmanTopics.isNotEmpty ||
-            content.summary.isNotEmpty;
-
-        if (hasContent && !_hasContent) {
-          print('✅ [NoteViewScreen] Study content detected during polling, updating UI');
+    // Start background polling service
+    // This continues even if widget is disposed or app goes to background
+    _pollingService.startPolling(
+      noteId: widget.noteId!,
+      noteCreatedAt: note.createdAt,
+      onContentFound: (content) {
+        // Callback when content is found
+        if (mounted && widget.noteId == note.id) {
+          AppLogger.success('Study content detected via background polling', tag: 'NoteViewScreen');
           setState(() {
             _studyContent = content;
             _loadingContent = false;
             _hasContent = true;
             _isInitialGeneration = false; // Generation completed
           });
-          timer.cancel();
-        } else if (!hasContent && _isInitialGeneration) {
-          // Still generating, update study content but keep loading state
-          setState(() {
-            _studyContent = content;
-          });
         }
-      } catch (e) {
-        print('⚠️ [NoteViewScreen] Error polling for study content: $e');
-      }
-    });
+      },
+      maxDuration: const Duration(minutes: 5), // Poll for up to 5 minutes
+    );
 
+    // Also set up a timeout to stop showing initial generation after 2 minutes
     Timer(const Duration(minutes: 2), () {
-      _pollTimer?.cancel();
-      // After 2 minutes, if still no content, stop showing loading
-      if (!_hasContent && _isInitialGeneration) {
+      if (mounted && !_hasContent && _isInitialGeneration) {
         setState(() {
           _isInitialGeneration = false;
         });
@@ -363,15 +354,15 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
     
     // Only show generate button if:
     // 1. Loading is complete (!_loadingContent)
-    // 2. We've attempted to load (_studyContent != null)
-    // 3. Content is actually empty
-    // 4. Not currently generating
-    // 5. Initial generation phase has ended (not in initial generation)
+    // 2. Content is actually empty
+    // 3. Not currently generating
+    // 4. Initial generation phase has ended (not in initial generation)
+    // 5. We've attempted to load (_studyContent != null) - either successfully or with error
     final shouldShowGenerate = !_loadingContent && 
-        _studyContent != null && 
         isEmpty && 
         !isGenerating &&
-        !_isInitialGeneration;
+        !_isInitialGeneration &&
+        (_studyContent != null); // Must have attempted to load
     
     if (shouldShowGenerate) {
       return Center(
@@ -522,10 +513,10 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
     }
     
     final shouldShowGenerate = !_loadingContent && 
-        _studyContent != null && 
         isEmpty && 
         !isGenerating &&
-        !_isInitialGeneration;
+        !_isInitialGeneration &&
+        (_studyContent != null); // Must have attempted to load
     
     if (shouldShowGenerate) {
       return Center(
@@ -674,10 +665,10 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
     }
     
     final shouldShowGenerate = !_loadingContent && 
-        _studyContent != null && 
         isEmpty && 
         !isGenerating &&
-        !_isInitialGeneration;
+        !_isInitialGeneration &&
+        (_studyContent != null); // Must have attempted to load
     
     if (shouldShowGenerate) {
       return Center(
@@ -826,10 +817,10 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
     }
     
     final shouldShowGenerate = !_loadingContent && 
-        _studyContent != null && 
         isEmpty && 
         !isGenerating &&
-        !_isInitialGeneration;
+        !_isInitialGeneration &&
+        (_studyContent != null); // Must have attempted to load
     
     if (shouldShowGenerate) {
       return Center(
@@ -978,10 +969,10 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
     }
     
     final shouldShowGenerate = !_loadingContent && 
-        _studyContent != null && 
         isEmpty && 
         !isGenerating &&
-        !_isInitialGeneration;
+        !_isInitialGeneration &&
+        (_studyContent != null); // Must have attempted to load
     
     if (shouldShowGenerate) {
       return Center(
@@ -1470,7 +1461,7 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.''';
           final parsed = jsonDecode(jsonObjectMatch.group(0)!) as Map<String, dynamic>;
           feedbackText = parsed['feedback'] as String?;
         } catch (e) {
-          print('Error parsing JSON: $e');
+          AppLogger.warning('Error parsing JSON', error: e, tag: 'NoteViewScreen');
         }
       }
       
@@ -1482,7 +1473,7 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.''';
             final parsed = jsonDecode(codeBlockMatch.group(1)!) as Map<String, dynamic>;
             feedbackText = parsed['feedback'] as String?;
           } catch (e) {
-            print('Error parsing JSON from code block: $e');
+            AppLogger.warning('Error parsing JSON from code block', error: e, tag: 'NoteViewScreen');
           }
         }
       }
@@ -1494,16 +1485,9 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.''';
       
       HapticFeedback.selectionClick();
     } catch (e) {
-      print('Error checking answer: $e');
-      String errorMessage = "I couldn't evaluate your answer at this moment.";
-      
-      if (e is RateLimitError) {
-        errorMessage = e.code == 'ACCOUNT_LIMIT_REACHED'
-            ? 'You have already used your one-time AI generation quota. Please check the solution manually.'
-            : 'Daily AI limit reached. Please try again tomorrow or check the solution manually.';
-      } else if (e.toString().contains('Rate limit') || e.toString().contains('limit')) {
-        errorMessage = 'Rate limit reached. Please try again later or check the solution manually.';
-      }
+      AppLogger.error('Error checking answer', error: e, tag: 'NoteViewScreen');
+      ErrorHandler.logError(e, context: 'Checking answer', tag: 'NoteViewScreen');
+      final errorMessage = ErrorHandler.getUserFriendlyMessage(e);
       
       setState(() {
         _feedback = errorMessage;
@@ -1850,8 +1834,11 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
         });
       }
     } catch (e) {
+      AppLogger.error('Error processing Feynman explanation', error: e, tag: 'NoteViewScreen');
+      ErrorHandler.logError(e, context: 'Processing Feynman explanation', tag: 'NoteViewScreen');
+      final errorMessage = ErrorHandler.getUserFriendlyMessage(e);
       setState(() {
-        _feedback = "I couldn't process your explanation at this moment. Please try again.";
+        _feedback = errorMessage;
       });
     } finally {
       setState(() {
@@ -2052,7 +2039,7 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      Expanded(
+                      Flexible(
                         child: CupertinoButton(
                           onPressed: _resetTopic,
                           color: const Color(0xFF2A2A2A),
@@ -2060,7 +2047,7 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Expanded(
+                      Flexible(
                         child: CupertinoButton.filled(
                           onPressed: () {
                             setState(() {

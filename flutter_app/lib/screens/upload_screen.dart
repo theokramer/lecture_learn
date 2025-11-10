@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
 import '../providers/app_data_provider.dart';
 import '../services/ai_gateway_service.dart';
+import '../utils/error_handler.dart';
 
 class UploadScreen extends ConsumerStatefulWidget {
   final String? folderId;
@@ -38,12 +39,20 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         });
       }
     } catch (e) {
+      ErrorHandler.logError(e, context: 'Picking files', tag: 'UploadScreen');
       if (mounted) {
+        final errorMessage = ErrorHandler.getUserFriendlyMessage(e);
         showCupertinoDialog(
           context: context,
           builder: (context) => CupertinoAlertDialog(
             title: const Text('Error'),
-            content: Text('Failed to pick files: $e'),
+            content: Text(errorMessage),
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
           ),
         );
       }
@@ -84,18 +93,13 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         }
       }
     } catch (e) {
+      ErrorHandler.logError(e, context: 'Uploading files', tag: 'UploadScreen');
       if (mounted) {
         setState(() {
           _isUploading = false;
         });
 
-        String errorMessage = 'Failed to upload files. Please try again.';
-        if (e is RateLimitError) {
-          errorMessage = e.code == 'ACCOUNT_LIMIT_REACHED'
-              ? 'You have already used your one-time AI generation quota.'
-              : 'Daily AI limit reached. Please try again tomorrow.';
-        }
-
+        final errorMessage = ErrorHandler.getUserFriendlyMessage(e);
         showCupertinoDialog(
           context: context,
           builder: (context) => CupertinoAlertDialog(

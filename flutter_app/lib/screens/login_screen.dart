@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:animations/animations.dart';
 import '../providers/auth_provider.dart';
+import '../utils/error_handler.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -77,8 +78,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
       }
     } catch (e) {
       HapticFeedback.heavyImpact();
+      ErrorHandler.logError(e, context: 'Sign in', tag: 'LoginScreen');
       setState(() {
-        _error = e.toString();
+        _error = ErrorHandler.getUserFriendlyMessage(e);
         _isLoading = false;
       });
     }
@@ -115,8 +117,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
       }
     } catch (e) {
       HapticFeedback.heavyImpact();
+      ErrorHandler.logError(e, context: 'Sign in', tag: 'LoginScreen');
       setState(() {
-        _error = e.toString();
+        _error = ErrorHandler.getUserFriendlyMessage(e);
         _isLoading = false;
       });
     }

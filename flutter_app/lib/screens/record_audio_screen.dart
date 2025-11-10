@@ -9,6 +9,8 @@ import 'package:go_router/go_router.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import '../utils/logger.dart';
+import '../utils/error_handler.dart';
 
 class RecordAudioScreen extends ConsumerStatefulWidget {
   final String? folderId;
@@ -191,7 +193,7 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
       return;
     }
 
-    print('Processing recording: ${file.path}, size: $fileSize bytes');
+    AppLogger.debug('Processing recording: ${file.path}, size: $fileSize bytes', tag: 'RecordAudioScreen');
 
     try {
       // Navigate to processing screen
@@ -205,12 +207,20 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
         });
       }
     } catch (e) {
+      ErrorHandler.logError(e, context: 'Processing recording', tag: 'RecordAudioScreen');
       if (mounted) {
+        final errorMessage = ErrorHandler.getUserFriendlyMessage(e);
         showCupertinoDialog(
           context: context,
           builder: (context) => CupertinoAlertDialog(
             title: const Text('Error'),
-            content: Text('Failed to process recording: $e'),
+            content: Text(errorMessage),
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
           ),
         );
       }

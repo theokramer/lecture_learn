@@ -1,3 +1,5 @@
+import '../utils/logger.dart';
+
 enum StudyMode {
   summary,
   feynman,
@@ -37,7 +39,7 @@ class StudyContent {
                   try {
                     return Flashcard.fromJson(f as Map<String, dynamic>);
                   } catch (e) {
-                    print('Error parsing flashcard: $e');
+                    AppLogger.warning('Error parsing flashcard', error: e, tag: 'StudyContent');
                     return null;
                   }
                 })
@@ -45,7 +47,7 @@ class StudyContent {
                 .toList();
           }
         } catch (e) {
-          print('Error parsing flashcards array: $e');
+          AppLogger.warning('Error parsing flashcards array', error: e, tag: 'StudyContent');
         }
       }
 
@@ -61,7 +63,7 @@ class StudyContent {
                   try {
                     return QuizQuestion.fromJson(q as Map<String, dynamic>);
                   } catch (e) {
-                    print('Error parsing quiz question: $e');
+                    AppLogger.warning('Error parsing quiz question', error: e, tag: 'StudyContent');
                     return null;
                   }
                 })
@@ -69,7 +71,7 @@ class StudyContent {
                 .toList();
           }
         } catch (e) {
-          print('Error parsing quiz questions array: $e');
+          AppLogger.warning('Error parsing quiz questions array', error: e, tag: 'StudyContent');
         }
       }
 
@@ -85,7 +87,7 @@ class StudyContent {
                   try {
                     return Exercise.fromJson(e as Map<String, dynamic>);
                   } catch (e) {
-                    print('Error parsing exercise: $e');
+                    AppLogger.warning('Error parsing exercise', error: e, tag: 'StudyContent');
                     return null;
                   }
                 })
@@ -93,7 +95,7 @@ class StudyContent {
                 .toList();
           }
         } catch (e) {
-          print('Error parsing exercises array: $e');
+          AppLogger.warning('Error parsing exercises array', error: e, tag: 'StudyContent');
         }
       }
 
@@ -109,7 +111,7 @@ class StudyContent {
                   try {
                     return FeynmanTopic.fromJson(t as Map<String, dynamic>);
                   } catch (e) {
-                    print('Error parsing feynman topic: $e');
+                    AppLogger.warning('Error parsing feynman topic', error: e, tag: 'StudyContent');
                     return null;
                   }
                 })
@@ -117,7 +119,7 @@ class StudyContent {
                 .toList();
           }
         } catch (e) {
-          print('Error parsing feynman topics array: $e');
+          AppLogger.warning('Error parsing feynman topics array', error: e, tag: 'StudyContent');
         }
       }
 
@@ -129,7 +131,7 @@ class StudyContent {
         feynmanTopics: parsedFeynmanTopics,
       );
     } catch (e) {
-      print('Error parsing StudyContent: $e');
+      AppLogger.error('Error parsing StudyContent', error: e, tag: 'StudyContent');
       // Return empty content on error rather than crashing
       return StudyContent();
     }
