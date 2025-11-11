@@ -75,4 +75,5 @@ flutter:
     - .env
     - assets/images/
     - assets/icons/
+    - assets/mascot/
 

@@ -6,6 +6,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/note_view_screen.dart';
 import 'screens/note_creation_screen.dart';
 import 'screens/record_audio_screen.dart';
@@ -151,6 +152,10 @@ final _router = GoRouter(
       builder: (context, state) => const SplashScreen(),
     ),
     GoRoute(
+      path: '/onboarding',
+      builder: (context, state) => const OnboardingScreen(),
+    ),
+    GoRoute(
       path: '/login',
       builder: (context, state) => const LoginScreen(),
     ),
@@ -216,8 +221,8 @@ final _router = GoRouter(
   redirect: (context, state) {
     final currentLocation = state.matchedLocation;
     
-    // Allow splash screen to handle its own navigation
-    if (currentLocation == '/splash') {
+    // Allow splash and onboarding screens to handle their own navigation
+    if (currentLocation == '/splash' || currentLocation == '/onboarding') {
       return null;
     }
     

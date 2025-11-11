@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 import '../utils/logger.dart';
+import '../services/onboarding_service.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -62,7 +63,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
     if (!mounted) return;
 
-    // Wait for auth state to resolve (with timeout)
+    // First check if onboarding is completed
+    final isOnboardingCompleted = await OnboardingService.isOnboardingCompleted();
+    
+    if (!isOnboardingCompleted) {
+      AppLogger.info('Onboarding not completed, navigating to /onboarding', tag: 'SplashScreen');
+      if (mounted) {
+        context.go('/onboarding');
+      }
+      return;
+    }
+
+    // If onboarding is completed, check auth state
     int attempts = 0;
     const maxAttempts = 10;
     
