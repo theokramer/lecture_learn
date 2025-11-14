@@ -15,25 +15,25 @@ class OnboardingColors {
   static const Color backgroundColor = Color(0xFF000000); // Pure black
   
   // Button gradient colors (Continue button, Get Started, etc.)
-  // Rich 3-color gradient with darker cyan/teal theme
+  // Vibrant teal to darker blue-green gradient (matching the image)
   static const List<Color> buttonGradientColors = [
-    Color(0xFF0891B2), // Darker cyan
-    Color(0xFF0E7490), // Even darker cyan
-    Color(0xFF155E75), // Darkest cyan
+        Color(0xFFffb000), // Purple
+    Color(0xFFE85E5A), // Darker purple
+
   ];
   
   // Option button gradient colors (when selected)
-  // Distinct emerald/green gradient for answer buttons
+  // Colorful but subtle purple gradient for answer buttons
   static const List<Color> optionButtonGradientColors = [
-    Color(0xFF10B981), // Emerald
-    Color(0xFF059669), // Darker emerald
+    Color(0xFFbc003b), // Vibrant teal
+    Color.fromARGB(255, 148, 0, 47), // Darker blue-green
   ];
   
   // Progress bar gradient colors
-  // Subtle 2-color gradient matching continue button
+  // Matching the continue button teal/blue-green gradient
   static const List<Color> progressBarGradientColors = [
-    Color(0xFF6366F1), // Indigo
-    Color(0xFF818CF8), // Lighter indigo
+        Color(0xFFffb000), // Purple
+    Color(0xFFff7500), // Darker purple
   ];
   
   // Notification button gradient
@@ -52,6 +52,6 @@ class OnboardingColors {
   static const Color borderColor = Color(0xFF2A2A2A);
   
   // Checkmark color in option buttons
-  static const Color checkmarkColor = Color(0xFF10B981); // Emerald to match option buttons
+  static const Color checkmarkColor = Color(0xFF8B5CF6); // Purple to match option buttons
 }
 

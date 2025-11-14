@@ -257,18 +257,16 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
             Navigator.of(context).pop();
           },
         ),
-        middle: Flexible(
-          child: Text(
+        middle: Text(
           note.title,
           style: const TextStyle(
             color: Color(0xFFFFFFFF),
             fontSize: 17,
-              fontWeight: FontWeight.bold,
-              letterSpacing: -0.3,
+            fontWeight: FontWeight.bold,
+            letterSpacing: -0.3,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          ),
         ),
       ),
       child: SafeArea(
@@ -319,7 +317,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
 
   Widget _buildSummaryView() {
     final isGenerating = _generatingContentType == 'summary';
-    final isEmpty = _studyContent == null || _studyContent!.summary.isEmpty;
+    final isEmpty = _studyContent?.summary.isEmpty ?? true;
     
     // Show loading during initial generation (first 2 minutes after note creation)
     if (_isInitialGeneration && isEmpty && !isGenerating) {
@@ -345,6 +343,28 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
               style: TextStyle(
                 color: const Color(0xFF9CA3AF).withOpacity(0.7),
                 fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // Show loading screen while loading
+    if (_loadingContent) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CupertinoActivityIndicator(
+              radius: 15,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Loading summary...',
+              style: TextStyle(
+                color: Color(0xFF9CA3AF),
+                fontSize: 16,
               ),
             ),
           ],
@@ -469,6 +489,42 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
       );
     }
 
+    // Safety check: ensure _studyContent is not null and has content
+    if (_studyContent == null || _studyContent!.summary.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                CupertinoIcons.doc_text,
+                size: 64,
+                color: Color(0xFF9CA3AF),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'No Summary Available',
+                style: TextStyle(
+                  color: Color(0xFFFFFFFF),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Generate a summary to get started',
+                style: TextStyle(
+                  color: const Color(0xFF9CA3AF).withOpacity(0.8),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: HtmlWithLatexRenderer(
@@ -479,7 +535,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
 
   Widget _buildFlashcardsView() {
     final isGenerating = _generatingContentType == 'flashcards';
-    final isEmpty = _studyContent == null || _studyContent!.flashcards.isEmpty;
+    final isEmpty = _studyContent?.flashcards.isEmpty ?? true;
     
     // Show loading during initial generation
     if (_isInitialGeneration && isEmpty && !isGenerating) {
@@ -505,6 +561,28 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
               style: TextStyle(
                 color: const Color(0xFF9CA3AF).withOpacity(0.7),
                 fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // Show loading screen while loading
+    if (_loadingContent) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CupertinoActivityIndicator(
+              radius: 15,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Loading flashcards...',
+              style: TextStyle(
+                color: Color(0xFF9CA3AF),
+                fontSize: 16,
               ),
             ),
           ],
@@ -623,6 +701,42 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
       );
     }
 
+    // Safety check: ensure _studyContent is not null and has content
+    if (_studyContent == null || _studyContent!.flashcards.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                CupertinoIcons.collections,
+                size: 64,
+                color: Color(0xFF9CA3AF),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'No Flashcards Available',
+                style: TextStyle(
+                  color: Color(0xFFFFFFFF),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Generate flashcards to get started',
+                style: TextStyle(
+                  color: const Color(0xFF9CA3AF).withOpacity(0.8),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return _FlashcardViewer(
       flashcards: _studyContent!.flashcards,
       modeColor: StudyModeColors.getColor(StudyMode.flashcards),
@@ -631,7 +745,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
 
   Widget _buildQuizView() {
     final isGenerating = _generatingContentType == 'quiz';
-    final isEmpty = _studyContent == null || _studyContent!.quizQuestions.isEmpty;
+    final isEmpty = _studyContent?.quizQuestions.isEmpty ?? true;
     
     // Show loading during initial generation
     if (_isInitialGeneration && isEmpty && !isGenerating) {
@@ -657,6 +771,28 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
               style: TextStyle(
                 color: const Color(0xFF9CA3AF).withOpacity(0.7),
                 fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // Show loading screen while loading
+    if (_loadingContent) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CupertinoActivityIndicator(
+              radius: 15,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Loading quiz...',
+              style: TextStyle(
+                color: Color(0xFF9CA3AF),
+                fontSize: 16,
               ),
             ),
           ],
@@ -775,6 +911,42 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
       );
     }
 
+    // Safety check: ensure _studyContent is not null and has content
+    if (_studyContent == null || _studyContent!.quizQuestions.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                CupertinoIcons.question_circle,
+                size: 64,
+                color: Color(0xFF9CA3AF),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'No Quiz Available',
+                style: TextStyle(
+                  color: Color(0xFFFFFFFF),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Generate quiz questions to get started',
+                style: TextStyle(
+                  color: const Color(0xFF9CA3AF).withOpacity(0.8),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return _QuizViewer(
       questions: _studyContent!.quizQuestions,
       modeColor: StudyModeColors.getColor(StudyMode.quiz),
@@ -783,7 +955,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
 
   Widget _buildExercisesView() {
     final isGenerating = _generatingContentType == 'exercises';
-    final isEmpty = _studyContent == null || _studyContent!.exercises.isEmpty;
+    final isEmpty = _studyContent?.exercises.isEmpty ?? true;
     
     // Show loading during initial generation
     if (_isInitialGeneration && isEmpty && !isGenerating) {
@@ -809,6 +981,28 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
               style: TextStyle(
                 color: const Color(0xFF9CA3AF).withOpacity(0.7),
                 fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // Show loading screen while loading
+    if (_loadingContent) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CupertinoActivityIndicator(
+              radius: 15,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Loading exercises...',
+              style: TextStyle(
+                color: Color(0xFF9CA3AF),
+                fontSize: 16,
               ),
             ),
           ],
@@ -927,6 +1121,42 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
       );
     }
 
+    // Safety check: ensure _studyContent is not null and has content
+    if (_studyContent == null || _studyContent!.exercises.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                CupertinoIcons.pencil_ellipsis_rectangle,
+                size: 64,
+                color: Color(0xFF9CA3AF),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'No Exercises Available',
+                style: TextStyle(
+                  color: Color(0xFFFFFFFF),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Generate exercises to get started',
+                style: TextStyle(
+                  color: const Color(0xFF9CA3AF).withOpacity(0.8),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return _ExercisesViewer(
       exercises: _studyContent!.exercises,
       modeColor: StudyModeColors.getColor(StudyMode.exercises),
@@ -935,7 +1165,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
 
   Widget _buildFeynmanView() {
     final isGenerating = _generatingContentType == 'feynman';
-    final isEmpty = _studyContent == null || _studyContent!.feynmanTopics.isEmpty;
+    final isEmpty = _studyContent?.feynmanTopics.isEmpty ?? true;
     
     // Show loading during initial generation
     if (_isInitialGeneration && isEmpty && !isGenerating) {
@@ -961,6 +1191,28 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
               style: TextStyle(
                 color: const Color(0xFF9CA3AF).withOpacity(0.7),
                 fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // Show loading screen while loading
+    if (_loadingContent) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CupertinoActivityIndicator(
+              radius: 15,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Loading Feynman topics...',
+              style: TextStyle(
+                color: Color(0xFF9CA3AF),
+                fontSize: 16,
               ),
             ),
           ],
@@ -1075,6 +1327,42 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
               ),
             ),
           ],
+        ),
+      );
+    }
+
+    // Safety check: ensure _studyContent is not null and has content
+    if (_studyContent == null || _studyContent!.feynmanTopics.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                CupertinoIcons.lightbulb,
+                size: 64,
+                color: Color(0xFF9CA3AF),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'No Feynman Topics Available',
+                style: TextStyle(
+                  color: Color(0xFFFFFFFF),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Generate topics to get started',
+                style: TextStyle(
+                  color: const Color(0xFF9CA3AF).withOpacity(0.8),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }

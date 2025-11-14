@@ -1,6 +1,6 @@
-# iOS Deployment Guide - Nano AI
+# iOS Deployment Guide - RocketLearn
 
-This guide walks you through building and deploying the Nano AI React Native app to the iOS App Store.
+This guide walks you through building and deploying the RocketLearn React Native app to the iOS App Store.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ This guide walks you through building and deploying the Nano AI React Native app
 
 2. Initialize React Native (if not already done):
    ```bash
-   npx react-native init NanoAI --directory mobile --template react-native-template-typescript
+   npx react-native init RocketLearn --directory mobile --template react-native-template-typescript
    ```
 
 3. Navigate to mobile directory:
@@ -52,28 +52,28 @@ cd ..
 
 ### 2.2 Configure Info.plist
 
-Edit `mobile/ios/NanoAI/Info.plist` and add required permissions:
+Edit `mobile/ios/RocketLearn/Info.plist` and add required permissions:
 
 ```xml
 <key>NSCameraUsageDescription</key>
-<string>Nano AI needs access to your camera to scan documents and capture images for your notes.</string>
+<string>RocketLearn needs access to your camera to scan documents and capture images for your notes.</string>
 
 <key>NSMicrophoneUsageDescription</key>
-<string>Nano AI needs access to your microphone to record audio notes.</string>
+<string>RocketLearn needs access to your microphone to record audio notes.</string>
 
 <key>NSPhotoLibraryUsageDescription</key>
-<string>Nano AI needs access to your photo library to import images and documents.</string>
+<string>RocketLearn needs access to your photo library to import images and documents.</string>
 
 <key>NSPhotoLibraryAddUsageDescription</key>
-<string>Nano AI needs permission to save images to your photo library.</string>
+<string>RocketLearn needs permission to save images to your photo library.</string>
 ```
 
 ### 2.3 Configure App Identifier
 
-1. Open `mobile/ios/NanoAI.xcworkspace` in Xcode
+1. Open `mobile/ios/RocketLearn.xcworkspace` in Xcode
 2. Select project in Navigator
 3. Go to **Signing & Capabilities**
-4. Set **Bundle Identifier**: `com.yourcompany.nanoai` (replace with your identifier)
+4. Set **Bundle Identifier**: `com.yourcompany.rocketlearn` (replace with your identifier)
 5. Select your **Team** (Apple Developer account)
 
 ## Step 3: Configure App Store Connect
@@ -84,10 +84,10 @@ Edit `mobile/ios/NanoAI/Info.plist` and add required permissions:
 2. Click **My Apps** → **+**
 3. Fill in app information:
    - **Platform**: iOS
-   - **Name**: Nano AI
+   - **Name**: RocketLearn
    - **Primary Language**: English
    - **Bundle ID**: Select your identifier
-   - **SKU**: Unique identifier (e.g., `nano-ai-001`)
+   - **SKU**: Unique identifier (e.g., `rocket-learn-001`)
    - **User Access**: Full Access
 
 ### 3.2 Configure App Information
@@ -235,7 +235,7 @@ cd ..
 This is a common issue with React Native Hermes. Fix it by configuring dSYM generation:
 
 1. In Xcode, select your project in Navigator
-2. Select the **NanoAI** target
+2. Select the **RocketLearn** target
 3. Go to **Build Settings** tab
 4. Search for "Debug Information Format"
 5. Set **Debug Information Format** to **DWARF with dSYM File** for **Release** configuration

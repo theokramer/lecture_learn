@@ -19,6 +19,8 @@ import 'models/user.dart';
 import 'utils/logger.dart';
 import 'utils/environment.dart';
 import 'dart:io';
+import 'package:superwallkit_flutter/superwallkit_flutter.dart';
+import 'services/revenuecat_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,6 +61,33 @@ void main() async {
     
     // OpenAI key is stored in Supabase, so we don't initialize it here
     // The app will use Supabase Edge Functions or RPC calls for OpenAI features
+    
+    // Initialize Superwall
+    try {
+      await Superwall.configure('pk_1YJ5Wv8Q-S9nHoSylZRJe');
+      AppLogger.info('Superwall initialized successfully', tag: 'main');
+    } catch (e) {
+      AppLogger.error('Failed to initialize Superwall', error: e, tag: 'main');
+    }
+    
+    // Initialize RevenueCat
+    AppLogger.info('🔍 [Main] Starting RevenueCat initialization...', tag: 'main');
+    try {
+      final initStart = DateTime.now();
+      await RevenueCatService().initialize();
+      final initDuration = DateTime.now().difference(initStart).inMilliseconds;
+      AppLogger.success('✅ [Main] RevenueCat initialized successfully in ${initDuration}ms', tag: 'main');
+    } catch (e, stackTrace) {
+      AppLogger.error('❌ [Main] Failed to initialize RevenueCat', error: e, stackTrace: stackTrace, tag: 'main');
+      AppLogger.error('❌ [Main] Error type: ${e.runtimeType}', tag: 'main');
+      AppLogger.error('❌ [Main] Error details: ${e.toString()}', tag: 'main');
+      
+      if (e is PlatformException || e.toString().contains('MissingPluginException') || e.toString().contains('setupPurchases')) {
+        AppLogger.error('❌ [Main] MissingPluginException - Native plugin not linked!', tag: 'main');
+        AppLogger.error('❌ [Main] Solution: Run "flutter clean && flutter pub get && cd ios && pod install"', tag: 'main');
+        AppLogger.error('❌ [Main] Then rebuild the app completely (not hot reload)', tag: 'main');
+      }
+    }
   }
 
   // Set iOS status bar style
@@ -114,7 +143,7 @@ class MyApp extends ConsumerWidget {
     });
 
     return MaterialApp.router(
-      title: 'Nano AI',
+      title: 'RocketLearn',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

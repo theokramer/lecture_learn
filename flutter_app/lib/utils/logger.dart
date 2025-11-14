@@ -4,7 +4,7 @@ import 'dart:convert';
 /// Production-ready logging service
 /// Replaces print() statements with structured logging
 class AppLogger {
-  static const String _tag = '[NanoAI]';
+  static const String _tag = '[RocketLearn]';
   
   /// Debug logs - only shown in debug mode
   static void debug(String message, {Map<String, dynamic>? context, String? tag}) {

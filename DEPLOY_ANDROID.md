@@ -1,6 +1,6 @@
-# Android Deployment Guide - Nano AI
+# Android Deployment Guide - RocketLearn
 
-This guide walks you through building and deploying the Nano AI React Native app to the Google Play Store.
+This guide walks you through building and deploying the RocketLearn React Native app to the Google Play Store.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ This guide walks you through building and deploying the Nano AI React Native app
 
 2. Initialize React Native (if not already done):
    ```bash
-   npx react-native init NanoAI --directory mobile --template react-native-template-typescript
+   npx react-native init RocketLearn --directory mobile --template react-native-template-typescript
    ```
 
 3. Navigate to mobile directory:
@@ -73,7 +73,7 @@ android {
     compileSdkVersion 34
     
     defaultConfig {
-        applicationId "com.yourcompany.nanoai"
+        applicationId "com.yourcompany.rocketlearn"
         minSdkVersion 23
         targetSdkVersion 34
         versionCode 1
@@ -107,7 +107,7 @@ android {
 1. Generate a keystore file:
    ```bash
    cd android/app
-   keytool -genkeypair -v -storetype PKCS12 -keystore nano-ai-release-key.keystore -alias nano-ai-key-alias -keyalg RSA -keysize 2048 -validity 10000
+   keytool -genkeypair -v -storetype PKCS12 -keystore rocket-learn-release-key.keystore -alias rocket-learn-key-alias -keyalg RSA -keysize 2048 -validity 10000
    ```
 
 2. **IMPORTANT**: 
@@ -118,8 +118,8 @@ android {
 
 3. Create `mobile/android/gradle.properties`:
    ```properties
-   MYAPP_RELEASE_STORE_FILE=nano-ai-release-key.keystore
-   MYAPP_RELEASE_KEY_ALIAS=nano-ai-key-alias
+   MYAPP_RELEASE_STORE_FILE=rocket-learn-release-key.keystore
+   MYAPP_RELEASE_KEY_ALIAS=rocket-learn-key-alias
    MYAPP_RELEASE_STORE_PASSWORD=your_store_password
    MYAPP_RELEASE_KEY_PASSWORD=your_key_password
    ```
@@ -136,7 +136,7 @@ Create/edit `mobile/android/app/proguard-rules.pro`:
 -keep class com.facebook.hermes.** { *; }
 
 # Keep your app classes
--keep class com.yourcompany.nanoai.** { *; }
+-keep class com.yourcompany.rocketlearn.** { *; }
 
 # Keep Supabase classes if needed
 -keep class io.supabase.** { *; }
@@ -149,7 +149,7 @@ Create/edit `mobile/android/app/proguard-rules.pro`:
 1. Go to [play.google.com/console](https://play.google.com/console)
 2. Click **Create app**
 3. Fill in:
-   - **App name**: Nano AI
+   - **App name**: RocketLearn
    - **Default language**: English
    - **App or game**: App
    - **Free or paid**: Select appropriate

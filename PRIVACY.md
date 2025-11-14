@@ -1,10 +1,10 @@
-# Privacy Policy - Nano AI
+# Privacy Policy - RocketLearn
 
 **Last Updated**: [Date]
 
 ## Introduction
 
-Nano AI ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our application.
+RocketLearn ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our application.
 
 ## Information We Collect
 
@@ -106,7 +106,7 @@ We retain your data for:
 
 ## Children's Privacy
 
-Nano AI is not intended for users under 13 years of age. We do not knowingly collect information from children under 13. If you believe we have collected such information, please contact us immediately.
+RocketLearn is not intended for users under 13 years of age. We do not knowingly collect information from children under 13. If you believe we have collected such information, please contact us immediately.
 
 ## International Data Transfers
 
@@ -147,7 +147,7 @@ For GDPR-related inquiries:
 
 ## Consent
 
-By using Nano AI, you consent to our Privacy Policy and agree to its terms.
+By using RocketLearn, you consent to our Privacy Policy and agree to its terms.
 
 ## Additional Information
 

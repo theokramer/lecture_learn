@@ -61,18 +61,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
     });
 
     try {
-      final success = await ref.read(authProvider.notifier).signIn(
+      final result = await ref.read(authProvider.notifier).signIn(
             _emailController.text.trim(),
             _passwordController.text,
           );
 
-      if (success && mounted) {
+      if (result['success'] == true && mounted) {
         HapticFeedback.mediumImpact();
         context.go('/home');
       } else {
         HapticFeedback.heavyImpact();
         setState(() {
-          _error = 'Invalid email or password';
+          _error = result['error'] ?? 'Invalid email or password';
           _isLoading = false;
         });
       }
@@ -107,7 +107,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
 
       if (result['success'] == true && mounted) {
         HapticFeedback.mediumImpact();
-        context.go('/home');
+        
+        // Check if email confirmation is required
+        if (result['requiresEmailConfirmation'] == true) {
+          final email = result['email'] ?? _emailController.text.trim();
+          setState(() {
+            _isLoading = false;
+            _error = null;
+          });
+          
+          // Show email confirmation dialog
+          showCupertinoDialog(
+            context: context,
+            builder: (context) => CupertinoAlertDialog(
+              title: const Text('Check Your Email'),
+              content: Text(
+                'We\'ve sent a confirmation email to $email. Please check your inbox and click the confirmation link to activate your account.',
+              ),
+              actions: [
+                CupertinoDialogAction(
+                  isDefaultAction: true,
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    // Switch to login mode after showing the message
+                    setState(() {
+                      _isSignUp = false;
+                    });
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          // Email already confirmed or confirmation not required, proceed to home
+          context.go('/home');
+        }
       } else {
         HapticFeedback.heavyImpact();
         setState(() {
@@ -117,7 +152,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
       }
     } catch (e) {
       HapticFeedback.heavyImpact();
-      ErrorHandler.logError(e, context: 'Sign in', tag: 'LoginScreen');
+      ErrorHandler.logError(e, context: 'Sign up', tag: 'LoginScreen');
       setState(() {
         _error = ErrorHandler.getUserFriendlyMessage(e);
         _isLoading = false;
@@ -145,7 +180,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
                   Hero(
                     tag: 'app_logo',
                     child: const Text(
-                      'Nano AI',
+                      'RocketLearn',
                       style: TextStyle(
                         fontSize: 52,
                         fontWeight: FontWeight.bold,

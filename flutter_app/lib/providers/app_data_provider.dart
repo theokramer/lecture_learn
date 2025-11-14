@@ -234,7 +234,10 @@ class AppDataNotifier extends Notifier<AppDataState> {
         // Extract content from file (matches website's UploadPage.tsx)
         try {
           final fileName = file.path.split('/').last;
+          final fileSize = await file.length();
           final mimeType = await _getMimeType(file);
+          
+          AppLogger.debug('Processing file: $fileName (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB, type: $mimeType)', tag: 'AppDataProvider');
           
           if (documentProcessor.isAudioFile(mimeType)) {
             // Audio file - transcribe using Edge Function
@@ -249,14 +252,27 @@ class AppDataNotifier extends Notifier<AppDataState> {
             combinedText += 'File: $fileName\n[Video file - audio extraction not yet implemented]\n\n';
           } else {
             // Document file (PDF, DOCX, PPTX, TXT, etc.) - extract text
+            AppLogger.debug('Extracting text from document: $fileName', tag: 'AppDataProvider');
             final text = await documentProcessor.processDocument(file);
+            final textLength = text.length;
+            AppLogger.debug('Extracted ${textLength} characters from $fileName', tag: 'AppDataProvider');
+            
+            if (text.trim().isEmpty) {
+              throw Exception('No text content found in file. The file may be empty, contain only images, or be in an unsupported format.');
+            }
+            
             combinedText += 'File: $fileName\n$text\n\n';
           }
         } catch (fileError) {
           AppLogger.error('Error processing file ${file.path}', error: fileError, tag: 'AppDataProvider');
-          // Continue with other files even if one fails
-          combinedText += 'File: ${file.path.split('/').last}\n[Error processing file: $fileError]\n\n';
+          // Re-throw the error so user knows which file failed
+          throw Exception('Failed to process file "${file.path.split('/').last}": $fileError');
         }
+      }
+
+      // Ensure we have content before creating note
+      if (combinedText.trim().isEmpty) {
+        throw Exception('No content extracted from uploaded files. Please ensure the files contain readable text.');
       }
 
       // Generate title using Supabase Edge Function (exactly like website)
@@ -268,8 +284,13 @@ class AppDataNotifier extends Notifier<AppDataState> {
         AppLogger.warning('Title generation failed (non-critical)', error: e, tag: 'AppDataProvider');
       }
 
-      // Create note
-      final noteId = await createNote(aiTitle ?? title, folderId: folderId, content: combinedText);
+      // Create note - ensure title is not empty
+      final finalTitle = (aiTitle ?? title).trim();
+      if (finalTitle.isEmpty) {
+        throw Exception('Note title cannot be empty');
+      }
+      
+      final noteId = await createNote(finalTitle, folderId: folderId, content: combinedText);
 
       // Create document records
       for (final metadata in fileMetadata) {
@@ -309,6 +330,10 @@ class AppDataNotifier extends Notifier<AppDataState> {
 
         AppLogger.info('Starting study content generation for note: $noteId', tag: 'AppDataProvider');
         AppLogger.debug('NOTE: This is only called during note creation, not when viewing notes', tag: 'AppDataProvider');
+        
+        // Detect language from content using AI
+        final detectedLanguage = await _aiGateway.detectLanguage(content);
+        AppLogger.info('Detected language: $detectedLanguage', tag: 'AppDataProvider');
 
         // Check existing study content to avoid regenerating
         final existing = await _supabase.getStudyContent(noteId);
@@ -344,7 +369,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
         
         // Generate summary if it doesn't exist
         if (!hasSummary) {
-          futures.add(_aiGateway.generateSummary(content, documents: documents, detailLevel: 'comprehensive').then((generatedSummary) {
+          futures.add(_aiGateway.generateSummary(content, documents: documents, detailLevel: 'comprehensive', language: detectedLanguage).then((generatedSummary) {
             return generatedSummary; // Return the summary string
           }).catchError((e) {
             AppLogger.error('Error generating summary', error: e, tag: 'AppDataProvider');
@@ -353,7 +378,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
         }
 
         if (!hasFlashcards) {
-          futures.add(_aiGateway.generateFlashcards(content, count: 20).then((data) {
+          futures.add(_aiGateway.generateFlashcards(content, count: 20, language: detectedLanguage).then((data) {
             return data.asMap().entries.map((entry) {
               final card = entry.value;
               return Flashcard(
@@ -369,7 +394,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
         }
 
         if (!hasQuiz) {
-          futures.add(_aiGateway.generateQuiz(content, count: 15).then((data) {
+          futures.add(_aiGateway.generateQuiz(content, count: 15, language: detectedLanguage).then((data) {
             return data.asMap().entries.map((entry) {
               final question = entry.value;
               return QuizQuestion(
@@ -386,7 +411,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
         }
 
         if (!hasExercises) {
-          futures.add(_aiGateway.generateExercises(content, count: 10).then((data) {
+          futures.add(_aiGateway.generateExercises(content, count: 10, language: detectedLanguage).then((data) {
             return data.asMap().entries.map((entry) {
               final exercise = entry.value;
               return Exercise(
@@ -402,7 +427,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
         }
 
         if (!hasFeynmanTopics) {
-          futures.add(_aiGateway.generateFeynmanTopics(content).then((data) {
+          futures.add(_aiGateway.generateFeynmanTopics(content, language: detectedLanguage).then((data) {
             return data.map((topic) {
               return FeynmanTopic(
                 id: topic['id'] as String,
@@ -488,6 +513,10 @@ class AppDataNotifier extends Notifier<AppDataState> {
       List<Exercise> exercises = existing.exercises;
       List<FeynmanTopic> feynmanTopics = existing.feynmanTopics;
 
+      // Detect language from content using AI
+      final detectedLanguage = await _aiGateway.detectLanguage(note.content);
+      AppLogger.info('Detected language: $detectedLanguage', tag: 'AppDataProvider');
+      
       // Generate the requested content type
       switch (contentType) {
         case 'summary':
@@ -496,12 +525,13 @@ class AppDataNotifier extends Notifier<AppDataState> {
               note.content,
               documents: documents,
               detailLevel: 'comprehensive',
+              language: detectedLanguage,
             );
           }
           break;
         case 'flashcards':
           if (flashcards.isEmpty) {
-            final data = await _aiGateway.generateFlashcards(note.content, count: 20);
+            final data = await _aiGateway.generateFlashcards(note.content, count: 20, language: detectedLanguage);
             flashcards = data.asMap().entries.map((entry) {
               final card = entry.value;
               return Flashcard(
@@ -514,7 +544,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
           break;
         case 'quiz':
           if (quizQuestions.isEmpty) {
-            final data = await _aiGateway.generateQuiz(note.content, count: 15);
+            final data = await _aiGateway.generateQuiz(note.content, count: 15, language: detectedLanguage);
             quizQuestions = data.asMap().entries.map((entry) {
               final question = entry.value;
               return QuizQuestion(
@@ -528,7 +558,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
           break;
         case 'exercises':
           if (exercises.isEmpty) {
-            final data = await _aiGateway.generateExercises(note.content, count: 10);
+            final data = await _aiGateway.generateExercises(note.content, count: 10, language: detectedLanguage);
             exercises = data.asMap().entries.map((entry) {
               final exercise = entry.value;
               return Exercise(
@@ -541,7 +571,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
           break;
         case 'feynman':
           if (feynmanTopics.isEmpty) {
-            final data = await _aiGateway.generateFeynmanTopics(note.content);
+            final data = await _aiGateway.generateFeynmanTopics(note.content, language: detectedLanguage);
             feynmanTopics = data.map((topic) {
               return FeynmanTopic(
                 id: topic['id'] as String,

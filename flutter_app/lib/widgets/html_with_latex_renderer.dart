@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
+import '../utils/study_mode_colors.dart';
+import '../models/study_content.dart';
 
 /// Widget that renders HTML content with LaTeX math formula support
 /// Matches the website's MarkdownRenderer behavior
@@ -70,6 +72,7 @@ class HtmlWithLatexRenderer extends StatelessWidget {
         ),
         'blockquote': Style(
           color: const Color(0xFFD1D5DB),
+          backgroundColor: Colors.transparent, // Remove any background color
           border: Border(
             left: BorderSide(
               color: const Color(0xFFB85A3A),
@@ -86,15 +89,15 @@ class HtmlWithLatexRenderer extends StatelessWidget {
         ),
         'strong': Style(
           fontWeight: FontWeight.bold,
-          color: const Color(0xFFFBBF24), // Amber color matching web
+          color: StudyModeColors.getColor(StudyMode.summary), // Blue color matching summary button
         ),
         'em': Style(
           fontStyle: FontStyle.italic,
           color: const Color(0xFFFFFFFF),
         ),
         'mark': Style(
-          backgroundColor: const Color(0xFFFEF3C7), // Light yellow background
-          color: const Color(0xFF92400E), // Dark brown text
+          backgroundColor: StudyModeColors.getColor(StudyMode.summary), // Summary button blue background
+          color: const Color(0xFFFFFFFF), // White text for contrast
           padding: HtmlPaddings.symmetric(horizontal: 2, vertical: 1),
         ),
         'table': Style(
@@ -163,7 +166,18 @@ class HtmlWithLatexRenderer extends StatelessWidget {
   String _processContent(String html) {
     String processed = html;
     
-    // First, process block math ($$...$$) to avoid conflicts with inline math
+    // First, process block math \[...\] (LaTeX block format)
+    // Match \[...\] patterns, handling multiline formulas
+    processed = processed.replaceAllMapped(
+      RegExp(r'\\\[([\s\S]*?)\\\]', multiLine: true),
+      (match) {
+        final formula = match.group(1)?.trim() ?? '';
+        // Wrap in a span with data attributes for custom rendering
+        return '<span data-latex="${_escapeHtml(formula)}" data-latex-type="block"></span>';
+      },
+    );
+    
+    // Then process block math ($$...$$) to avoid conflicts with inline math
     // Match $$...$$ patterns, handling multiline formulas
     processed = processed.replaceAllMapped(
       RegExp(r'\$\$([\s\S]*?)\$\$', multiLine: true),
@@ -174,7 +188,18 @@ class HtmlWithLatexRenderer extends StatelessWidget {
       },
     );
     
-    // Then process inline math ($...$)
+    // Then process inline math \(...\) (LaTeX inline format)
+    // Match \(...\) patterns
+    processed = processed.replaceAllMapped(
+      RegExp(r'\\\(([\s\S]*?)\\\)', multiLine: true),
+      (match) {
+        final formula = match.group(1)?.trim() ?? '';
+        // Wrap in a span with data attributes for custom rendering
+        return '<span data-latex="${_escapeHtml(formula)}" data-latex-type="inline"></span>';
+      },
+    );
+    
+    // Finally process inline math ($...$)
     // Match $...$ patterns, but not $$...$$ (already processed)
     processed = processed.replaceAllMapped(
       RegExp(r'(?<!\$)\$(?!\$)([^\$\n]+?)\$(?!\$)'),

@@ -3,6 +3,7 @@ import '../models/user.dart';
 import '../services/supabase_service.dart';
 import '../utils/logger.dart';
 import 'dart:async';
+import 'revenuecat_provider.dart';
 
 class AuthNotifier extends AsyncNotifier<User?> {
   final _supabase = SupabaseService();
@@ -54,7 +55,7 @@ class AuthNotifier extends AsyncNotifier<User?> {
     return user;
   }
 
-  Future<bool> signIn(String email, String password) async {
+  Future<Map<String, dynamic>> signIn(String email, String password) async {
     AppLogger.info('Sign in attempt for: $email', tag: 'AuthProvider');
     try {
       state = const AsyncLoading();
@@ -64,14 +65,48 @@ class AuthNotifier extends AsyncNotifier<User?> {
         AppLogger.success('Sign in successful for: ${user.email}', tag: 'AuthProvider');
         AppLogger.debug('Session should be saved by SupabaseService', tag: 'AuthProvider');
         state = AsyncData(user);
-        return true;
+        
+        // Set RevenueCat user ID
+        try {
+          final revenueCatNotifier = ref.read(revenueCatProvider.notifier);
+          await revenueCatNotifier.setUserId(user.id);
+        } catch (e) {
+          AppLogger.warning('Failed to set RevenueCat user ID', error: e, tag: 'AuthProvider');
+        }
+        
+        return {'success': true};
       }
+      
+      // Check if email confirmation is required
+      if (response.user != null && response.session == null) {
+        final isEmailConfirmed = response.user!.emailConfirmedAt != null;
+        if (!isEmailConfirmed) {
+          AppLogger.warning('Sign in failed: email not confirmed for: $email', tag: 'AuthProvider');
+          return {
+            'success': false,
+            'requiresEmailConfirmation': true,
+            'error': 'Please check your email and confirm your account before signing in.',
+          };
+        }
+      }
+      
       AppLogger.warning('Sign in failed: no user or session in response', tag: 'AuthProvider');
-      return false;
+      return {'success': false, 'error': 'Invalid email or password'};
     } catch (e, stackTrace) {
       AppLogger.error('Sign in error', error: e, stackTrace: stackTrace, tag: 'AuthProvider');
       state = AsyncError(e, stackTrace);
-      return false;
+      
+      // Check if error is about email confirmation
+      final errorMsg = e.toString().toLowerCase();
+      if (errorMsg.contains('email not confirmed') || errorMsg.contains('email_not_confirmed')) {
+        return {
+          'success': false,
+          'requiresEmailConfirmation': true,
+          'error': 'Please check your email and confirm your account before signing in.',
+        };
+      }
+      
+      return {'success': false, 'error': 'Invalid email or password'};
     }
   }
 
@@ -80,13 +115,39 @@ class AuthNotifier extends AsyncNotifier<User?> {
     try {
       state = const AsyncLoading();
       final response = await _supabase.signUp(email, password, name);
+      
+      // Check if user was created but email confirmation is required
+      if (response.user != null && response.session == null) {
+        // Check if email is confirmed
+        final isEmailConfirmed = response.user!.emailConfirmedAt != null;
+        if (!isEmailConfirmed) {
+          AppLogger.info('Sign up successful but email confirmation required for: ${response.user!.email}', tag: 'AuthProvider');
+          state = const AsyncData(null); // Don't set user state until email is confirmed
+          return {
+            'success': true,
+            'requiresEmailConfirmation': true,
+            'email': email,
+          };
+        }
+      }
+      
       if (response.user != null && response.session != null) {
         final user = User.fromJson(response.user!.toJson());
         AppLogger.success('Sign up successful for: ${user.email}', tag: 'AuthProvider');
         AppLogger.debug('Session should be saved by SupabaseService', tag: 'AuthProvider');
         state = AsyncData(user);
+        
+        // Set RevenueCat user ID
+        try {
+          final revenueCatNotifier = ref.read(revenueCatProvider.notifier);
+          await revenueCatNotifier.setUserId(user.id);
+        } catch (e) {
+          AppLogger.warning('Failed to set RevenueCat user ID', error: e, tag: 'AuthProvider');
+        }
+        
         return {'success': true};
       }
+      
       AppLogger.warning('Sign up completed but no session (may require email confirmation)', tag: 'AuthProvider');
       return {'success': false, 'error': 'Sign up failed'};
     } catch (e, stackTrace) {
@@ -105,6 +166,15 @@ class AuthNotifier extends AsyncNotifier<User?> {
 
   Future<void> signOut() async {
     AppLogger.info('Sign out requested', tag: 'AuthProvider');
+    
+    // Log out from RevenueCat
+    try {
+      final revenueCatNotifier = ref.read(revenueCatProvider.notifier);
+      await revenueCatNotifier.logOut();
+    } catch (e) {
+      AppLogger.warning('Failed to log out from RevenueCat', error: e, tag: 'AuthProvider');
+    }
+    
     await _supabase.signOut();
     // Clear the auth state - Supabase will also clear the persisted session
     AppLogger.success('Sign out complete, state cleared', tag: 'AuthProvider');

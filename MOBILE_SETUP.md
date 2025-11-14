@@ -1,6 +1,6 @@
 # React Native Mobile App Setup Guide
 
-This guide explains how to set up the React Native mobile app for Nano AI.
+This guide explains how to set up the React Native mobile app for RocketLearn.
 
 ## Overview
 
@@ -29,7 +29,7 @@ react-learning-notes/
 
 ```bash
 # From project root
-npx react-native@latest init NanoAI --directory mobile --template react-native-template-typescript
+npx react-native@latest init RocketLearn --directory mobile --template react-native-template-typescript
 
 cd mobile
 ```

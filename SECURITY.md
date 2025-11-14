@@ -1,8 +1,8 @@
-# Security Documentation - Nano AI
+# Security Documentation - RocketLearn
 
 ## Overview
 
-This document outlines the security architecture, practices, and procedures for Nano AI.
+This document outlines the security architecture, practices, and procedures for RocketLearn.
 
 ## Security Architecture
 

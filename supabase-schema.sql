@@ -1,4 +1,4 @@
--- Supabase Database Schema for Nano AI App
+-- Supabase Database Schema for RocketLearn App
 -- Run this in your Supabase SQL Editor to create the necessary tables
 --
 -- IMPORTANT: After running this schema, also run:

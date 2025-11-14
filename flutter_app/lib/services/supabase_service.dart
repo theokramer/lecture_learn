@@ -255,13 +255,78 @@ class SupabaseService {
   }
 
   Future<Note> createNote(String userId, String title, String? folderId, {String content = ''}) async {
-    final response = await client.from('notes').insert({
+    // Ensure all required fields are present and valid
+    final insertData = <String, dynamic>{
       'user_id': userId,
-      'title': title,
-      'folder_id': folderId,
-      'content': content,
-    }).select().single();
-    return Note.fromJson(response);
+      'title': title.isNotEmpty ? title : 'Untitled Note',
+    };
+    
+    // Only include folder_id if it's not null (Supabase handles null differently)
+    if (folderId != null && folderId.isNotEmpty) {
+      insertData['folder_id'] = folderId;
+    }
+    
+    // Always include content, even if empty (Supabase requires it to be present)
+    // For very large content, ensure it's a valid string that can be JSON-encoded
+    if (content.isNotEmpty) {
+      // Sanitize content to ensure it's valid for JSON encoding
+      String sanitizedContent = content;
+      
+      // Remove null bytes and control characters that break JSON
+      sanitizedContent = sanitizedContent.replaceAll('\x00', '');
+      sanitizedContent = sanitizedContent.replaceAll(RegExp(r'[\x01-\x08\x0B-\x0C\x0E-\x1F]'), '');
+      
+      // Ensure valid UTF-8 encoding
+      try {
+        final bytes = utf8.encode(sanitizedContent);
+        sanitizedContent = utf8.decode(bytes, allowMalformed: false);
+      } catch (e) {
+        // If encoding fails, try with allowMalformed
+        try {
+          final bytes = utf8.encode(content);
+          sanitizedContent = utf8.decode(bytes, allowMalformed: true);
+          sanitizedContent = sanitizedContent.replaceAll('\x00', '');
+          sanitizedContent = sanitizedContent.replaceAll(RegExp(r'[\x01-\x08\x0B-\x0C\x0E-\x1F]'), '');
+        } catch (e2) {
+          // Last resort: keep only safe characters
+          sanitizedContent = content.replaceAll(RegExp(r'[^\x20-\x7E\n\r\t\u00A0-\uFFFF]'), '');
+        }
+      }
+      
+      // Test JSON encoding to ensure it's valid
+      try {
+        jsonEncode(sanitizedContent);
+        insertData['content'] = sanitizedContent;
+      } catch (jsonError) {
+        AppLogger.error('Content cannot be JSON encoded', error: jsonError, tag: 'SupabaseService');
+        // If JSON encoding fails, try to fix it by removing problematic characters
+        sanitizedContent = sanitizedContent.replaceAll(RegExp(r'[^\x20-\x7E\n\r\t\u00A0-\uFFFF]'), '');
+        insertData['content'] = sanitizedContent;
+      }
+    } else {
+      insertData['content'] = '';
+    }
+    
+    try {
+      AppLogger.debug('Creating note: title=$title, contentLength=${content.length}, folderId=$folderId', tag: 'SupabaseService');
+      final response = await client.from('notes').insert(insertData).select().single();
+      return Note.fromJson(response);
+    } catch (e) {
+      AppLogger.error('Error creating note', error: e, tag: 'SupabaseService');
+      AppLogger.debug('Insert data: userId=$userId, title=$title, folderId=$folderId, contentLength=${content.length}', tag: 'SupabaseService');
+      
+      // Check for specific error types
+      final errorStr = e.toString();
+      if (errorStr.contains('PGRST102') || errorStr.contains('Empty or invalid json')) {
+        // This might be due to content being too large or containing invalid characters
+        if (content.length > 10 * 1024 * 1024) { // 10MB
+          throw Exception('Note content is too large (${(content.length / 1024 / 1024).toStringAsFixed(2)} MB). Please split into smaller notes.');
+        }
+        throw Exception('Failed to create note: Invalid content format. Please check the file content and try again.');
+      }
+      
+      rethrow;
+    }
   }
 
   Future<void> updateNote(String id, {String? title, String? content, String? folderId}) async {
@@ -333,8 +398,36 @@ class SupabaseService {
     return Document.fromJson(response);
   }
 
+  /// Sanitizes a filename for use in Supabase Storage
+  /// Replaces invalid characters with underscores and preserves the extension
+  String _sanitizeFileName(String fileName) {
+    // Split filename and extension
+    final parts = fileName.split('.');
+    if (parts.length < 2) {
+      // No extension, just sanitize the whole name
+      return fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    }
+    
+    // Get extension (last part)
+    final extension = parts.last;
+    // Get base name (everything except last part)
+    final baseName = parts.sublist(0, parts.length - 1).join('.');
+    
+    // Sanitize base name: replace invalid characters with underscores
+    // Allow: alphanumeric, dots, hyphens, underscores
+    final sanitizedBase = baseName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    
+    // Remove consecutive underscores and trim
+    final cleanedBase = sanitizedBase.replaceAll(RegExp(r'_+'), '_').replaceAll(RegExp(r'^_|_$'), '');
+    
+    // Reconstruct filename
+    return '$cleanedBase.$extension';
+  }
+
   Future<String> uploadFile(String userId, File file) async {
-    final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}';
+    final originalFileName = file.path.split('/').last;
+    final sanitizedFileName = _sanitizeFileName(originalFileName);
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}_$sanitizedFileName';
     final path = '$userId/$fileName';
     
     // Determine MIME type from file extension

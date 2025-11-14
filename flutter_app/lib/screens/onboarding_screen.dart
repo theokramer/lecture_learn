@@ -1,22 +1,25 @@
+import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:superwallkit_flutter/superwallkit_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/onboarding_data.dart';
 import '../services/onboarding_service.dart';
 import '../widgets/onboarding/progress_bar.dart';
 import '../widgets/onboarding/mascot_image.dart';
 import '../constants/onboarding_colors.dart';
 
-class OnboardingScreen extends StatefulWidget {
+class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
   @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
+  ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen>
+class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     with TickerProviderStateMixin {
   int _currentStep = 0;
   OnboardingData _onboardingData = OnboardingData();
@@ -27,6 +30,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _scaleAnimation;
+  
+  // Animation controllers for transition screen text
+  late AnimationController _transitionTitleController;
+  late AnimationController _transitionDescriptionController;
+  late Animation<double> _transitionTitleAnimation;
+  late Animation<Offset> _transitionTitleSlideAnimation;
+  late Animation<double> _transitionDescriptionAnimation;
+  late Animation<Offset> _transitionDescriptionSlideAnimation;
+  
+  // Timer for transition screen button delay
+  bool _transitionButtonEnabled = false;
+  Timer? _transitionTimer;
 
   // Total number of steps - reorganized flow with transitions every 4-6 questions
   static const int totalSteps = 24;
@@ -47,6 +62,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       duration: const Duration(milliseconds: 300),
     );
     
+    // Transition screen text animations
+    _transitionTitleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _transitionDescriptionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
     );
@@ -58,10 +83,30 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     _scaleAnimation = Tween<double>(begin: 0.96, end: 1.0).animate(
       CurvedAnimation(parent: _scaleController, curve: Curves.easeOut),
     );
+    
+    // Transition text animations
+    _transitionTitleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _transitionTitleController, curve: Curves.easeOut),
+    );
+    _transitionTitleSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _transitionTitleController, curve: Curves.easeOut));
+    
+    _transitionDescriptionAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _transitionDescriptionController, curve: Curves.easeOut),
+    );
+    _transitionDescriptionSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _transitionDescriptionController, curve: Curves.easeOut));
 
     _fadeController.forward();
     _slideController.forward();
     _scaleController.forward();
+    
+    // Initialize transition animations if starting on a transition screen
+    _checkAndStartTransitionAnimations();
   }
 
   @override
@@ -69,22 +114,80 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     _fadeController.dispose();
     _slideController.dispose();
     _scaleController.dispose();
+    _transitionTitleController.dispose();
+    _transitionDescriptionController.dispose();
+    _transitionTimer?.cancel();
     super.dispose();
+  }
+  
+  bool _isTransitionScreen(int step) {
+    return step == 5 || step == 10 || step == 15 || step == 18 || step == 19 || step == 20;
+  }
+  
+  void _checkAndStartTransitionAnimations() {
+    if (_isTransitionScreen(_currentStep)) {
+      _transitionButtonEnabled = false;
+      _transitionTitleController.reset();
+      _transitionDescriptionController.reset();
+      
+      // Start text animations with slight delay
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (mounted) {
+          _transitionTitleController.forward();
+        }
+      });
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (mounted) {
+          _transitionDescriptionController.forward();
+        }
+      });
+      
+      // Enable button after 1 second
+      _transitionTimer?.cancel();
+      _transitionTimer = Timer(const Duration(seconds: 1), () {
+        if (mounted) {
+          setState(() {
+            _transitionButtonEnabled = true;
+          });
+        }
+      });
+    } else {
+      _transitionButtonEnabled = true;
+      _transitionTimer?.cancel();
+      // Ensure controllers are in a valid state for non-transition screens
+      // Set them to their final state so they don't cause issues if accidentally used
+      if (!_transitionTitleController.isCompleted) {
+        _transitionTitleController.value = 1.0;
+      }
+      if (!_transitionDescriptionController.isCompleted) {
+        _transitionDescriptionController.value = 1.0;
+      }
+    }
   }
 
   void _nextStep() {
-    if (_currentStep < totalSteps - 1) {
-      setState(() {
-        _currentStep++;
-      });
-      _fadeController.reset();
-      _slideController.reset();
-      _scaleController.reset();
-      _fadeController.forward();
-      _slideController.forward();
-      _scaleController.forward();
-    } else {
-      _completeOnboarding();
+    try {
+      if (_currentStep < totalSteps - 1) {
+        setState(() {
+          _currentStep++;
+        });
+        _fadeController.reset();
+        _slideController.reset();
+        _scaleController.reset();
+        _fadeController.forward();
+        _slideController.forward();
+        _scaleController.forward();
+        _checkAndStartTransitionAnimations();
+      } else {
+        _completeOnboarding();
+      }
+    } catch (e) {
+      // Handle any errors during step transition
+      print('Error in _nextStep: $e');
+      // Still try to complete onboarding if we're at the last step
+      if (_currentStep >= totalSteps - 1) {
+        _completeOnboarding();
+      }
     }
   }
 
@@ -99,13 +202,54 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       _fadeController.forward();
       _slideController.forward();
       _scaleController.forward();
+      _checkAndStartTransitionAnimations();
     }
   }
 
   Future<void> _completeOnboarding() async {
-    await OnboardingService.completeOnboarding(_onboardingData.toJson());
-    if (mounted) {
-      context.go('/login');
+    try {
+      // Stop all animations before navigating
+      _fadeController.stop();
+      _slideController.stop();
+      _scaleController.stop();
+      _transitionTitleController.stop();
+      _transitionDescriptionController.stop();
+      _transitionTimer?.cancel();
+      
+      await OnboardingService.completeOnboarding(_onboardingData.toJson());
+      
+      // Show Superwall paywall before navigating to login
+      if (mounted) {
+        try {
+          Superwall.shared.registerPlacement('campaign_trigger', feature: () {
+            // User has access to premium features after subscribing
+            // This callback is executed if the user subscribes
+          });
+        } catch (e) {
+          print('Error showing Superwall paywall: $e');
+          // Continue to login even if paywall fails
+        }
+      }
+      
+      // Navigate to login after paywall is dismissed
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            context.go('/login');
+          }
+        });
+      }
+    } catch (e) {
+      // Handle error during onboarding completion
+      print('Error completing onboarding: $e');
+      // Still try to navigate to login even if saving fails
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            context.go('/login');
+          }
+        });
+      }
     }
   }
 
@@ -403,7 +547,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       case 15:
         return _buildTransitionScreen(
           title: "Stop Summarizing.\nStart Learning.",
-          description: "Did you know students using Nano AI reduce note organization time by up to 75%? We handle the boring stuff.",
+          description: "Did you know students using RocketLearn reduce note organization time by up to 75%? We handle the boring stuff.",
           mascotPath: "assets/mascot/ChatGPT Image Nov 10, 2025 at 02_21_54 PM.png",
         );
       // Questions 13-14 (Extra time, Free time feeling)
@@ -491,7 +635,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
           const SizedBox(height: 48),
           const Text(
-            "Welcome to Nano AI",
+            "Welcome to RocketLearn",
             style: TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.bold,
@@ -605,7 +749,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           child: _LargeGradientButton(
             text: "Continue",
             trailingIcon: CupertinoIcons.arrow_right,
-            onPressed: selectedIndex != null ? _nextStep : null,
+            onPressed: (selectedIndex != null && selectedIndex >= 0) ? _nextStep : null,
           ),
         ),
       ],
@@ -630,32 +774,46 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             height: 280,
           ),
           const SizedBox(height: 48),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              height: 1.2,
-              letterSpacing: -0.8,
+          // Animated title
+          FadeTransition(
+            opacity: _transitionTitleAnimation,
+            child: SlideTransition(
+              position: _transitionTitleSlideAnimation,
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  height: 1.2,
+                  letterSpacing: -0.8,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
-            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
-          Text(
-            description,
-            style: const TextStyle(
-              fontSize: 15,
-              color: Colors.white70,
-              height: 1.6,
+          // Animated description
+          FadeTransition(
+            opacity: _transitionDescriptionAnimation,
+            child: SlideTransition(
+              position: _transitionDescriptionSlideAnimation,
+              child: Text(
+                description,
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: Colors.white70,
+                  height: 1.6,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
-            textAlign: TextAlign.center,
           ),
           const Spacer(),
           _LargeGradientButton(
             text: "Continue",
             trailingIcon: CupertinoIcons.arrow_right,
-            onPressed: _nextStep,
+            onPressed: _transitionButtonEnabled ? _nextStep : null,
           ),
           const SizedBox(height: 32),
         ],
@@ -708,7 +866,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             child: Column(
               children: [
                 const Text(
-                  "Nano AI would like to send you notifications",
+                  "RocketLearn would like to send you notifications",
                   style: TextStyle(
                     fontSize: 16,
                     color: Colors.white,
@@ -723,20 +881,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     Expanded(
                       child: _SecondaryButton(
                         text: "Don't Allow",
-                        onPressed: _nextStep,
+                        onPressed: () => _showNotificationDialog(false),
                       ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
                       child: _PrimaryButton(
                         text: "Allow",
-                        onPressed: () async {
-                          final status = await Permission.notification.request();
-                          if (status.isGranted) {
-                            HapticFeedback.mediumImpact();
-                          }
-                          _nextStep();
-                        },
+                        onPressed: () => _showNotificationDialog(true),
                       ),
                     ),
                   ],
@@ -754,12 +906,62 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           _LargeGradientButton(
             text: "Continue",
             trailingIcon: CupertinoIcons.arrow_right,
-            onPressed: _nextStep,
+            onPressed: () => _showNotificationDialog(null),
           ),
           const SizedBox(height: 40),
         ],
       ),
     );
+  }
+
+  Future<void> _showNotificationDialog(bool? allowNotifications) async {
+    // Request permission if Allow was clicked
+    if (allowNotifications == true) {
+      final status = await Permission.notification.request();
+      if (status.isGranted) {
+        HapticFeedback.mediumImpact();
+      }
+    } else if (allowNotifications == false) {
+      HapticFeedback.lightImpact();
+    } else {
+      // Continue button was clicked
+      HapticFeedback.mediumImpact();
+    }
+
+    // Show dialog
+    if (mounted) {
+      await showCupertinoDialog(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text('Notifications'),
+          content: Text(
+            allowNotifications == true
+                ? 'Notifications enabled! You\'ll receive updates about your learning progress.'
+                : allowNotifications == false
+                    ? 'Notifications disabled. You can enable them later in Settings.'
+                    : 'You can manage notification settings anytime in your device Settings.',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      
+      // Wait for dialog to fully close, then proceed
+      if (mounted) {
+        // Add a small delay to ensure dialog is fully dismissed
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (mounted) {
+          _nextStep();
+        }
+      }
+    }
   }
 
   Widget _buildRatingScreen() {
@@ -845,7 +1047,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
           const SizedBox(height: 32),
           const Text(
-            "Nano AI was made for people like you",
+            "RocketLearn was made for people like you",
             style: TextStyle(
               fontSize: 18,
               color: Colors.white,
@@ -859,10 +1061,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _buildTestimonialAvatar(),
-              const SizedBox(width: -12),
-              _buildTestimonialAvatar(),
-              const SizedBox(width: -12),
-              _buildTestimonialAvatar(),
+              Transform.translate(
+                offset: const Offset(-12, 0),
+                child: _buildTestimonialAvatar(),
+              ),
+              Transform.translate(
+                offset: const Offset(-12, 0),
+                child: _buildTestimonialAvatar(),
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -876,7 +1082,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
               const SizedBox(width: 10),
               const Text(
-                "10K+ Nano AI Users",
+                "10K+ RocketLearn Users",
                 style: TextStyle(
                   fontSize: 17,
                   color: Colors.white,
@@ -1246,63 +1452,66 @@ class _LargeGradientButtonState extends State<_LargeGradientButton>
   @override
   Widget build(BuildContext context) {
     final isEnabled = widget.onPressed != null;
-    return GestureDetector(
-      onTapDown: isEnabled ? (_) => _pressController.forward() : null,
-      onTapUp: isEnabled
-          ? (_) {
-              _pressController.reverse();
-              HapticFeedback.mediumImpact();
-              widget.onPressed!();
-            }
-          : null,
-      onTapCancel: isEnabled ? () => _pressController.reverse() : null,
-      child: ScaleTransition(
-        scale: _scaleAnimation,
-        child: Container(
-          width: double.infinity,
-          height: 72,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: isEnabled
-                ? LinearGradient(
-                    colors: OnboardingColors.buttonGradientColors,
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  )
-                : null,
-            color: isEnabled ? null : OnboardingColors.surfaceColor,
-            boxShadow: isEnabled
-                ? [
-                    BoxShadow(
-                      color: OnboardingColors.buttonGradientColors.first.withOpacity(0.4),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                      spreadRadius: 0,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                widget.text,
-                style: TextStyle(
-                  color: isEnabled ? Colors.white : OnboardingColors.disabledTextColor,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
+    return AbsorbPointer(
+      absorbing: !isEnabled,
+      child: GestureDetector(
+        onTapDown: isEnabled ? (_) => _pressController.forward() : null,
+        onTapUp: isEnabled
+            ? (_) {
+                _pressController.reverse();
+                HapticFeedback.mediumImpact();
+                widget.onPressed!();
+              }
+            : null,
+        onTapCancel: isEnabled ? () => _pressController.reverse() : null,
+        child: ScaleTransition(
+          scale: _scaleAnimation,
+          child: Container(
+            width: double.infinity,
+            height: 72,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: isEnabled
+                  ? LinearGradient(
+                      colors: OnboardingColors.buttonGradientColors,
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    )
+                  : null,
+              color: isEnabled ? null : OnboardingColors.surfaceColor,
+              boxShadow: isEnabled
+                  ? [
+                      BoxShadow(
+                        color: OnboardingColors.buttonGradientColors.first.withOpacity(0.4),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                        spreadRadius: 0,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  widget.text,
+                  style: TextStyle(
+                    color: isEnabled ? Colors.white : OnboardingColors.disabledTextColor,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
                 ),
-              ),
-              if (widget.trailingIcon != null && isEnabled) ...[
-                const SizedBox(width: 12),
-                Icon(
-                  widget.trailingIcon,
-                  color: Colors.white,
-                  size: 24,
-                ),
+                if (widget.trailingIcon != null && isEnabled) ...[
+                  const SizedBox(width: 12),
+                  Icon(
+                    widget.trailingIcon,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

@@ -1,6 +1,6 @@
 # Deploying to Vercel
 
-This guide will help you deploy your Nano AI app to Vercel.
+This guide will help you deploy your RocketLearn app to Vercel.
 
 ## Prerequisites
 

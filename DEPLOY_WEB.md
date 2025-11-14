@@ -1,6 +1,6 @@
-# Web Deployment Guide - Nano AI
+# Web Deployment Guide - RocketLearn
 
-This guide walks you through deploying Nano AI to Vercel for web production.
+This guide walks you through deploying RocketLearn to Vercel for web production.
 
 ## Prerequisites
 

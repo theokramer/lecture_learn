@@ -200,7 +200,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                               stops: [0.0, 0.5, 1.0],
                             ).createShader(bounds),
                             child: const Text(
-                              'Nano AI',
+                              'RocketLearn',
                               style: TextStyle(
                                 fontSize: 48,
                                 fontWeight: FontWeight.bold,

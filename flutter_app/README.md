@@ -1,4 +1,4 @@
-# Nano AI - Flutter App
+# RocketLearn - Flutter App
 
 A complete Flutter app that replicates the functionality of the React web app, optimized for iOS with native Apple design principles.
 
