@@ -44,7 +44,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   Timer? _transitionTimer;
 
   // Total number of steps - reorganized flow with transitions every 4-6 questions
-  static const int totalSteps = 24;
+  static const int totalSteps = 22;
 
   @override
   void initState() {
@@ -318,16 +318,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     switch (_currentStep) {
       case 0:
         return _buildWelcomeScreen();
-      // Questions 1-4 (Student status, Learning style, Difficult format, Study problem)
+      // Group 1: Understanding the user (Steps 1-3)
       case 1:
         return _buildQuestionScreen(
-          title: "What best describes your current student status?",
-          subtitle: "Help us personalize your learning experience",
+          title: "What best describes you?",
+          subtitle: "We're building something amazing just for you",
           options: [
-            _Option("High School", CupertinoIcons.building_2_fill),
-            _Option("College/University", CupertinoIcons.book),
-            _Option("Grad School", CupertinoIcons.person),
-            _Option("Certification", CupertinoIcons.star),
+            _Option("High School Student", CupertinoIcons.building_2_fill),
+            _Option("College/University Student", CupertinoIcons.book),
+            _Option("Grad Student", CupertinoIcons.person),
+            _Option("Professional Certification", CupertinoIcons.star),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
@@ -339,151 +339,166 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
         );
       case 2:
         return _buildQuestionScreen(
-          title: "Which phrase best describes your learning style?",
-          subtitle: "Choose the feature you need most",
+          title: "What's killing your study time?",
+          subtitle: "Be honest - we're here to fix it",
           options: [
-            _Option("I need things broken down simply.", CupertinoIcons.square_grid_2x2),
-            _Option("I need personalized practice questions.", CupertinoIcons.checkmark_circle),
-            _Option("I need someone to walk me through the material.", CupertinoIcons.person_2),
-            _Option("I need both speed and depth.", CupertinoIcons.bolt),
+            _Option("Wasting hours on note-taking", CupertinoIcons.clock),
+            _Option("Feeling overwhelmed by material", CupertinoIcons.exclamationmark_triangle),
+            _Option("Forgetting everything I study", CupertinoIcons.circle_grid_3x3),
+            _Option("Losing motivation to study", CupertinoIcons.square),
+            _Option("Can't focus or concentrate", CupertinoIcons.eye_slash),
+            _Option("Not knowing where to start", CupertinoIcons.question_circle),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
-              learningStyle: ["Simple breakdown", "Practice questions", "Guided walkthrough", "Speed and depth"][index],
+              studyProblem: ["Time wasted", "Overwhelming", "Poor retention", "Lack of motivation", "Can't focus", "Don't know where to start"][index],
             );
           },
-          selectedIndex: ["Simple breakdown", "Practice questions", "Guided walkthrough", "Speed and depth"]
-              .indexWhere((e) => e == _onboardingData.learningStyle),
+          selectedIndex: ["Time wasted", "Overwhelming", "Poor retention", "Lack of motivation", "Can't focus", "Don't know where to start"]
+              .indexWhere((e) => e == _onboardingData.studyProblem),
         );
       case 3:
         return _buildQuestionScreen(
-          title: "Which format do you find most difficult to learn from?",
-          subtitle: "We'll help you master any format",
+          title: "What format makes you want to quit?",
+          subtitle: "We'll transform it into something you'll love",
           options: [
-            _Option("Long, dense textbooks", CupertinoIcons.doc_text),
-            _Option("Rapid-fire lecture slides", CupertinoIcons.rectangle_stack),
+            _Option("Dense, boring textbooks", CupertinoIcons.doc_text),
+            _Option("Endless lecture slides", CupertinoIcons.rectangle_stack),
             _Option("Complex PDF articles", CupertinoIcons.doc),
-            _Option("Unorganized notes", CupertinoIcons.doc_on_doc),
+            _Option("Messy, unorganized notes", CupertinoIcons.doc_on_doc),
+            _Option("Video lectures (too long)", CupertinoIcons.play_rectangle),
+            _Option("All of the above", CupertinoIcons.list_bullet),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
-              difficultFormat: ["Textbooks", "Lecture slides", "PDF articles", "Unorganized notes"][index],
+              difficultFormat: ["Textbooks", "Lecture slides", "PDF articles", "Unorganized notes", "Video lectures", "All formats"][index],
             );
           },
-          selectedIndex: ["Textbooks", "Lecture slides", "PDF articles", "Unorganized notes"]
+          selectedIndex: ["Textbooks", "Lecture slides", "PDF articles", "Unorganized notes", "Video lectures", "All formats"]
               .indexWhere((e) => e == _onboardingData.difficultFormat),
         );
+      // Transition 1: After format question - References format
       case 4:
-        return _buildQuestionScreen(
-          title: "What's the biggest problem with your current study routine?",
-          subtitle: "We'll help you address this directly",
-          options: [
-            _Option("Too much time wasted", CupertinoIcons.clock),
-            _Option("Material is overwhelming", CupertinoIcons.exclamationmark_triangle),
-            _Option("Poor retention/Memory", CupertinoIcons.circle_grid_3x3),
-            _Option("Lack of motivation", CupertinoIcons.square),
-          ],
-          onSelect: (index) {
-            _onboardingData = _onboardingData.copyWith(
-              studyProblem: ["Time wasted", "Overwhelming", "Poor retention", "Lack of motivation"][index],
-            );
-          },
-          selectedIndex: ["Time wasted", "Overwhelming", "Poor retention", "Lack of motivation"]
-              .indexWhere((e) => e == _onboardingData.studyProblem),
-        );
-      // Transition 1: After 4 questions
-      case 5:
         return _buildTransitionScreen(
-          title: "We'll Help You Master\nAny Format",
-          description: "Whether it's dense textbooks, rapid slides, or complex PDFs - our AI breaks everything down into digestible, learnable chunks.",
+          title: "No Format is Too Tough",
+          description: "${_onboardingData.difficultFormat != null ? 'Those ${_onboardingData.difficultFormat!.toLowerCase()}? ' : ''}Upload them. Our AI transforms any format into clear, engaging summaries instantly.",
           mascotPath: "assets/mascot/ChatGPT Image Nov 10, 2025 at 03_54_21 PM.png",
         );
-      // Questions 5-8 (Review struggle, Stuck strategy, Exam readiness, Engagement)
-      case 6:
+      // Group 2: Getting stuck and help (Steps 5-6)
+      case 5:
         return _buildQuestionScreen(
-          title: "When you review lecture material, do you primarily struggle with:",
-          subtitle: "Understanding your struggle helps us help you better",
+          title: "Where do you get stuck most?",
+          subtitle: "We'll give you exactly what you need",
           options: [
-            _Option("Understanding the Core Concept", CupertinoIcons.lightbulb),
-            _Option("Remembering the Specific Details", CupertinoIcons.circle_grid_3x3),
-            _Option("Applying the Information", CupertinoIcons.wrench),
+            _Option("Grasping the big picture", CupertinoIcons.lightbulb),
+            _Option("Remembering key details", CupertinoIcons.circle_grid_3x3),
+            _Option("Using it in practice", CupertinoIcons.wrench),
+            _Option("Connecting different concepts", CupertinoIcons.link),
+            _Option("Understanding technical jargon", CupertinoIcons.textformat),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
-              reviewStruggle: ["Core concepts", "Specific details", "Application"][index],
+              reviewStruggle: ["Core concepts", "Specific details", "Application", "Connecting concepts", "Technical terms"][index],
             );
           },
-          selectedIndex: ["Core concepts", "Specific details", "Application"]
+          selectedIndex: ["Core concepts", "Specific details", "Application", "Connecting concepts", "Technical terms"]
               .indexWhere((e) => e == _onboardingData.reviewStruggle),
         );
-      case 7:
+      case 6:
         return _buildQuestionScreen(
-          title: "When you get stuck, what's your current strategy to understand a tough topic?",
-          subtitle: "Let's find you a better solution",
+          title: "What do you do when you're stuck?",
+          subtitle: "There's a better way - and it's instant",
           options: [
-            _Option("Google/YouTube", CupertinoIcons.play_circle),
-            _Option("Ask a classmate", CupertinoIcons.person_2),
-            _Option("Email the Professor", CupertinoIcons.mail),
+            _Option("Search Google or YouTube", CupertinoIcons.play_circle),
+            _Option("Ask a friend or classmate", CupertinoIcons.person_2),
+            _Option("Email the professor", CupertinoIcons.mail),
+            _Option("Skip it and hope for the best", CupertinoIcons.arrow_right),
+            _Option("Reread the material (again)", CupertinoIcons.arrow_clockwise),
+            _Option("Give up and move on", CupertinoIcons.xmark),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
-              stuckStrategy: ["Google/YouTube", "Ask classmate", "Email professor"][index],
+              stuckStrategy: ["Google/YouTube", "Ask classmate", "Email professor", "Skip it", "Reread", "Give up"][index],
             );
           },
-          selectedIndex: ["Google/YouTube", "Ask classmate", "Email professor"]
+          selectedIndex: ["Google/YouTube", "Ask classmate", "Email professor", "Skip it", "Reread", "Give up"]
               .indexWhere((e) => e == _onboardingData.stuckStrategy),
         );
+      // Transition 2: After stuck questions - References getting help
+      case 7:
+        return _buildTransitionScreen(
+          title: "Your AI Tutor\nNever Sleeps",
+          description: "${_onboardingData.stuckStrategy != null ? 'Instead of ${_onboardingData.stuckStrategy!.toLowerCase()}, ' : ''}get instant help from your 24/7 AI tutor. Ask anything, anytime.",
+          mascotPath: "assets/mascot/ChatGPT Image Nov 10, 2025 at 03_54_21 PM.png",
+        );
+      // Group 3: Learning preferences (Steps 8-10)
       case 8:
         return _buildQuestionScreen(
-          title: "How often do you feel completely ready for a major exam (e.g., no anxiety)?",
-          subtitle: "Let's change this for the better",
+          title: "How do you learn best?",
+          subtitle: "We'll match your perfect learning style",
           options: [
-            _Option("Never", CupertinoIcons.smiley),
-            _Option("Rarely", CupertinoIcons.smiley),
-            _Option("Sometimes", CupertinoIcons.smiley),
+            _Option("Simple, clear explanations", CupertinoIcons.square_grid_2x2),
+            _Option("Practice questions & quizzes", CupertinoIcons.checkmark_circle),
+            _Option("Step-by-step guidance", CupertinoIcons.person_2),
+            _Option("Fast & comprehensive", CupertinoIcons.bolt),
+            _Option("Visual examples & diagrams", CupertinoIcons.photo),
+            _Option("Repetition & memorization", CupertinoIcons.arrow_clockwise),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
-              examReadiness: ["Never", "Rarely", "Sometimes"][index],
+              learningStyle: ["Simple breakdown", "Practice questions", "Guided walkthrough", "Speed and depth", "Visual examples", "Repetition"][index],
             );
           },
-          selectedIndex: ["Never", "Rarely", "Sometimes"]
-              .indexWhere((e) => e == _onboardingData.examReadiness),
+          selectedIndex: ["Simple breakdown", "Practice questions", "Guided walkthrough", "Speed and depth", "Visual examples", "Repetition"]
+              .indexWhere((e) => e == _onboardingData.learningStyle),
         );
       case 9:
         return _buildQuestionScreen(
-          title: "How important is it to you that studying feels engaging and maybe even fun?",
-          subtitle: "Your experience matters to us",
+          title: "Should studying actually be enjoyable?",
+          subtitle: "We think it can be - and we'll prove it",
           options: [
-            _Option("Not important", CupertinoIcons.smiley),
-            _Option("Somewhat important", CupertinoIcons.smiley),
-            _Option("Very important", CupertinoIcons.smiley),
+            _Option("Just get it done", CupertinoIcons.checkmark),
+            _Option("Would be nice", CupertinoIcons.smiley),
+            _Option("Pretty important", CupertinoIcons.star),
+            _Option("Absolutely essential", CupertinoIcons.heart),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
-              engagementImportance: ["Not important", "Somewhat important", "Very important"][index],
+              engagementImportance: ["Not important", "Somewhat important", "Important", "Very important"][index],
             );
           },
-          selectedIndex: ["Not important", "Somewhat important", "Very important"]
+          selectedIndex: ["Not important", "Somewhat important", "Important", "Very important"]
               .indexWhere((e) => e == _onboardingData.engagementImportance),
         );
-      // Transition 2: After 4 more questions (total 8)
       case 10:
-        return _buildTransitionScreen(
-          title: "Your AI Tutor is Ready 24/7",
-          description: "Stuck on a concept? Your personalized AI tutor is always available to explain things simply, at your pace, using your own materials.",
-          mascotPath: "assets/mascot/ChatGPT Image Nov 10, 2025 at 03_54_21 PM.png",
+        return _buildQuestionScreen(
+          title: "How confident do you feel before exams?",
+          subtitle: "Let's turn anxiety into confidence",
+          options: [
+            _Option("Panic and anxiety", CupertinoIcons.exclamationmark_triangle),
+            _Option("Always anxious", CupertinoIcons.smiley),
+            _Option("Usually nervous", CupertinoIcons.smiley),
+            _Option("Sometimes confident", CupertinoIcons.smiley),
+            _Option("Pretty confident", CupertinoIcons.checkmark_seal),
+          ],
+          onSelect: (index) {
+            _onboardingData = _onboardingData.copyWith(
+              examReadiness: ["Panic", "Never", "Rarely", "Sometimes", "Often"][index],
+            );
+          },
+          selectedIndex: ["Panic", "Never", "Rarely", "Sometimes", "Often"]
+              .indexWhere((e) => e == _onboardingData.examReadiness),
         );
-      // Questions 9-12 (Stressful subject, Hours, Daily time, Academic goal)
+      // Group 4: Goals and time (Steps 11-14)
       case 11:
         return _buildQuestionScreen(
-          title: "What is the one subject that causes you the most stress this term?",
-          subtitle: "We'll focus on helping you with this area",
+          title: "What subject keeps you up at night?",
+          subtitle: "We'll make it your strongest subject",
           options: [
-            _Option("Math/Science", CupertinoIcons.number),
-            _Option("Writing/Humanities", CupertinoIcons.pencil_ellipsis_rectangle),
-            _Option("Technical/Coding", CupertinoIcons.chevron_left_slash_chevron_right),
-            _Option("I'm stressed about all of them", CupertinoIcons.smiley),
+            _Option("Math or Science", CupertinoIcons.number),
+            _Option("Writing or Humanities", CupertinoIcons.pencil_ellipsis_rectangle),
+            _Option("Technical or Coding", CupertinoIcons.chevron_left_slash_chevron_right),
+            _Option("Honestly, all of them", CupertinoIcons.smiley),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
@@ -495,122 +510,123 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
         );
       case 12:
         return _buildQuestionScreen(
-          title: "On average, how many hours per week do you spend organizing and summarizing notes?",
-          subtitle: "Let's see how much time we can save you",
+          title: "How many hours do you waste on note-taking?",
+          subtitle: "Imagine getting all that time back",
           options: [
-            _Option("1-3 hours", null, number: "1"),
-            _Option("4-6 hours", null, number: "4"),
-            _Option("7-10 hours", null, number: "7"),
+            _Option("Less than 1 hour", null, number: "<1"),
+            _Option("1-3 hours per week", null, number: "1"),
+            _Option("4-6 hours per week", null, number: "4"),
+            _Option("7-10 hours per week", null, number: "7"),
+            _Option("10+ hours per week", null, number: "10+"),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
-              hoursPerWeek: [3, 6, 10][index],
+              hoursPerWeek: [1, 3, 6, 10, 15][index],
             );
           },
-          selectedIndex: [3, 6, 10].indexWhere((e) => e == _onboardingData.hoursPerWeek),
+          selectedIndex: [1, 3, 6, 10, 15].indexWhere((e) => e == _onboardingData.hoursPerWeek),
         );
       case 13:
         return _buildQuestionScreen(
-          title: "How much time are you ready to invest each day to truly improve your grades?",
-          subtitle: "Your commitment level helps us personalize your experience",
+          title: "How much time can you commit daily?",
+          subtitle: "Even 30 minutes will transform your grades",
           options: [
-            _Option("30 min", CupertinoIcons.clock),
-            _Option("1 hour", CupertinoIcons.timer),
-            _Option("2 hours", CupertinoIcons.timer),
+            _Option("15-30 minutes", CupertinoIcons.clock),
+            _Option("30-60 minutes", CupertinoIcons.timer),
+            _Option("1-2 hours", CupertinoIcons.timer),
+            _Option("2+ hours", CupertinoIcons.timer),
+            _Option("As much as needed", CupertinoIcons.arrow_clockwise),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
-              dailyTimeCommitment: [30, 60, 120][index],
+              dailyTimeCommitment: [30, 60, 120, 180, 240][index],
             );
           },
-          selectedIndex: [30, 60, 120].indexWhere((e) => e == _onboardingData.dailyTimeCommitment),
+          selectedIndex: [30, 60, 120, 180, 240].indexWhere((e) => e == _onboardingData.dailyTimeCommitment),
         );
       case 14:
         return _buildQuestionScreen(
-          title: "What is your ultimate academic goal for the next 12 months?",
-          subtitle: "Let's work together to make it happen",
+          title: "What's your biggest academic goal?",
+          subtitle: "This is how we'll help you crush it",
           options: [
-            _Option("Acing my current courses", CupertinoIcons.star),
-            _Option("Getting into Grad School/Job", CupertinoIcons.briefcase),
-            _Option("Maintaining a high GPA", CupertinoIcons.chart_bar),
-            _Option("Learning a key skill", CupertinoIcons.star),
+            _Option("Ace all my courses", CupertinoIcons.star),
+            _Option("Get into grad school or land my dream job", CupertinoIcons.briefcase),
+            _Option("Maintain a perfect GPA", CupertinoIcons.chart_bar),
+            _Option("Master a critical skill", CupertinoIcons.star),
+            _Option("Pass my exams without stress", CupertinoIcons.checkmark_seal),
+            _Option("Just survive this semester", CupertinoIcons.heart),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
-              academicGoal: ["Ace courses", "Grad school/Job", "High GPA", "Learn skill"][index],
+              academicGoal: ["Ace courses", "Grad school/Job", "High GPA", "Learn skill", "Pass exams", "Survive semester"][index],
             );
           },
-          selectedIndex: ["Ace courses", "Grad school/Job", "High GPA", "Learn skill"]
+          selectedIndex: ["Ace courses", "Grad school/Job", "High GPA", "Learn skill", "Pass exams", "Survive semester"]
               .indexWhere((e) => e == _onboardingData.academicGoal),
         );
-      // Transition 3: After 4 more questions (total 12)
+      // Transition 3: After time/goal questions - References time savings
       case 15:
         return _buildTransitionScreen(
-          title: "Stop Summarizing.\nStart Learning.",
-          description: "Did you know students using RocketLearn reduce note organization time by up to 75%? We handle the boring stuff.",
+          title: "Stop Wasting Time.\nStart Dominating.",
+          description: "${_onboardingData.hoursPerWeek != null ? 'Those ${_onboardingData.hoursPerWeek} hours on notes? ' : ''}Gone. Our AI creates perfect summaries in seconds. ${_onboardingData.academicGoal != null ? 'Your goal to ${_onboardingData.academicGoal!.toLowerCase()}? ' : ''}Consider it done.",
           mascotPath: "assets/mascot/ChatGPT Image Nov 10, 2025 at 02_21_54 PM.png",
         );
-      // Questions 13-14 (Extra time, Free time feeling)
+      // Group 5: Vision for the future (Steps 16-17)
       case 16:
         return _buildQuestionScreen(
-          title: "If you could instantly reduce your overall weekly study time by 50%, what would you do with the extra time?",
-          subtitle: "Dream big - this could be your reality",
+          title: "What would you do with 10 extra hours?",
+          subtitle: "This is about to become your reality",
           options: [
-            _Option("Sleep more", CupertinoIcons.bed_double),
-            _Option("Spend time with friends", CupertinoIcons.person_2),
-            _Option("Take on a new project", CupertinoIcons.rocket),
+            _Option("Finally get enough sleep", CupertinoIcons.bed_double),
+            _Option("Hang out with friends more", CupertinoIcons.person_2),
+            _Option("Pursue a passion project", CupertinoIcons.rocket),
+            _Option("Exercise and take care of myself", CupertinoIcons.heart),
+            _Option("Work on other courses", CupertinoIcons.book),
+            _Option("Just relax and recharge", CupertinoIcons.moon),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
-              extraTimeUsage: ["Sleep", "Friends", "New project"][index],
+              extraTimeUsage: ["Sleep", "Friends", "New project", "Exercise", "Other courses", "Relax"][index],
             );
           },
-          selectedIndex: ["Sleep", "Friends", "New project"]
+          selectedIndex: ["Sleep", "Friends", "New project", "Exercise", "Other courses", "Relax"]
               .indexWhere((e) => e == _onboardingData.extraTimeUsage),
         );
       case 17:
         return _buildQuestionScreen(
-          title: "If you had an extra 10 hours of free time this week, what would it feel like?",
-          subtitle: "Visualize your success",
+          title: "How would that extra time make you feel?",
+          subtitle: "This feeling is closer than you think",
           options: [
-            _Option("Less stressed", CupertinoIcons.smiley),
-            _Option("More confident", CupertinoIcons.hand_raised),
-            _Option("Recharged/Refreshed", CupertinoIcons.battery_charging),
+            _Option("Way less stressed", CupertinoIcons.smiley),
+            _Option("Super confident", CupertinoIcons.hand_raised),
+            _Option("Completely recharged", CupertinoIcons.battery_charging),
+            _Option("In control of my life", CupertinoIcons.checkmark_seal),
+            _Option("Like I can finally breathe", CupertinoIcons.wind),
+            _Option("Ready to take on anything", CupertinoIcons.bolt),
           ],
           onSelect: (index) {
             _onboardingData = _onboardingData.copyWith(
-              freeTimeFeeling: ["Less stressed", "More confident", "Recharged"][index],
+              freeTimeFeeling: ["Less stressed", "More confident", "Recharged", "In control", "Can breathe", "Ready for anything"][index],
             );
           },
-          selectedIndex: ["Less stressed", "More confident", "Recharged"]
+          selectedIndex: ["Less stressed", "More confident", "Recharged", "In control", "Can breathe", "Ready for anything"]
               .indexWhere((e) => e == _onboardingData.freeTimeFeeling),
         );
-      // Transition 4: After final 2 questions
+      // Transition 4: After extra time questions - References transformation
       case 18:
         return _buildTransitionScreen(
-          title: "Imagine Study Time Cut by 50%",
-          description: "Our AI reads your PDFs, Slides, and Notes in seconds, creating instant, targeted summaries. More learning, less effort.",
+          title: "Your Life is About\nto Change",
+          description: "${_onboardingData.freeTimeFeeling != null ? 'You want to feel ${_onboardingData.freeTimeFeeling!.toLowerCase()}. ' : ''}${_onboardingData.extraTimeUsage != null ? 'You want to ${_onboardingData.extraTimeUsage!.toLowerCase()}. ' : ''}Upload any document. Get instant summaries, quizzes, flashcards, and a 24/7 AI tutor. Ready?",
           mascotPath: "assets/mascot/ChatGPT Image Nov 10, 2025 at 03_54_21 PM.png",
         );
-      // Transition 5: Feature highlight
+      // Personalized Plan Screen (moved up from step 21)
       case 19:
-        return _buildTransitionScreen(
-          title: "Make Learning FUN Again",
-          description: "We turn your boring lecture slides into interactive quizzes and clear conversation flows. Effortless study, guaranteed.",
-          mascotPath: "assets/mascot/ChatGPT Image Nov 10, 2025 at 02_21_54 PM.png",
-        );
-      // Transition 6: Final feature
-      case 20:
-        return _buildTransitionScreen(
-          title: "Stuck? Never Again.",
-          description: "Your personalized AI Tutor is ready 24/7. Get complex topics explained simply, at your pace, using your own uploaded materials.",
-          mascotPath: "assets/mascot/ChatGPT Image Nov 10, 2025 at 03_54_21 PM.png",
-        );
-      case 21:
         return _buildPersonalizedPlanScreen();
-      case 22:
+      // Notification Screen (moved up from step 22)
+      case 20:
         return _buildNotificationScreen();
-      case 23:
+      // Rating Screen (moved up from step 23)
+      case 21:
         return _buildRatingScreen();
       default:
         return _buildWelcomeScreen();
@@ -687,46 +703,53 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
+                // Question title - left aligned
                 Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 26,
+                    fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
-                    height: 1.2,
-                    letterSpacing: -0.5,
+                    height: 1.3,
+                    letterSpacing: -0.6,
                   ),
-                  textAlign: TextAlign.center,
+                  textAlign: TextAlign.left,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
+                // Subtitle - left aligned with better styling
                 Text(
                   subtitle,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: Colors.white70,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white.withOpacity(0.75),
                     fontWeight: FontWeight.w400,
-                    height: 1.4,
+                    height: 1.5,
+                    letterSpacing: -0.2,
                   ),
-                  textAlign: TextAlign.center,
+                  textAlign: TextAlign.left,
                 ),
-                const SizedBox(height: 36),
+                const SizedBox(height: 40),
+                // Options with better spacing
                 ...options.asMap().entries.map((entry) {
                   final index = entry.key;
                   final option = entry.value;
-                  return _EnhancedOptionButton(
-                    text: option.text,
-                    icon: option.icon,
-                    number: option.number,
-                    isSelected: selectedIndex == index,
-                    onTap: () {
-                      onSelect(index);
-                      setState(() {});
-                    },
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: index < options.length - 1 ? 14 : 0),
+                    child: _EnhancedOptionButton(
+                      text: option.text,
+                      icon: option.icon,
+                      number: option.number,
+                      isSelected: selectedIndex == index,
+                      onTap: () {
+                        onSelect(index);
+                        setState(() {});
+                      },
+                    ),
                   );
                 }),
                 const SizedBox(height: 100), // Space for pinned button
@@ -1264,9 +1287,9 @@ class _EnhancedOptionButtonState extends State<_EnhancedOptionButton>
     super.initState();
     _pressController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 100),
+      duration: const Duration(milliseconds: 150),
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.92).animate(
       CurvedAnimation(parent: _pressController, curve: Curves.easeInOut),
     );
   }
@@ -1283,7 +1306,7 @@ class _EnhancedOptionButtonState extends State<_EnhancedOptionButton>
 
   void _handleTapUp(TapUpDetails details) {
     _pressController.reverse();
-    HapticFeedback.selectionClick();
+    HapticFeedback.lightImpact();
     widget.onTap();
   }
 
@@ -1300,9 +1323,8 @@ class _EnhancedOptionButtonState extends State<_EnhancedOptionButton>
       child: ScaleTransition(
         scale: _scaleAnimation,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 0), // Instant color change
           curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           decoration: BoxDecoration(
             gradient: widget.isSelected
@@ -1436,9 +1458,9 @@ class _LargeGradientButtonState extends State<_LargeGradientButton>
     super.initState();
     _pressController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 100),
+      duration: const Duration(milliseconds: 150),
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.97).animate(
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.94).animate(
       CurvedAnimation(parent: _pressController, curve: Curves.easeInOut),
     );
   }
@@ -1459,7 +1481,7 @@ class _LargeGradientButtonState extends State<_LargeGradientButton>
         onTapUp: isEnabled
             ? (_) {
                 _pressController.reverse();
-                HapticFeedback.mediumImpact();
+                HapticFeedback.lightImpact();
                 widget.onPressed!();
               }
             : null,
