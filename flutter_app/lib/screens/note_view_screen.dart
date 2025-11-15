@@ -318,6 +318,8 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
   Widget _buildSummaryView() {
     final isGenerating = _generatingContentType == 'summary';
     final isEmpty = _studyContent?.summary.isEmpty ?? true;
+    final modeColor = StudyModeColors.getColor(StudyMode.summary);
+    final gradientColors = StudyModeColors.getGradientColors(StudyMode.summary);
     
     // Show loading during initial generation (first 2 minutes after note creation)
     if (_isInitialGeneration && isEmpty && !isGenerating) {
@@ -395,18 +397,15 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF3B82F6),
-                      Color(0xFF60A5FA),
-                    ],
+                    colors: gradientColors,
                   ),
                   borderRadius: BorderRadius.circular(25),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF3B82F6).withOpacity(0.4),
+                      color: modeColor.withOpacity(0.4),
                       blurRadius: 25,
                       spreadRadius: 4,
                     ),
@@ -441,7 +440,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
               const SizedBox(height: 36),
               CupertinoButton.filled(
                 onPressed: () => _generateContentType('summary'),
-                color: const Color(0xFF3B82F6),
+                color: modeColor,
                 borderRadius: BorderRadius.circular(16),
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 child: const Row(
@@ -536,6 +535,8 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
   Widget _buildFlashcardsView() {
     final isGenerating = _generatingContentType == 'flashcards';
     final isEmpty = _studyContent?.flashcards.isEmpty ?? true;
+    final modeColor = StudyModeColors.getColor(StudyMode.flashcards);
+    final gradientColors = StudyModeColors.getGradientColors(StudyMode.flashcards);
     
     // Show loading during initial generation
     if (_isInitialGeneration && isEmpty && !isGenerating) {
@@ -607,18 +608,15 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF10B981),
-                      Color(0xFF34D399),
-                    ],
+                    colors: gradientColors,
                   ),
                   borderRadius: BorderRadius.circular(25),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF10B981).withOpacity(0.4),
+                      color: modeColor.withOpacity(0.4),
                       blurRadius: 25,
                       spreadRadius: 4,
                     ),
@@ -653,7 +651,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
               const SizedBox(height: 36),
               CupertinoButton.filled(
                 onPressed: () => _generateContentType('flashcards'),
-                color: const Color(0xFF10B981),
+                color: modeColor,
                 borderRadius: BorderRadius.circular(16),
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 child: const Row(
@@ -746,6 +744,8 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
   Widget _buildQuizView() {
     final isGenerating = _generatingContentType == 'quiz';
     final isEmpty = _studyContent?.quizQuestions.isEmpty ?? true;
+    final modeColor = StudyModeColors.getColor(StudyMode.quiz);
+    final gradientColors = StudyModeColors.getGradientColors(StudyMode.quiz);
     
     // Show loading during initial generation
     if (_isInitialGeneration && isEmpty && !isGenerating) {
@@ -817,18 +817,15 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF8B5CF6),
-                      Color(0xFFA78BFA),
-                    ],
+                    colors: gradientColors,
                   ),
                   borderRadius: BorderRadius.circular(25),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF8B5CF6).withOpacity(0.4),
+                      color: modeColor.withOpacity(0.4),
                       blurRadius: 25,
                       spreadRadius: 4,
                     ),
@@ -863,7 +860,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
               const SizedBox(height: 36),
               CupertinoButton.filled(
                 onPressed: () => _generateContentType('quiz'),
-                color: const Color(0xFF8B5CF6),
+                color: modeColor,
                 borderRadius: BorderRadius.circular(16),
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 child: const Row(
@@ -956,6 +953,8 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
   Widget _buildExercisesView() {
     final isGenerating = _generatingContentType == 'exercises';
     final isEmpty = _studyContent?.exercises.isEmpty ?? true;
+    final modeColor = StudyModeColors.getColor(StudyMode.exercises);
+    final gradientColors = StudyModeColors.getGradientColors(StudyMode.exercises);
     
     // Show loading during initial generation
     if (_isInitialGeneration && isEmpty && !isGenerating) {
@@ -1027,18 +1026,15 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFFEF4444),
-                      Color(0xFFF87171),
-                    ],
+                    colors: gradientColors,
                   ),
                   borderRadius: BorderRadius.circular(25),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFEF4444).withOpacity(0.4),
+                      color: modeColor.withOpacity(0.4),
                       blurRadius: 25,
                       spreadRadius: 4,
                     ),
@@ -1073,7 +1069,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
               const SizedBox(height: 36),
               CupertinoButton.filled(
                 onPressed: () => _generateContentType('exercises'),
-                color: const Color(0xFFEF4444),
+                color: modeColor,
                 borderRadius: BorderRadius.circular(16),
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 child: const Row(
@@ -1166,6 +1162,8 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
   Widget _buildFeynmanView() {
     final isGenerating = _generatingContentType == 'feynman';
     final isEmpty = _studyContent?.feynmanTopics.isEmpty ?? true;
+    final modeColor = StudyModeColors.getColor(StudyMode.feynman);
+    final gradientColors = StudyModeColors.getGradientColors(StudyMode.feynman);
     
     // Show loading during initial generation
     if (_isInitialGeneration && isEmpty && !isGenerating) {
@@ -1237,18 +1235,15 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFFF59E0B),
-                      Color(0xFFFBBF24),
-                    ],
+                    colors: gradientColors,
                   ),
                   borderRadius: BorderRadius.circular(25),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFF59E0B).withOpacity(0.4),
+                      color: modeColor.withOpacity(0.4),
                       blurRadius: 25,
                       spreadRadius: 4,
                     ),
@@ -1283,7 +1278,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
               const SizedBox(height: 36),
               CupertinoButton.filled(
                 onPressed: () => _generateContentType('feynman'),
-                color: const Color(0xFFF59E0B),
+                color: modeColor,
                 borderRadius: BorderRadius.circular(16),
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 child: const Row(
@@ -2066,29 +2061,34 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.''';
                   disabledColor: const Color(0xFF3A3A3A),
                   child: _isChecking
                       ? const CupertinoActivityIndicator(
-                          color: Color(0xFFFFFFFF),
+                          color: Color(0xFF1A1A1A),
                         )
-                      : const Text('Check My Work'),
+                      : const Text(
+                          'Check My Work',
+                          style: TextStyle(
+                            color: Color(0xFF1A1A1A),
+                          ),
+                        ),
                 ),
                 if (_feedback != null) ...[
                   const SizedBox(height: 24),
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF3B82F6).withOpacity(0.2),
+                      color: widget.modeColor.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: const Color(0xFF3B82F6),
+                        color: widget.modeColor,
                         width: 1,
                       ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Feedback:',
                           style: TextStyle(
-                            color: Color(0xFF93C5FD),
+                            color: widget.modeColor.withOpacity(0.8),
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
@@ -2096,8 +2096,8 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.''';
                         const SizedBox(height: 12),
                         Text(
                           _feedback!,
-                          style: const TextStyle(
-                            color: Color(0xFFDBEAFE),
+                          style: TextStyle(
+                            color: widget.modeColor.withOpacity(0.9),
                             fontSize: 15,
                             height: 1.5,
                           ),
@@ -2466,28 +2466,35 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
             onPressed: _isGettingFeedback ? null : _getFeedback,
             color: widget.modeColor,
             child: _isGettingFeedback
-                ? const CupertinoActivityIndicator()
-                : const Text('Get Feedback'),
+                ? const CupertinoActivityIndicator(
+                    color: Color(0xFF1A1A1A),
+                  )
+                : const Text(
+                    'Get Feedback',
+                    style: TextStyle(
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
           ),
           if (_feedback != null) ...[
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0xFF3B82F6).withOpacity(0.2),
+                color: widget.modeColor.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: const Color(0xFF3B82F6),
+                  color: widget.modeColor,
                   width: 1,
                 ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Feedback:',
                     style: TextStyle(
-                      color: Color(0xFF93C5FD),
+                      color: widget.modeColor.withOpacity(0.8),
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
@@ -2495,8 +2502,8 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
                   const SizedBox(height: 12),
                   Text(
                     _feedback!,
-                    style: const TextStyle(
-                      color: Color(0xFFDBEAFE),
+                    style: TextStyle(
+                      color: widget.modeColor.withOpacity(0.9),
                       fontSize: 15,
                       height: 1.5,
                     ),
@@ -2771,12 +2778,12 @@ class _QuizViewerState extends State<_QuizViewer> {
                     decoration: BoxDecoration(
                       color: question.userAnswer == question.correctAnswer
                           ? const Color(0xFF10B981).withOpacity(0.15)
-                          : const Color(0xFF3B82F6).withOpacity(0.2),
+                          : widget.modeColor.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: question.userAnswer == question.correctAnswer
                             ? const Color(0xFF10B981)
-                            : const Color(0xFF3B82F6),
+                            : widget.modeColor,
                         width: 1,
                       ),
                     ),
@@ -2791,7 +2798,7 @@ class _QuizViewerState extends State<_QuizViewer> {
                                   : CupertinoIcons.info_circle_fill,
                               color: question.userAnswer == question.correctAnswer
                                   ? const Color(0xFF10B981)
-                                  : const Color(0xFF3B82F6),
+                                  : widget.modeColor,
                               size: 20,
                             ),
                             const SizedBox(width: 8),
@@ -2802,7 +2809,7 @@ class _QuizViewerState extends State<_QuizViewer> {
                               style: TextStyle(
                                 color: question.userAnswer == question.correctAnswer
                                     ? const Color(0xFF10B981)
-                                    : const Color(0xFF93C5FD),
+                                    : widget.modeColor,
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                               ),

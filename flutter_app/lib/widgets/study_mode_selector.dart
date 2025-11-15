@@ -63,33 +63,14 @@ class StudyModeSelector extends StatelessWidget {
                 curve: Curves.easeOutCubic,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  gradient: isSelected
-                      ? LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            modeData['color'] as Color,
-                            (modeData['color'] as Color).withOpacity(0.8),
-                          ],
-                        )
-                      : null,
-                  color: isSelected ? null : const Color(0xFF2A2A2A),
+                  color: isSelected ? const Color(0xFFFFFFFF) : const Color(0xFF2A2A2A),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: isSelected
-                        ? (modeData['color'] as Color).withOpacity(0.5)
+                        ? const Color(0xFFFFFFFF)
                         : const Color(0xFF3A3A3A),
                     width: isSelected ? 1.5 : 1,
                   ),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: (modeData['color'] as Color).withOpacity(0.3),
-                            blurRadius: 12,
-                            spreadRadius: 0,
-                          ),
-                        ]
-                      : null,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -98,7 +79,7 @@ class StudyModeSelector extends StatelessWidget {
                       modeData['icon'] as IconData,
                       size: 18,
                       color: isSelected
-                          ? const Color(0xFFFFFFFF)
+                          ? const Color(0xFF1A1A1A)
                           : const Color(0xFF9CA3AF),
                     ),
                     const SizedBox(width: 8),
@@ -106,7 +87,7 @@ class StudyModeSelector extends StatelessWidget {
                       modeData['label'] as String,
                       style: TextStyle(
                         color: isSelected
-                            ? const Color(0xFFFFFFFF)
+                            ? const Color(0xFF1A1A1A)
                             : const Color(0xFF9CA3AF),
                         fontSize: 15,
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,

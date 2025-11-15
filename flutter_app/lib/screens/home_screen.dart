@@ -58,10 +58,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             HapticFeedback.selectionClick();
             _showCreateFolderDialog(context);
           },
-          child: const Icon(
-            CupertinoIcons.folder_badge_plus,
-            color: Colors.white,
-            size: 24,
+            child: const Icon(
+              CupertinoIcons.folder_badge_plus,
+              color: Colors.white,
+              size: 24,
           ),
         ),
       ),
@@ -363,10 +363,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  CupertinoIcons.folder,
-                  size: 20,
-                  color: Colors.white,
-                ),
+                    CupertinoIcons.folder,
+                    size: 20,
+                    color: Colors.white,
+                  ),
                 SizedBox(width: 8),
                 Text(
                   'Move',
@@ -444,10 +444,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: const Row(
               children: [
                 Icon(
-                  CupertinoIcons.house,
-                  size: 20,
-                  color: Colors.white,
-                ),
+                    CupertinoIcons.house,
+                    size: 20,
+                    color: Colors.white,
+                  ),
                 SizedBox(width: 12),
                 Text(
                   'Home (No Folder)',
@@ -465,9 +465,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: Row(
                   children: [
                     const Icon(
-                      CupertinoIcons.folder,
-                      size: 20,
-                      color: Colors.white,
+                        CupertinoIcons.folder,
+                        size: 20,
+                        color: Colors.white,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -523,10 +523,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: const Row(
               children: [
                 Icon(
-                  CupertinoIcons.house,
-                  size: 20,
-                  color: Colors.white,
-                ),
+                    CupertinoIcons.house,
+                    size: 20,
+                    color: Colors.white,
+                  ),
                 SizedBox(width: 12),
                 Text(
                   'Home (Root)',

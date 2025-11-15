@@ -404,10 +404,10 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  CupertinoIcons.folder,
-                  size: 20,
-                  color: Colors.white,
-                ),
+                    CupertinoIcons.folder,
+                    size: 20,
+                    color: Colors.white,
+                  ),
                 SizedBox(width: 8),
                 Text(
                   'Move',
@@ -489,9 +489,9 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
               child: Row(
                 children: [
                   const Icon(
-                    CupertinoIcons.folder,
-                    size: 20,
-                    color: Colors.white,
+                      CupertinoIcons.folder,
+                      size: 20,
+                      color: Colors.white,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -594,9 +594,9 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
               child: Row(
                 children: [
                   const Icon(
-                    CupertinoIcons.folder,
-                    size: 20,
-                    color: Colors.white,
+                      CupertinoIcons.folder,
+                      size: 20,
+                      color: Colors.white,
                   ),
                   const SizedBox(width: 12),
                   Expanded(

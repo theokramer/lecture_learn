@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
-import '../utils/study_mode_colors.dart';
-import '../models/study_content.dart';
 
 /// Widget that renders HTML content with LaTeX math formula support
 /// Matches the website's MarkdownRenderer behavior
@@ -89,14 +87,14 @@ class HtmlWithLatexRenderer extends StatelessWidget {
         ),
         'strong': Style(
           fontWeight: FontWeight.bold,
-          color: StudyModeColors.getColor(StudyMode.summary), // Blue color matching summary button
+          color: const Color(0xFF3B82F6), // Blue color for bold text in summary
         ),
         'em': Style(
           fontStyle: FontStyle.italic,
           color: const Color(0xFFFFFFFF),
         ),
         'mark': Style(
-          backgroundColor: StudyModeColors.getColor(StudyMode.summary), // Summary button blue background
+          backgroundColor: const Color(0xFF650941), // Dark purple/magenta for highlighted text
           color: const Color(0xFFFFFFFF), // White text for contrast
           padding: HtmlPaddings.symmetric(horizontal: 2, vertical: 1),
         ),
