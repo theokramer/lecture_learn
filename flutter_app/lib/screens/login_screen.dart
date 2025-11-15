@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:animations/animations.dart';
 import '../providers/auth_provider.dart';
 import '../utils/error_handler.dart';
+import '../constants/onboarding_colors.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -335,30 +336,47 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
                     closedColor: Colors.transparent,
                     openColor: Colors.transparent,
                     transitionDuration: const Duration(milliseconds: 300),
-                    closedBuilder: (context, action) => CupertinoButton.filled(
-                      onPressed: _isLoading ? null : (_isSignUp ? _handleSignUp : _handleLogin),
-                      color: const Color(0xFFB85A3A),
-                      borderRadius: BorderRadius.circular(14),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      disabledColor: const Color(0xFF3A3A3A),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CupertinoActivityIndicator(
-                                color: Color(0xFFFFFFFF),
-                                radius: 10,
+                    closedBuilder: (context, action) => Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: OnboardingColors.buttonGradientColors,
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: OnboardingColors.buttonGradientColors[0].withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: CupertinoButton(
+                        onPressed: _isLoading ? null : (_isSignUp ? _handleSignUp : _handleLogin),
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        disabledColor: const Color(0xFF3A3A3A),
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CupertinoActivityIndicator(
+                                  color: Color(0xFFFFFFFF),
+                                  radius: 10,
+                                ),
+                              )
+                            : Text(
+                                _isSignUp ? 'Sign Up' : 'Sign In',
+                                style: const TextStyle(
+                                  color: Color(0xFFFFFFFF),
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.5,
+                                ),
                               ),
-                            )
-                          : Text(
-                              _isSignUp ? 'Sign Up' : 'Sign In',
-                              style: const TextStyle(
-                                color: Color(0xFFFFFFFF),
-                                fontSize: 17,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
+                      ),
                     ),
                     openBuilder: (context, action) => Container(),
                   ),
@@ -379,8 +397,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
                       _isSignUp
                           ? 'Already have an account? Sign In'
                           : 'Don\'t have an account? Sign Up',
-                      style: const TextStyle(
-                        color: Color(0xFFB85A3A),
+                      style: TextStyle(
+                        color: OnboardingColors.buttonGradientColors[0],
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
                       ),

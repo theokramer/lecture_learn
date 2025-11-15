@@ -10,7 +10,7 @@ class RevenueCatService {
   factory RevenueCatService() => _instance;
   RevenueCatService._internal();
 
-  static const String _apiKey = 'app1840a2c977';
+  static const String _apiKey = 'appl_OWAqYvjjtNklHIlrXiONlngrlgx';
   bool _initialized = false;
   CustomerInfo? _customerInfo;
   
@@ -140,7 +140,15 @@ class RevenueCatService {
       } catch (e) {
         AppLogger.warning('⚠️ [RevenueCat Debug] Failed to load initial customer info', error: e, tag: 'RevenueCatService');
         _addInitStep('⚠️ Customer info loading failed: $e');
-        // Don't fail initialization if customer info fails
+        
+        // Check if it's an API key error
+        if (e is PlatformException && e.code == '11') {
+          AppLogger.error('❌ [RevenueCat Debug] Invalid API Key detected!', tag: 'RevenueCatService');
+          AppLogger.error('❌ [RevenueCat Debug] Current API Key: $_apiKey', tag: 'RevenueCatService');
+          AppLogger.error('❌ [RevenueCat Debug] For iOS, API keys should start with "appl_"', tag: 'RevenueCatService');
+          AppLogger.error('❌ [RevenueCat Debug] Get your API key from: https://app.revenuecat.com/projects/YOUR_PROJECT_ID/settings', tag: 'RevenueCatService');
+        }
+        // Don't fail initialization if customer info fails - app can still work
       }
       
       final totalTime = DateTime.now().difference(startTime).inMilliseconds;
@@ -177,10 +185,22 @@ class RevenueCatService {
   }
 
   /// Set user ID for RevenueCat (call after user logs in)
+  /// This will link any anonymous purchases to the user ID
   Future<void> setUserId(String userId) async {
     try {
       AppLogger.info('Setting RevenueCat user ID: $userId', tag: 'RevenueCatService');
-      await Purchases.logIn(userId);
+      AppLogger.debug('Logging in to RevenueCat with user ID...', tag: 'RevenueCatService');
+      
+      // LogIn will link any anonymous purchases to this user ID
+      final loginResult = await Purchases.logIn(userId);
+      _customerInfo = loginResult.customerInfo;
+      
+      AppLogger.success('RevenueCat user ID set successfully', tag: 'RevenueCatService');
+      AppLogger.debug('Active entitlements after login: ${loginResult.customerInfo.entitlements.active.keys.toList()}', tag: 'RevenueCatService');
+      AppLogger.debug('Original app user ID: ${loginResult.customerInfo.originalAppUserId}', tag: 'RevenueCatService');
+      AppLogger.debug('Created: ${loginResult.created}', tag: 'RevenueCatService');
+      
+      // Refresh to get latest info
       await refreshCustomerInfo();
     } catch (e) {
       AppLogger.error('Failed to set RevenueCat user ID', error: e, tag: 'RevenueCatService');
@@ -271,16 +291,30 @@ class RevenueCatService {
     }
   }
 
-  /// Restore purchases
+  /// Restore purchases (for users who already purchased)
+  /// This will sync purchases from the App Store/Play Store
   Future<CustomerInfo> restorePurchases() async {
     try {
       AppLogger.info('Restoring purchases...', tag: 'RevenueCatService');
+      AppLogger.debug('This will sync purchases from App Store/Play Store', tag: 'RevenueCatService');
       
       final customerInfo = await Purchases.restorePurchases();
       _customerInfo = customerInfo;
       
       AppLogger.success('Purchases restored', tag: 'RevenueCatService');
-      AppLogger.debug('Active entitlements after restore: ${customerInfo.entitlements.active.keys.toList()}', tag: 'RevenueCatService');
+      AppLogger.debug('Active entitlements: ${customerInfo.entitlements.active.keys.toList()}', tag: 'RevenueCatService');
+      AppLogger.debug('Original app user ID: ${customerInfo.originalAppUserId}', tag: 'RevenueCatService');
+      AppLogger.debug('First seen: ${customerInfo.firstSeen}', tag: 'RevenueCatService');
+      
+      // Log all entitlements for debugging
+      if (customerInfo.entitlements.all.isNotEmpty) {
+        AppLogger.debug('All entitlements:', tag: 'RevenueCatService');
+        customerInfo.entitlements.all.forEach((key, entitlement) {
+          AppLogger.debug('  - $key: active=${entitlement.isActive}, productId=${entitlement.productIdentifier}', tag: 'RevenueCatService');
+        });
+      } else {
+        AppLogger.warning('No entitlements found after restore', tag: 'RevenueCatService');
+      }
       
       return customerInfo;
     } catch (e) {

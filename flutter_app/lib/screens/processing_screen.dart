@@ -196,7 +196,7 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
                     child: LinearProgressIndicator(
                       value: _progress,
                       backgroundColor: const Color(0xFF3A3A3A),
-                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFB85A3A)),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFFFFFF)),
                       minHeight: 8,
                     ),
                   ),

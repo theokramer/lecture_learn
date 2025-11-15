@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
 import '../providers/app_data_provider.dart';
-import '../services/ai_gateway_service.dart';
 import '../utils/error_handler.dart';
 
 class UploadScreen extends ConsumerStatefulWidget {
@@ -313,7 +312,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                               HapticFeedback.mediumImpact();
                               _uploadFiles();
                             },
-                      color: const Color(0xFFB85A3A),
+                      color: const Color(0xFFFFFFFF),
                       disabledColor: const Color(0xFF3A3A3A),
                       borderRadius: BorderRadius.circular(14),
                       padding: const EdgeInsets.symmetric(vertical: 16),

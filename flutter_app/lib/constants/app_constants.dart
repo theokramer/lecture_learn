@@ -32,8 +32,9 @@ class AppConstants {
   static const double largeIconSize = 50.0;
   
   // Colors (if needed as constants)
-  static const int primaryColor = 0xFF6366F1; // Indigo
-  static const int folderColor = 0xFFB85A3A; // Orange/Brown
+  static const int primaryColor = 0xFFFFFFFF; // White
+  static const int secondaryColor = 0xFFE85E5A; // Red/Pink from onboarding
+  static const int folderColor = 0xFFbc003b; // Deep red/magenta from onboarding
   static const int backgroundColor = 0xFF1A1A1A;
   static const int surfaceColor = 0xFF2A2A2A;
   static const int borderColor = 0xFF3A3A3A;

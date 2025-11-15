@@ -385,6 +385,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
                 id: 'gen-${DateTime.now().millisecondsSinceEpoch}-${entry.key}',
                 front: card['front'] as String,
                 back: card['back'] as String,
+                hint: card['hint'] as String?,
               );
             }).toList();
           }).catchError((e) {
@@ -402,6 +403,8 @@ class AppDataNotifier extends Notifier<AppDataState> {
                 question: question['question'] as String,
                 options: (question['options'] as List).cast<String>(),
                 correctAnswer: question['correctAnswer'] as int,
+                hint: question['hint'] as String?,
+                explanation: question['explanation'] as String?,
               );
             }).toList();
           }).catchError((e) {
@@ -418,6 +421,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
                 id: 'gen-${DateTime.now().millisecondsSinceEpoch}-${entry.key}',
                 question: exercise['question'] as String,
                 solution: exercise['solution'] as String,
+                hint: exercise['hint'] as String?,
               );
             }).toList();
           }).catchError((e) {
@@ -538,6 +542,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
                 id: 'gen-${DateTime.now().millisecondsSinceEpoch}-${entry.key}',
                 front: card['front'] as String,
                 back: card['back'] as String,
+                hint: card['hint'] as String?,
               );
             }).toList();
           }
@@ -552,6 +557,8 @@ class AppDataNotifier extends Notifier<AppDataState> {
                 question: question['question'] as String,
                 options: (question['options'] as List).cast<String>(),
                 correctAnswer: question['correctAnswer'] as int,
+                hint: question['hint'] as String?,
+                explanation: question['explanation'] as String?,
               );
             }).toList();
           }
@@ -565,6 +572,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
                 id: 'gen-${DateTime.now().millisecondsSinceEpoch}-${entry.key}',
                 question: exercise['question'] as String,
                 solution: exercise['solution'] as String,
+                hint: exercise['hint'] as String?,
               );
             }).toList();
           }

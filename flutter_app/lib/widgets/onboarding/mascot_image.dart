@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:ui' as ui;
 
 /// Widget to display mascot images from assets/mascot
 /// Easily replaceable by changing the asset path

@@ -25,6 +25,26 @@ class AuthNotifier extends AsyncNotifier<User?> {
     
     if (user != null) {
       AppLogger.success('Found persisted user: ${user.email}', tag: 'AuthProvider');
+      
+      // Set RevenueCat user ID for existing session (after a delay to ensure provider is ready)
+      Future.delayed(const Duration(milliseconds: 500), () async {
+        try {
+          // Check if provider is ready before accessing
+          if (!ref.exists(revenueCatProvider)) {
+            AppLogger.warning('RevenueCat provider not ready yet, skipping user ID set', tag: 'AuthProvider');
+            return;
+          }
+          final revenueCatNotifier = ref.read(revenueCatProvider.notifier);
+          await revenueCatNotifier.setUserId(user.id);
+          // Restore purchases to link any anonymous purchases to this user
+          await revenueCatNotifier.restorePurchases();
+        } catch (e) {
+          // Only log if it's not a "provider not initialized" error
+          if (!e.toString().contains('uninitialized provider')) {
+            AppLogger.warning('Failed to set RevenueCat user ID on app start', error: e, tag: 'AuthProvider');
+          }
+        }
+      });
     } else {
       AppLogger.info('No persisted user found', tag: 'AuthProvider');
     }
@@ -40,6 +60,26 @@ class AuthNotifier extends AsyncNotifier<User?> {
         final currentUser = User.fromJson(authState.session!.user.toJson());
         AppLogger.success('Updating state with user: ${currentUser.email}', tag: 'AuthProvider');
         state = AsyncData(currentUser);
+        
+        // Set RevenueCat user ID when auth state changes (with delay to ensure provider is ready)
+        Future.delayed(const Duration(milliseconds: 300), () async {
+          try {
+            // Check if provider is ready before accessing
+            if (!ref.exists(revenueCatProvider)) {
+              AppLogger.warning('RevenueCat provider not ready yet, skipping user ID set', tag: 'AuthProvider');
+              return;
+            }
+            final revenueCatNotifier = ref.read(revenueCatProvider.notifier);
+            await revenueCatNotifier.setUserId(currentUser.id);
+            // Restore purchases after setting user ID
+            await revenueCatNotifier.restorePurchases();
+          } catch (e) {
+            // Only log if it's not a "provider not initialized" error
+            if (!e.toString().contains('uninitialized provider')) {
+              AppLogger.warning('Failed to set RevenueCat user ID on auth state change', error: e, tag: 'AuthProvider');
+            }
+          }
+        });
       } else {
         AppLogger.info('Clearing auth state (no session)', tag: 'AuthProvider');
         state = const AsyncData(null);
@@ -68,10 +108,18 @@ class AuthNotifier extends AsyncNotifier<User?> {
         
         // Set RevenueCat user ID
         try {
-          final revenueCatNotifier = ref.read(revenueCatProvider.notifier);
-          await revenueCatNotifier.setUserId(user.id);
+          // Check if provider is ready before accessing
+          if (!ref.exists(revenueCatProvider)) {
+            AppLogger.warning('RevenueCat provider not ready yet, skipping user ID set', tag: 'AuthProvider');
+          } else {
+            final revenueCatNotifier = ref.read(revenueCatProvider.notifier);
+            await revenueCatNotifier.setUserId(user.id);
+          }
         } catch (e) {
-          AppLogger.warning('Failed to set RevenueCat user ID', error: e, tag: 'AuthProvider');
+          // Only log if it's not a "provider not initialized" error
+          if (!e.toString().contains('uninitialized provider')) {
+            AppLogger.warning('Failed to set RevenueCat user ID', error: e, tag: 'AuthProvider');
+          }
         }
         
         return {'success': true};
@@ -139,10 +187,18 @@ class AuthNotifier extends AsyncNotifier<User?> {
         
         // Set RevenueCat user ID
         try {
-          final revenueCatNotifier = ref.read(revenueCatProvider.notifier);
-          await revenueCatNotifier.setUserId(user.id);
+          // Check if provider is ready before accessing
+          if (!ref.exists(revenueCatProvider)) {
+            AppLogger.warning('RevenueCat provider not ready yet, skipping user ID set', tag: 'AuthProvider');
+          } else {
+            final revenueCatNotifier = ref.read(revenueCatProvider.notifier);
+            await revenueCatNotifier.setUserId(user.id);
+          }
         } catch (e) {
-          AppLogger.warning('Failed to set RevenueCat user ID', error: e, tag: 'AuthProvider');
+          // Only log if it's not a "provider not initialized" error
+          if (!e.toString().contains('uninitialized provider')) {
+            AppLogger.warning('Failed to set RevenueCat user ID', error: e, tag: 'AuthProvider');
+          }
         }
         
         return {'success': true};
@@ -169,10 +225,16 @@ class AuthNotifier extends AsyncNotifier<User?> {
     
     // Log out from RevenueCat
     try {
-      final revenueCatNotifier = ref.read(revenueCatProvider.notifier);
-      await revenueCatNotifier.logOut();
+      // Check if provider is ready before accessing
+      if (ref.exists(revenueCatProvider)) {
+        final revenueCatNotifier = ref.read(revenueCatProvider.notifier);
+        await revenueCatNotifier.logOut();
+      }
     } catch (e) {
-      AppLogger.warning('Failed to log out from RevenueCat', error: e, tag: 'AuthProvider');
+      // Only log if it's not a "provider not initialized" error
+      if (!e.toString().contains('uninitialized provider')) {
+        AppLogger.warning('Failed to log out from RevenueCat', error: e, tag: 'AuthProvider');
+      }
     }
     
     await _supabase.signOut();

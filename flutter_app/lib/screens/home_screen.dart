@@ -9,6 +9,7 @@ import '../models/note.dart';
 import '../models/folder.dart';
 import '../widgets/folder_note_item.dart';
 import '../widgets/create_folder_dialog.dart';
+import '../constants/onboarding_colors.dart';
 import 'folder_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -59,7 +60,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           },
           child: const Icon(
             CupertinoIcons.folder_badge_plus,
-            color: Color(0xFFB85A3A),
+            color: Colors.white,
             size: 24,
           ),
         ),
@@ -69,11 +70,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           children: [
             // Search Bar
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
               decoration: const BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: Color(0xFF3A3A3A),
+                    color: Color(0xFF2A2A2A),
                     width: 0.5,
                   ),
                 ),
@@ -90,36 +91,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   color: Color(0xFFFFFFFF),
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
+                  letterSpacing: -0.2,
                 ),
                 placeholderStyle: const TextStyle(
-                  color: Color(0xFF6B7280),
+                  color: Color(0xFF8E8E93),
                   fontSize: 16,
+                  fontWeight: FontWeight.w400,
                 ),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      const Color(0xFF2A2A2A),
-                      const Color(0xFF252525),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(14),
+                  color: const Color(0xFF1F1F1F),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _searchQuery.isNotEmpty
-                        ? const Color(0xFFB85A3A).withOpacity(0.5)
-                        : const Color(0xFF3A3A3A),
-                    width: _searchQuery.isNotEmpty ? 1.5 : 1,
+                    color: const Color(0xFF2F2F2F),
+                    width: 1,
                   ),
-                  boxShadow: _searchQuery.isNotEmpty
-                      ? [
-                          BoxShadow(
-                            color: const Color(0xFFB85A3A).withOpacity(0.2),
-                            blurRadius: 8,
-                            spreadRadius: 0,
-                          ),
-                        ]
-                      : null,
                 ),
               ),
             ),
@@ -153,15 +138,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           width: 64,
                           height: 64,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF6366F1), // Indigo - matches primary color
+                            gradient: LinearGradient(
+                              colors: OnboardingColors.buttonGradientColors,
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
                             shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
                           ),
                           child: const Icon(
                             CupertinoIcons.add,
@@ -202,29 +184,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 120,
-                height: 120,
+                width: 100,
+                height: 100,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFFB85A3A),
-                      Color(0xFFD47A5A),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFB85A3A).withOpacity(0.4),
-                      blurRadius: 30,
-                      spreadRadius: 5,
-                    ),
-                  ],
+                  color: const Color(0xFF2F2F2F),
+                  borderRadius: BorderRadius.circular(24),
                 ),
                 child: const Icon(
-                  CupertinoIcons.sparkles,
-                  size: 60,
+                  CupertinoIcons.doc_text,
+                  size: 48,
                   color: Color(0xFFFFFFFF),
                 ),
               ),
@@ -232,48 +200,69 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               const Text(
                 'Start Your Learning Journey',
                 style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w600,
                   color: Color(0xFFFFFFFF),
                   letterSpacing: -0.5,
+                  height: 1.2,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Text(
                 'Create your first note to begin',
                 style: TextStyle(
-                  fontSize: 16,
-                  color: const Color(0xFF9CA3AF).withOpacity(0.9),
+                  fontSize: 15,
+                  color: const Color(0xFF8E8E93).withOpacity(0.9),
                   fontWeight: FontWeight.w400,
+                  letterSpacing: -0.2,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
-              CupertinoButton.filled(
-                onPressed: () {
-                  HapticFeedback.mediumImpact();
-                  context.push('/note-creation');
-                },
-                color: const Color(0xFFB85A3A),
-                borderRadius: BorderRadius.circular(16),
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      CupertinoIcons.add_circled_solid,
-                      size: 20,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      'Create Your First Note',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: OnboardingColors.buttonGradientColors,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: OnboardingColors.buttonGradientColors[0].withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
                   ],
+                ),
+                child: CupertinoButton(
+                  onPressed: () {
+                    HapticFeedback.mediumImpact();
+                    context.push('/note-creation');
+                  },
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        CupertinoIcons.add_circled_solid,
+                        size: 20,
+                        color: Colors.white,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Create Your First Note',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -283,13 +272,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       itemCount: folders.length + notes.length,
       itemBuilder: (context, index) {
         if (index < folders.length) {
           final folder = folders[index];
           return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 14),
             child: FolderNoteItem(
               folder: folder,
               onTap: () {
@@ -309,7 +298,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         } else {
           final note = notes[index - folders.length];
           return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 14),
             child: FolderNoteItem(
               note: note,
               onTap: () {
@@ -345,6 +334,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _showItemOptions(BuildContext context, {Folder? folder, Note? note}) {
     final isFolder = folder != null;
     final title = folder?.name ?? note?.title ?? '';
+    final folderValue = folder;
+    final noteValue = note;
     
     showCupertinoModalPopup(
       context: context,
@@ -362,10 +353,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onPressed: () {
               HapticFeedback.selectionClick();
               Navigator.pop(context);
-              if (isFolder && folder != null) {
-                _showMoveFolderDialog(context, folder);
-              } else if (note != null) {
-                _showMoveNoteDialog(context, note);
+              if (isFolder && folderValue != null) {
+                _showMoveFolderDialog(context, folderValue);
+              } else if (noteValue != null) {
+                _showMoveNoteDialog(context, noteValue);
               }
             },
             child: const Row(
@@ -374,14 +365,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 Icon(
                   CupertinoIcons.folder,
                   size: 20,
-                  color: Color(0xFFB85A3A),
+                  color: Colors.white,
                 ),
                 SizedBox(width: 8),
                 Text(
                   'Move',
                   style: TextStyle(
                     fontSize: 17,
-                    color: Color(0xFFB85A3A),
+                    color: Colors.white,
                   ),
                 ),
               ],
@@ -392,10 +383,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onPressed: () {
               HapticFeedback.mediumImpact();
               Navigator.pop(context);
-              if (isFolder && folder != null) {
-                _deleteFolder(context, folder);
-              } else if (note != null) {
-                _deleteNote(context, note);
+              if (isFolder && folderValue != null) {
+                _deleteFolder(context, folderValue);
+              } else if (noteValue != null) {
+                _deleteNote(context, noteValue);
               }
             },
             child: const Row(
@@ -455,7 +446,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 Icon(
                   CupertinoIcons.house,
                   size: 20,
-                  color: Color(0xFFB85A3A),
+                  color: Colors.white,
                 ),
                 SizedBox(width: 12),
                 Text(
@@ -476,7 +467,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     const Icon(
                       CupertinoIcons.folder,
                       size: 20,
-                      color: Color(0xFFB85A3A),
+                      color: Colors.white,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -534,7 +525,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 Icon(
                   CupertinoIcons.house,
                   size: 20,
-                  color: Color(0xFFB85A3A),
+                  color: Colors.white,
                 ),
                 SizedBox(width: 12),
                 Text(
@@ -555,7 +546,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     const Icon(
                       CupertinoIcons.folder,
                       size: 20,
-                      color: Color(0xFFB85A3A),
+                      color: Colors.white,
                     ),
                     const SizedBox(width: 12),
                     Expanded(

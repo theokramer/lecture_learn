@@ -45,11 +45,17 @@ class AIGatewayService {
       if (storagePath != null && storagePath.isNotEmpty) {
         AppLogger.debug('Using storage-based transcription for path: $storagePath', tag: 'AIGatewayService');
         
+        // Wrap in timeout - transcription can take up to 5 minutes for long audio
         final result = await supabase.functions.invoke(
           'ai-generate',
           body: {
             'type': 'transcription',
             'storagePath': storagePath,
+          },
+        ).timeout(
+          const Duration(minutes: 5),
+          onTimeout: () {
+            throw Exception('Transcription timed out. The audio file may be too long. Please try with a shorter recording.');
           },
         );
 
@@ -118,12 +124,18 @@ class AIGatewayService {
       final base64 = base64Encode(bytes);
       final mimeType = 'audio/m4a'; // Adjust based on file type
 
+      // Wrap in timeout - transcription can take up to 5 minutes for long audio
       final result = await supabase.functions.invoke(
         'ai-generate',
         body: {
           'type': 'transcription',
           'audioBase64': base64,
           'mimeType': mimeType,
+        },
+      ).timeout(
+        const Duration(minutes: 5),
+        onTimeout: () {
+          throw Exception('Transcription timed out. The audio file may be too long. Please try with a shorter recording.');
         },
       );
 
@@ -177,7 +189,24 @@ class AIGatewayService {
       }
       final errorMessage = e.toString();
       AppLogger.error('Transcription error', error: e, tag: 'AIGatewayService');
-      throw Exception('Failed to transcribe audio: $errorMessage');
+      
+      // Check if it's a timeout or gateway timeout
+      if (errorMessage.contains('timeout') || errorMessage.contains('504') || errorMessage.contains('Gateway Timeout')) {
+        throw Exception('Transcription timed out. The audio file may be too long or the service is busy. Please try with a shorter recording or try again later.');
+      }
+      
+      // Check if it's a FunctionException
+      if (errorMessage.contains('FunctionException')) {
+        final statusMatch = RegExp(r'status: (\d+)').firstMatch(errorMessage);
+        if (statusMatch != null) {
+          final status = int.tryParse(statusMatch.group(1) ?? '');
+          if (status == 504) {
+            throw Exception('Transcription timed out. The audio file may be too long. Please try with a shorter recording.');
+          }
+        }
+      }
+      
+      throw Exception('Failed to transcribe audio: ${errorMessage.replaceAll(RegExp(r'^Exception: '), '')}');
     }
   }
 
@@ -621,11 +650,11 @@ Rules:
       final messages = [
         {
           'role': 'system',
-          'content': 'You are a helpful assistant that creates educational flashcards. Return a JSON array of flashcards with "front" and "back" properties.$languageInstruction',
+          'content': 'You are a helpful assistant that creates educational flashcards. Return a JSON array of flashcards with "front", "back", and "hint" properties.$languageInstruction',
         },
         {
           'role': 'user',
-          'content': 'Create EXACTLY $count flashcards from the following text content. The text below is the actual content extracted from documents - you do NOT need to access any files. Use this text directly to create flashcards.$languageInstruction\n\nRequirements:\n1. Give EQUAL coverage to all sections; do not focus only on early sections\n2. Progress difficulty (definitions/facts → concepts/relationships → applications)\n3. Ensure breadth across distinct topics; avoid redundancy\n4. If the same fact appears multiple times, MERGE that into one clear card (do not duplicate) and prefer the clearest wording\n\nText Content:\n${_truncateContent(content, 1500)}\n\nReturn exactly $count flashcards as a JSON array with "front" and "back" properties.',
+          'content': 'Create EXACTLY $count flashcards from the following text content. The text below is the actual content extracted from documents - you do NOT need to access any files. Use this text directly to create flashcards.$languageInstruction\n\nRequirements:\n1. Give EQUAL coverage to all sections; do not focus only on early sections\n2. Progress difficulty (definitions/facts → concepts/relationships → applications)\n3. Ensure breadth across distinct topics; avoid redundancy\n4. If the same fact appears multiple times, MERGE that into one clear card (do not duplicate) and prefer the clearest wording\n5. For each flashcard, include a "hint" property that provides a subtle tip to help the user recall the answer without giving it away. The hint should guide thinking but not spoil the answer.\n\nText Content:\n${_truncateContent(content, 1500)}\n\nReturn exactly $count flashcards as a JSON array with "front", "back", and "hint" properties.',
         },
       ];
 
@@ -664,11 +693,11 @@ Rules:
       final messages = [
         {
           'role': 'system',
-          'content': 'You are a helpful assistant that creates quiz questions. Return a JSON array of questions with "question", "options" (array of 4 strings), and "correctAnswer" (index 0-3).$languageInstruction',
+          'content': 'You are a helpful assistant that creates quiz questions. Return a JSON array of questions with "question", "options" (array of 4 strings), "correctAnswer" (index 0-3), "hint", and "explanation" properties.$languageInstruction',
         },
         {
           'role': 'user',
-          'content': 'Create EXACTLY $count quiz questions from the following text content. The text below is the actual content extracted from documents - you do NOT need to access any files. Use this text directly to create quiz questions.$languageInstruction\n\nRequirements:\n1. Give EQUAL coverage to all sections; do not bias earlier sections\n2. Mix difficulty (recall → application → analysis) and cover different topics\n3. Make distractors plausible but clearly wrong\n4. If the same fact appears multiple times, combine knowledge and avoid duplicate questions\n\nText Content:\n${_truncateContent(content, 1500)}\n\nReturn exactly $count quiz questions as a JSON array with "question", "options" (array of 4 strings), and "correctAnswer" (index 0-3).',
+          'content': 'Create EXACTLY $count quiz questions from the following text content. The text below is the actual content extracted from documents - you do NOT need to access any files. Use this text directly to create quiz questions.$languageInstruction\n\nRequirements:\n1. Give EQUAL coverage to all sections; do not bias earlier sections\n2. Mix difficulty (recall → application → analysis) and cover different topics\n3. Make distractors plausible but clearly wrong\n4. If the same fact appears multiple times, combine knowledge and avoid duplicate questions\n5. For each question, include a "hint" property that provides a subtle tip to help the user think about the answer without giving it away. The hint should guide thinking but not spoil the answer.\n6. For each question, include an "explanation" property that explains WHY the correct answer is correct. This should be educational and help the user understand the concept better.\n\nText Content:\n${_truncateContent(content, 1500)}\n\nReturn exactly $count quiz questions as a JSON array with "question", "options" (array of 4 strings), "correctAnswer" (index 0-3), "hint", and "explanation" properties.',
         },
       ];
 
@@ -707,11 +736,11 @@ Rules:
       final messages = [
         {
           'role': 'system',
-          'content': 'You are a helpful assistant that creates practice exercises. Return a JSON array of exercises with "question", "solution", and "notes" properties.$languageInstruction',
+          'content': 'You are a helpful assistant that creates practice exercises. Return a JSON array of exercises with "question", "solution", "notes", and "hint" properties.$languageInstruction',
         },
         {
           'role': 'user',
-          'content': 'Create EXACTLY $count practice exercises from the following text content. The text below is the actual content extracted from documents - you do NOT need to access any files. Use this text directly to create exercises.$languageInstruction\n\nMake sure to:\n1. Cover ALL important concepts and key topics from the text comprehensively\n2. Create exercises in progressive difficulty (start with simpler applications, then more complex ones)\n3. Include a variety of exercise types:\n   - Problem-solving exercises\n   - Application of concepts\n   - Analysis and critical thinking\n   - Synthesis tasks\n4. Each exercise should have a clear, detailed solution\n5. Include helpful notes with tips or common pitfalls\n6. Ensure comprehensive coverage across different themes and topics\n\nText Content:\n${_truncateContent(content, 2000)}\n\nReturn exactly $count exercises as a JSON array with "question", "solution", and "notes" properties.',
+          'content': 'Create EXACTLY $count practice exercises from the following text content. The text below is the actual content extracted from documents - you do NOT need to access any files. Use this text directly to create exercises.$languageInstruction\n\nMake sure to:\n1. Cover ALL important concepts and key topics from the text comprehensively\n2. Create exercises in progressive difficulty (start with simpler applications, then more complex ones)\n3. Include a variety of exercise types:\n   - Problem-solving exercises\n   - Application of concepts\n   - Analysis and critical thinking\n   - Synthesis tasks\n4. Each exercise should have a clear, detailed solution\n5. Include helpful notes with tips or common pitfalls\n6. Ensure comprehensive coverage across different themes and topics\n7. For each exercise, include a "hint" property that provides a subtle tip to help the user approach the problem without giving away the solution. The hint should guide thinking but not spoil the answer.\n\nText Content:\n${_truncateContent(content, 2000)}\n\nReturn exactly $count exercises as a JSON array with "question", "solution", "notes", and "hint" properties.',
         },
       ];
 

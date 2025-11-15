@@ -1476,6 +1476,7 @@ class _FlashcardViewerState extends State<_FlashcardViewer>
     with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
   bool _showBack = false;
+  bool _showHint = false;
   late AnimationController _flipController;
   late Animation<double> _flipAnimation;
 
@@ -1507,6 +1508,9 @@ class _FlashcardViewerState extends State<_FlashcardViewer>
     }
     setState(() {
       _showBack = !_showBack;
+      if (_showBack) {
+        _showHint = false; // Hide hint when showing back
+      }
     });
   }
 
@@ -1527,23 +1531,115 @@ class _FlashcardViewerState extends State<_FlashcardViewer>
       children: [
         Expanded(
           child: Center(
-            child: GestureDetector(
-              onTap: _flipCard,
-              child: AnimatedBuilder(
-                animation: _flipAnimation,
-                builder: (context, child) {
-                  return Transform(
-                    alignment: Alignment.center,
-                    transform: Matrix4.identity()
-                      ..setEntry(3, 2, 0.001)
-                      ..rotateY(_flipAnimation.value * 3.14159),
-                    child: _flipAnimation.value < 0.5
-                        ? _buildCardSide(card.front, false)
-                        : _buildCardSide(card.back, true),
-                  );
-                },
-                child: null, // Explicitly set child to null
-              ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                GestureDetector(
+                  onTap: _flipCard,
+                  child: AnimatedBuilder(
+                    animation: _flipAnimation,
+                    builder: (context, child) {
+                      return Transform(
+                        alignment: Alignment.center,
+                        transform: Matrix4.identity()
+                          ..setEntry(3, 2, 0.001)
+                          ..rotateY(_flipAnimation.value * 3.14159),
+                        child: _flipAnimation.value < 0.5
+                            ? _buildCardSide(card.front, false)
+                            : _buildCardSide(card.back, true),
+                      );
+                    },
+                    child: null, // Explicitly set child to null
+                  ),
+                ),
+                if (!_showBack && card.hint != null && card.hint!.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minSize: 0,
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      setState(() {
+                        _showHint = !_showHint;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _showHint
+                            ? widget.modeColor.withOpacity(0.2)
+                            : const Color(0xFF2A2A2A),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _showHint
+                              ? widget.modeColor
+                              : const Color(0xFF3A3A3A),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            CupertinoIcons.lightbulb,
+                            color: _showHint
+                                ? widget.modeColor
+                                : const Color(0xFF9CA3AF),
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Hint',
+                            style: TextStyle(
+                              color: _showHint
+                                  ? widget.modeColor
+                                  : const Color(0xFF9CA3AF),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_showHint) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 24),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: widget.modeColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: widget.modeColor.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            CupertinoIcons.lightbulb_fill,
+                            color: widget.modeColor,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              card.hint!,
+                              style: TextStyle(
+                                color: const Color(0xFFFFFFFF).withOpacity(0.9),
+                                fontSize: 15,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ],
             ),
           ),
         ),
@@ -1559,6 +1655,7 @@ class _FlashcardViewerState extends State<_FlashcardViewer>
                     setState(() {
                       _currentIndex--;
                       _showBack = false;
+                      _showHint = false;
                       _flipController.reset();
                     });
                   },
@@ -1594,6 +1691,7 @@ class _FlashcardViewerState extends State<_FlashcardViewer>
                     setState(() {
                       _currentIndex++;
                       _showBack = false;
+                      _showHint = false;
                       _flipController.reset();
                     });
                   },
@@ -1676,6 +1774,7 @@ class _ExercisesViewerState extends State<_ExercisesViewer> {
   bool _showSolution = false;
   bool _hasChecked = false;
   bool _hasText = false;
+  bool _showHint = false;
 
   @override
   void initState() {
@@ -1796,6 +1895,7 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.''';
       _hasChecked = false;
       _isChecking = false;
       _hasText = false;
+      _showHint = false;
     });
   }
 
@@ -1836,15 +1936,92 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.''';
                   ),
                 ),
                 const SizedBox(height: 24),
-                Text(
-                  exercise.question,
-                  style: const TextStyle(
-                    color: Color(0xFFFFFFFF),
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    height: 1.4,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        exercise.question,
+                        style: const TextStyle(
+                          color: Color(0xFFFFFFFF),
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                    if (exercise.hint != null && exercise.hint!.isNotEmpty) ...[
+                      const SizedBox(width: 12),
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        minSize: 0,
+                        onPressed: () {
+                          HapticFeedback.selectionClick();
+                          setState(() {
+                            _showHint = !_showHint;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: _showHint
+                                ? widget.modeColor.withOpacity(0.2)
+                                : const Color(0xFF2A2A2A),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _showHint
+                                  ? widget.modeColor
+                                  : const Color(0xFF3A3A3A),
+                              width: 1,
+                            ),
+                          ),
+                          child: Icon(
+                            CupertinoIcons.lightbulb,
+                            color: _showHint
+                                ? widget.modeColor
+                                : const Color(0xFF9CA3AF),
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
+                if (_showHint && exercise.hint != null && exercise.hint!.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: widget.modeColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: widget.modeColor.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          CupertinoIcons.lightbulb_fill,
+                          color: widget.modeColor,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            exercise.hint!,
+                            style: TextStyle(
+                              color: const Color(0xFFFFFFFF).withOpacity(0.9),
+                              fontSize: 15,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 const Text(
                   'Your Answer:',
@@ -2081,7 +2258,7 @@ class _FeynmanViewerState extends State<_FeynmanViewer> {
 
     try {
       final aiGateway = AIGatewayService();
-      final feedbackPrompt = '''You are a CRITICAL but fair teacher evaluating a student's explanation using the Feynman Technique. The goal is to ensure the explanation is so simple that a 5-year-old could understand it.
+      final feedbackPrompt = '''You are a CRITICAL but fair teacher evaluating a student's explanation using the Feynman Technique. The goal is to ensure the explanation is so simple that a 12-year-old could understand it.
 
 Note content:
 ${widget.noteContent}
@@ -2094,7 +2271,7 @@ EVALUATION CRITERIA (BE STRICT):
 2. Explanations should use ANALOGIES or real-world examples
 3. Concepts should be broken down into the SMALLEST possible pieces
 4. NO ASSUMPTIONS - the explanation should not assume prior knowledge
-5. It should be conversational and clear, like talking to a child
+5. It should be conversational and clear, like talking to a 12-year-old
 
 Score harshly (20-40%) if: using jargon, technical terms without explanation, assuming knowledge, lacking analogies, too complex
 Score mediocre (50-70%) if: generally correct but could be simpler, missing key analogies, some complexity
@@ -2105,7 +2282,7 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
       final response = await aiGateway.chatCompletion([
         {
           'role': 'system',
-          'content': 'You are a STRICT but constructive teacher who insists on truly simple explanations. You must be critical and demand explanations suitable for a 5-year-old. Do not give high scores unless the explanation is genuinely simple, uses analogies, avoids jargon, and breaks concepts into digestible pieces.'
+          'content': 'You are a STRICT but constructive teacher who insists on truly simple explanations. You must be critical and demand explanations suitable for a 12-year-old. Do not give high scores unless the explanation is genuinely simple, uses analogies, avoids jargon, and breaks concepts into digestible pieces.'
         },
         {'role': 'user', 'content': feedbackPrompt}
       ]);
@@ -2253,7 +2430,7 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
           ],
           const SizedBox(height: 24),
           const Text(
-            'Explain in simple terms, like talking to a 5-year-old. Use analogies and everyday examples. Avoid jargon and technical terms...',
+            'Explain in simple terms, like talking to a 12-year-old. Use analogies and everyday examples. Avoid jargon and technical terms...',
             style: TextStyle(
               color: Color(0xFF9CA3AF),
               fontSize: 15,
@@ -2297,10 +2474,10 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2A),
+                color: const Color(0xFF3B82F6).withOpacity(0.2),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: const Color(0xFF3A3A3A),
+                  color: const Color(0xFF3B82F6),
                   width: 1,
                 ),
               ),
@@ -2308,10 +2485,10 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Your Feedback',
+                    'Feedback:',
                     style: TextStyle(
-                      color: Color(0xFFFFFFFF),
-                      fontSize: 18,
+                      color: Color(0xFF93C5FD),
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -2319,7 +2496,7 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
                   Text(
                     _feedback!,
                     style: const TextStyle(
-                      color: Color(0xFF9CA3AF),
+                      color: Color(0xFFDBEAFE),
                       fontSize: 15,
                       height: 1.5,
                     ),
@@ -2372,6 +2549,7 @@ class _QuizViewer extends StatefulWidget {
 
 class _QuizViewerState extends State<_QuizViewer> {
   int _currentIndex = 0;
+  bool _showHint = false;
 
   @override
   Widget build(BuildContext context) {
@@ -2410,17 +2588,94 @@ class _QuizViewerState extends State<_QuizViewer> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                Text(
-                  question.question,
-                  style: const TextStyle(
-                    color: Color(0xFFFFFFFF),
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    height: 1.4,
-                  ),
-                  maxLines: 10,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        question.question,
+                        style: const TextStyle(
+                          color: Color(0xFFFFFFFF),
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          height: 1.4,
+                        ),
+                        maxLines: 10,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (question.hint != null && question.hint!.isNotEmpty) ...[
+                      const SizedBox(width: 12),
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        minSize: 0,
+                        onPressed: () {
+                          HapticFeedback.selectionClick();
+                          setState(() {
+                            _showHint = !_showHint;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: _showHint
+                                ? widget.modeColor.withOpacity(0.2)
+                                : const Color(0xFF2A2A2A),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _showHint
+                                  ? widget.modeColor
+                                  : const Color(0xFF3A3A3A),
+                              width: 1,
+                            ),
+                          ),
+                          child: Icon(
+                            CupertinoIcons.lightbulb,
+                            color: _showHint
+                                ? widget.modeColor
+                                : const Color(0xFF9CA3AF),
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
+                if (_showHint && question.hint != null && question.hint!.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: widget.modeColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: widget.modeColor.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          CupertinoIcons.lightbulb_fill,
+                          color: widget.modeColor,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            question.hint!,
+                            style: TextStyle(
+                              color: const Color(0xFFFFFFFF).withOpacity(0.9),
+                              fontSize: 15,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 32),
                 ...question.options.asMap().entries.map((entry) {
                   final index = entry.key;
@@ -2508,39 +2763,63 @@ class _QuizViewerState extends State<_QuizViewer> {
                     ),
                   );
                 }),
-                // Show correct answer message when wrong answer is selected
-                if (question.userAnswer != null &&
-                    question.userAnswer != question.correctAnswer) ...[
+                // Show explanation when answer is selected
+                if (question.userAnswer != null) ...[
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF3B82F6).withOpacity(0.2),
+                      color: question.userAnswer == question.correctAnswer
+                          ? const Color(0xFF10B981).withOpacity(0.15)
+                          : const Color(0xFF3B82F6).withOpacity(0.2),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: const Color(0xFF3B82F6),
+                        color: question.userAnswer == question.correctAnswer
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFF3B82F6),
                         width: 1,
                       ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Correct Answer:',
-                          style: TextStyle(
-                            color: Color(0xFF93C5FD),
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Row(
+                          children: [
+                            Icon(
+                              question.userAnswer == question.correctAnswer
+                                  ? CupertinoIcons.check_mark_circled_solid
+                                  : CupertinoIcons.info_circle_fill,
+                              color: question.userAnswer == question.correctAnswer
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFF3B82F6),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              question.userAnswer == question.correctAnswer
+                                  ? 'Correct!'
+                                  : 'Correct Answer: ${String.fromCharCode(65 + question.correctAnswer)}. ${question.options[question.correctAnswer]}',
+                              style: TextStyle(
+                                color: question.userAnswer == question.correctAnswer
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFF93C5FD),
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${String.fromCharCode(65 + question.correctAnswer)}. ${question.options[question.correctAnswer]}',
-                          style: const TextStyle(
-                            color: Color(0xFFDBEAFE),
-                            fontSize: 15,
+                        if (question.explanation != null && question.explanation!.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            question.explanation!,
+                            style: TextStyle(
+                              color: const Color(0xFFFFFFFF).withOpacity(0.9),
+                              fontSize: 15,
+                              height: 1.4,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
@@ -2560,6 +2839,7 @@ class _QuizViewerState extends State<_QuizViewer> {
                     HapticFeedback.selectionClick();
                     setState(() {
                       _currentIndex--;
+                      _showHint = false;
                     });
                   },
                   child: Text(
@@ -2578,6 +2858,7 @@ class _QuizViewerState extends State<_QuizViewer> {
                     HapticFeedback.selectionClick();
                     setState(() {
                       _currentIndex++;
+                      _showHint = false;
                     });
                   },
                   child: Text(

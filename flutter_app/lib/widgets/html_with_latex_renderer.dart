@@ -71,11 +71,11 @@ class HtmlWithLatexRenderer extends StatelessWidget {
           margin: Margins.symmetric(vertical: 8),
         ),
         'blockquote': Style(
-          color: const Color(0xFFD1D5DB),
+          color: const Color(0xFFFFFFFF),
           backgroundColor: Colors.transparent, // Remove any background color
           border: Border(
             left: BorderSide(
-              color: const Color(0xFFB85A3A),
+              color: const Color(0xFFFFFFFF),
               width: 4,
             ),
           ),
@@ -136,7 +136,7 @@ class HtmlWithLatexRenderer extends StatelessWidget {
         ),
         'code': Style(
           backgroundColor: const Color(0xFF1A1A1A),
-          color: const Color(0xFFF9C18C), // Orange-tan color matching web
+          color: const Color(0xFFFFFFFF), // White color
           padding: HtmlPaddings.symmetric(horizontal: 8, vertical: 4),
           fontSize: FontSize(14),
           fontFamily: 'monospace',
@@ -177,10 +177,23 @@ class HtmlWithLatexRenderer extends StatelessWidget {
       },
     );
     
-    // Then process block math ($$...$$) to avoid conflicts with inline math
-    // Match $$...$$ patterns, handling multiline formulas
+    // Then process block math ($$$$...$$$$) - 4 dollar signs
+    // Process this BEFORE $$ to avoid conflicts
+    // Match $$$$...$$$$ patterns, handling multiline formulas
     processed = processed.replaceAllMapped(
-      RegExp(r'\$\$([\s\S]*?)\$\$', multiLine: true),
+      RegExp(r'\$\$\$\$([\s\S]*?)\$\$\$\$', multiLine: true),
+      (match) {
+        final formula = match.group(1)?.trim() ?? '';
+        // Wrap in a span with data attributes for custom rendering
+        return '<span data-latex="${_escapeHtml(formula)}" data-latex-type="block"></span>';
+      },
+    );
+    
+    // Then process block math ($$...$$) - 2 dollar signs
+    // Match $$...$$ patterns, handling multiline formulas
+    // This regex ensures we don't match $$$$ patterns (already processed)
+    processed = processed.replaceAllMapped(
+      RegExp(r'(?<!\$)\$\$(?!\$)([\s\S]*?)(?<!\$)\$\$(?!\$)', multiLine: true),
       (match) {
         final formula = match.group(1)?.trim() ?? '';
         // Wrap in a span with data attributes for custom rendering
@@ -200,7 +213,8 @@ class HtmlWithLatexRenderer extends StatelessWidget {
     );
     
     // Finally process inline math ($...$)
-    // Match $...$ patterns, but not $$...$$ (already processed)
+    // Match $...$ patterns, but not $$...$$ or $$$$...$$$$ (already processed)
+    // Use negative lookbehind and lookahead to ensure we don't match part of $$ or $$$$
     processed = processed.replaceAllMapped(
       RegExp(r'(?<!\$)\$(?!\$)([^\$\n]+?)\$(?!\$)'),
       (match) {
@@ -333,7 +347,7 @@ class _LatexTagExtension extends TagExtension {
               return Padding(
                 padding: isBlock
                     ? const EdgeInsets.symmetric(vertical: 16)
-                    : EdgeInsets.zero,
+                    : const EdgeInsets.symmetric(horizontal: 4),
                 child: Math.tex(
                   latex,
                   mathStyle: isBlock ? MathStyle.display : MathStyle.text,

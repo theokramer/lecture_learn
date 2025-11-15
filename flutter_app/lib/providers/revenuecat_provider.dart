@@ -51,8 +51,8 @@ class RevenueCatNotifier extends Notifier<RevenueCatState> {
       _updateStateFromCustomerInfo(customerInfo);
     });
 
-    // Load initial state
-    _loadInitialState();
+    // Load initial state asynchronously to avoid blocking build
+    Future.microtask(() => _loadInitialState());
 
     return RevenueCatState();
   }

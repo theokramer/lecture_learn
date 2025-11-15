@@ -111,12 +111,12 @@ class _CreateFolderDialogState extends State<CreateFolderDialog>
                             width: 48,
                             height: 48,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFB85A3A).withOpacity(0.15),
+                              color: const Color(0xFFFFFFFF).withOpacity(0.15),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(
                               CupertinoIcons.folder_badge_plus,
-                              color: Color(0xFFB85A3A),
+                              color: Color(0xFFFFFFFF),
                               size: 24,
                             ),
                           ),
@@ -182,7 +182,7 @@ class _CreateFolderDialogState extends State<CreateFolderDialog>
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: _hasText
-                                    ? const Color(0xFFB85A3A)
+                                    ? const Color(0xFFFFFFFF)
                                     : const Color(0xFF3A3A3A),
                                 width: 1.5,
                               ),
@@ -231,7 +231,7 @@ class _CreateFolderDialogState extends State<CreateFolderDialog>
                                     vertical: 14,
                                   ),
                                   color: _hasText
-                                      ? const Color(0xFFB85A3A)
+                                      ? const Color(0xFFFFFFFF)
                                       : const Color(0xFF3A3A3A),
                                   borderRadius: BorderRadius.circular(12),
                                   disabledColor: const Color(0xFF3A3A3A),

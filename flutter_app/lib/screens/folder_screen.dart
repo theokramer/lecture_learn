@@ -9,6 +9,7 @@ import '../models/note.dart';
 import '../models/folder.dart';
 import '../widgets/folder_note_item.dart';
 import '../widgets/create_folder_dialog.dart';
+import '../constants/onboarding_colors.dart';
 
 class FolderScreen extends ConsumerStatefulWidget {
   final String folderId;
@@ -81,11 +82,11 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
           children: [
             // Search Bar
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
               decoration: const BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: Color(0xFF3A3A3A),
+                    color: Color(0xFF2A2A2A),
                     width: 0.5,
                   ),
                 ),
@@ -101,16 +102,19 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
                 style: const TextStyle(
                   color: Color(0xFFFFFFFF),
                   fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: -0.2,
                 ),
                 placeholderStyle: const TextStyle(
-                  color: Color(0xFF9CA3AF),
+                  color: Color(0xFF8E8E93),
                   fontSize: 16,
+                  fontWeight: FontWeight.w400,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2A2A2A),
-                  borderRadius: BorderRadius.circular(10),
+                  color: const Color(0xFF1F1F1F),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: const Color(0xFF3A3A3A),
+                    color: const Color(0xFF2F2F2F),
                     width: 1,
                   ),
                 ),
@@ -146,15 +150,12 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
                           width: 60,
                           height: 60,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFB85A3A),
+                            gradient: LinearGradient(
+                              colors: OnboardingColors.optionButtonGradientColors,
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
                             shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFB85A3A).withOpacity(0.4),
-                                blurRadius: 20,
-                                spreadRadius: 4,
-                              ),
-                            ],
                           ),
                           child: const Icon(
                             CupertinoIcons.add,
@@ -187,26 +188,12 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFFB85A3A),
-                      Color(0xFFD47A5A),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(25),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFB85A3A).withOpacity(0.4),
-                      blurRadius: 25,
-                      spreadRadius: 4,
-                    ),
-                  ],
+                  color: const Color(0xFF2F2F2F),
+                  borderRadius: BorderRadius.circular(24),
                 ),
                 child: const Icon(
-                  CupertinoIcons.folder_fill,
-                  size: 50,
+                  CupertinoIcons.folder,
+                  size: 48,
                   color: Color(0xFFFFFFFF),
                 ),
               ),
@@ -215,45 +202,66 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
                 widget.folderName,
                 style: const TextStyle(
                   fontSize: 24,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w600,
                   color: Color(0xFFFFFFFF),
                   letterSpacing: -0.5,
+                  height: 1.2,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'This folder is empty',
                 style: TextStyle(
-                  fontSize: 16,
-                  color: Color(0xFF9CA3AF),
+                  fontSize: 15,
+                  color: const Color(0xFF8E8E93).withOpacity(0.9),
                   fontWeight: FontWeight.w400,
+                  letterSpacing: -0.2,
                 ),
               ),
               const SizedBox(height: 36),
-              CupertinoButton.filled(
-                onPressed: () {
-                  HapticFeedback.mediumImpact();
-                  _showCreateOptions(context);
-                },
-                color: const Color(0xFFB85A3A),
-                borderRadius: BorderRadius.circular(16),
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      CupertinoIcons.add_circled_solid,
-                      size: 20,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      'Create Item',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: OnboardingColors.optionButtonGradientColors,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: OnboardingColors.optionButtonGradientColors[0].withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
                   ],
+                ),
+                child: CupertinoButton(
+                  onPressed: () {
+                    HapticFeedback.mediumImpact();
+                    _showCreateOptions(context);
+                  },
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        CupertinoIcons.add_circled_solid,
+                        size: 20,
+                        color: Colors.white,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Create Item',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -263,13 +271,13 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       itemCount: folders.length + notes.length,
       itemBuilder: (context, index) {
         if (index < folders.length) {
           final folder = folders[index];
           return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 14),
             child: FolderNoteItem(
               folder: folder,
               onTap: () {
@@ -289,7 +297,7 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
         } else {
           final note = notes[index - folders.length];
           return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 14),
             child: FolderNoteItem(
               note: note,
               onTap: () {
@@ -367,6 +375,8 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
   void _showItemOptions(BuildContext context, {Folder? folder, Note? note}) {
     final isFolder = folder != null;
     final title = folder?.name ?? note?.title ?? '';
+    final folderValue = folder;
+    final noteValue = note;
     
     showCupertinoModalPopup(
       context: context,
@@ -384,10 +394,10 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
             onPressed: () {
               HapticFeedback.selectionClick();
               Navigator.pop(context);
-              if (isFolder && folder != null) {
-                _showMoveFolderDialog(context, folder);
-              } else if (note != null) {
-                _showMoveNoteDialog(context, note);
+              if (isFolder && folderValue != null) {
+                _showMoveFolderDialog(context, folderValue);
+              } else if (noteValue != null) {
+                _showMoveNoteDialog(context, noteValue);
               }
             },
             child: const Row(
@@ -396,14 +406,14 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
                 Icon(
                   CupertinoIcons.folder,
                   size: 20,
-                  color: Color(0xFFB85A3A),
+                  color: Colors.white,
                 ),
                 SizedBox(width: 8),
                 Text(
                   'Move',
                   style: TextStyle(
                     fontSize: 17,
-                    color: Color(0xFFB85A3A),
+                    color: Colors.white,
                   ),
                 ),
               ],
@@ -414,10 +424,10 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
             onPressed: () {
               HapticFeedback.mediumImpact();
               Navigator.pop(context);
-              if (isFolder && folder != null) {
-                _deleteFolder(context, folder);
-              } else if (note != null) {
-                _deleteNote(context, note);
+              if (isFolder && folderValue != null) {
+                _deleteFolder(context, folderValue);
+              } else if (noteValue != null) {
+                _deleteNote(context, noteValue);
               }
             },
             child: const Row(
@@ -481,7 +491,7 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
                   const Icon(
                     CupertinoIcons.folder,
                     size: 20,
-                    color: Color(0xFFB85A3A),
+                    color: Colors.white,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -506,7 +516,7 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
                 Icon(
                   CupertinoIcons.house,
                   size: 20,
-                  color: Color(0xFFB85A3A),
+                  color: Colors.white,
                 ),
                 SizedBox(width: 12),
                 Text(
@@ -527,7 +537,7 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
                     const Icon(
                       CupertinoIcons.folder,
                       size: 20,
-                      color: Color(0xFFB85A3A),
+                      color: Colors.white,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -586,7 +596,7 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
                   const Icon(
                     CupertinoIcons.folder,
                     size: 20,
-                    color: Color(0xFFB85A3A),
+                    color: Colors.white,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -611,7 +621,7 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
                 Icon(
                   CupertinoIcons.house,
                   size: 20,
-                  color: Color(0xFFB85A3A),
+                  color: Colors.white,
                 ),
                 SizedBox(width: 12),
                 Text(
@@ -632,7 +642,7 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
                     const Icon(
                       CupertinoIcons.folder,
                       size: 20,
-                      color: Color(0xFFB85A3A),
+                      color: Colors.white,
                     ),
                     const SizedBox(width: 12),
                     Expanded(

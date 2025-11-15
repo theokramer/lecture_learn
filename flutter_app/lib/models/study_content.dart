@@ -142,11 +142,13 @@ class Flashcard {
   final String id;
   final String front;
   final String back;
+  final String? hint;
 
   Flashcard({
     required this.id,
     required this.front,
     required this.back,
+    this.hint,
   });
 
   factory Flashcard.fromJson(Map<String, dynamic> json) {
@@ -155,6 +157,7 @@ class Flashcard {
       id: json['id'] as String? ?? '',
       front: json['front'] as String? ?? '',
       back: json['back'] as String? ?? '',
+      hint: json['hint'] as String?,
     );
   }
 }
@@ -164,6 +167,8 @@ class QuizQuestion {
   final String question;
   final List<String> options;
   final int correctAnswer;
+  final String? hint;
+  final String? explanation; // Explanation for why the correct answer is correct
   int? userAnswer;
 
   QuizQuestion({
@@ -171,6 +176,8 @@ class QuizQuestion {
     required this.question,
     required this.options,
     required this.correctAnswer,
+    this.hint,
+    this.explanation,
     this.userAnswer,
   });
 
@@ -180,6 +187,8 @@ class QuizQuestion {
       question: json['question'] as String? ?? '',
       options: (json['options'] as List<dynamic>?)?.cast<String>() ?? [],
       correctAnswer: json['correct'] as int? ?? json['correctAnswer'] as int? ?? 0,
+      hint: json['hint'] as String?,
+      explanation: json['explanation'] as String?,
       userAnswer: json['userAnswer'] as int?,
     );
   }
@@ -191,6 +200,7 @@ class Exercise {
   final String? answer;
   final String? solution;
   final String? notes; // Additional notes field from web app
+  final String? hint;
 
   Exercise({
     required this.id,
@@ -198,6 +208,7 @@ class Exercise {
     this.answer,
     this.solution,
     this.notes,
+    this.hint,
   });
 
   factory Exercise.fromJson(Map<String, dynamic> json) {
@@ -207,6 +218,7 @@ class Exercise {
       answer: json['answer'] as String?,
       solution: json['solution'] as String?,
       notes: json['notes'] as String?,
+      hint: json['hint'] as String?,
     );
   }
 }

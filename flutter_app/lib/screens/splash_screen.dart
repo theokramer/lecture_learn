@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 import '../utils/logger.dart';
 import '../services/onboarding_service.dart';
+import '../constants/onboarding_colors.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -165,39 +166,44 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                               shape: BoxShape.circle,
                               gradient: RadialGradient(
                                 colors: [
-                                  const Color(0xFFB85A3A).withOpacity(0.4 * _fadeAnimation.value),
-                                  const Color(0xFFB85A3A).withOpacity(0.0),
+                                  OnboardingColors.buttonGradientColors[0].withOpacity(0.4 * _fadeAnimation.value),
+                                  OnboardingColors.buttonGradientColors[0].withOpacity(0.0),
                                 ],
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFFB85A3A).withOpacity(0.6 * _fadeAnimation.value),
+                                  color: OnboardingColors.buttonGradientColors[0].withOpacity(0.6 * _fadeAnimation.value),
                                   blurRadius: 50,
                                   spreadRadius: 15,
                                 ),
                                 BoxShadow(
-                                  color: const Color(0xFFB85A3A).withOpacity(0.3 * _fadeAnimation.value),
+                                  color: OnboardingColors.buttonGradientColors[1].withOpacity(0.3 * _fadeAnimation.value),
                                   blurRadius: 80,
                                   spreadRadius: 25,
                                 ),
                               ],
                             ),
-                            child: const Icon(
-                              CupertinoIcons.sparkles,
-                              size: 64,
-                              color: Color(0xFFB85A3A),
+                            child: ShaderMask(
+                              shaderCallback: (bounds) => LinearGradient(
+                                colors: OnboardingColors.buttonGradientColors,
+                              ).createShader(bounds),
+                              child: const Icon(
+                                CupertinoIcons.sparkles,
+                                size: 64,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 32),
                           // App Name with gradient text effect
                           ShaderMask(
-                            shaderCallback: (bounds) => const LinearGradient(
+                            shaderCallback: (bounds) => LinearGradient(
                               colors: [
-                                Color(0xFFFFFFFF),
-                                Color(0xFFB85A3A),
-                                Color(0xFFFFFFFF),
+                                OnboardingColors.buttonGradientColors[0],
+                                OnboardingColors.buttonGradientColors[1],
+                                OnboardingColors.buttonGradientColors[0],
                               ],
-                              stops: [0.0, 0.5, 1.0],
+                              stops: const [0.0, 0.5, 1.0],
                             ).createShader(bounds),
                             child: const Text(
                               'RocketLearn',
@@ -229,9 +235,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                               shape: BoxShape.circle,
                               color: const Color(0xFF2A2A2A).withOpacity(0.5),
                             ),
-                            child: const CupertinoActivityIndicator(
+                            child: CupertinoActivityIndicator(
                               radius: 14,
-                              color: Color(0xFFB85A3A),
+                              color: OnboardingColors.buttonGradientColors[0],
                             ),
                           ),
                         ],
@@ -257,7 +263,7 @@ class _ParticlePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFFB85A3A).withOpacity(0.1)
+      ..color = OnboardingColors.buttonGradientColors[0].withOpacity(0.1)
       ..style = PaintingStyle.fill;
 
     // Draw animated particles

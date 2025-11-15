@@ -45,66 +45,27 @@ class FolderNoteItem extends StatelessWidget {
             : null,
         child: Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: isFolder
-                  ? [
-                      const Color(0xFF2A2A2A),
-                      const Color(0xFF2A1F1A),
-                    ]
-                  : [
-                      const Color(0xFF2A2A2A),
-                      const Color(0xFF1F1F2A),
-                    ],
-            ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isFolder
-                  ? const Color(0xFFB85A3A).withOpacity(0.3)
-                  : const Color(0xFF3A3A3A),
-              width: 1.5,
-            ),
+            color: const Color(0xFF252525),
+            borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+                spreadRadius: 0,
               ),
             ],
           ),
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             child: Row(
               children: [
                 Container(
-                  width: 52,
-                  height: 52,
+                  width: 56,
+                  height: 56,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: isFolder
-                          ? [
-                              const Color(0xFFB85A3A),
-                              const Color(0xFFD47A5A),
-                            ]
-                          : [
-                              const Color(0xFF6366F1),
-                              const Color(0xFF8B5CF6),
-                            ],
-                    ),
+                    color: const Color(0xFF2F2F2F),
                     borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (isFolder
-                                ? const Color(0xFFB85A3A)
-                                : const Color(0xFF6366F1))
-                            .withOpacity(0.4),
-                        blurRadius: 12,
-                        spreadRadius: 0,
-                      ),
-                    ],
                   ),
                   child: Icon(
                     isFolder ? CupertinoIcons.folder_fill : CupertinoIcons.doc_text_fill,
@@ -112,50 +73,65 @@ class FolderNoteItem extends StatelessWidget {
                     size: 26,
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 18),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
                         title,
                         style: const TextStyle(
                           color: Color(0xFFFFFFFF),
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: -0.4,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.3,
+                          height: 1.2,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       if (date != null) ...[
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
                             Icon(
                               CupertinoIcons.calendar,
-                              size: 12,
-                              color: const Color(0xFF9CA3AF).withOpacity(0.8),
+                              size: 13,
+                              color: const Color(0xFF8E8E93).withOpacity(0.9),
                             ),
-                            const SizedBox(width: 4),
+                            const SizedBox(width: 6),
                             Text(
                               DateFormat('MMM d, yyyy').format(date),
                               style: TextStyle(
-                                color: const Color(0xFF9CA3AF).withOpacity(0.9),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
+                                color: const Color(0xFF8E8E93).withOpacity(0.9),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w400,
+                                letterSpacing: -0.2,
                               ),
                             ),
                           ],
+                        ),
+                      ] else if (isFolder) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Folder',
+                          style: TextStyle(
+                            color: const Color(0xFF8E8E93).withOpacity(0.7),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w400,
+                            letterSpacing: -0.2,
+                          ),
                         ),
                       ],
                     ],
                   ),
                 ),
+                const SizedBox(width: 12),
                 Icon(
                   CupertinoIcons.chevron_right,
-                  color: const Color(0xFF9CA3AF).withOpacity(0.5),
-                  size: 18,
+                  color: const Color(0xFF8E8E93).withOpacity(0.4),
+                  size: 16,
                 ),
               ],
             ),

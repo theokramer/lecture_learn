@@ -27,7 +27,7 @@ class GradientButton extends StatelessWidget {
             ? const LinearGradient(
                 colors: [
                   Color(0xFF6366F1), // Indigo
-                  Color(0xFFB85A3A), // Orange
+                  Color(0xFFFFFFFF), // White
                 ],
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,

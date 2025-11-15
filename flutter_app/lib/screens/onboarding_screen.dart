@@ -793,8 +793,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
           // Big mascot image - using latest image for some transitions
           MascotImage(
             imagePath: mascotPath,
-            width: 280,
-            height: 280,
+            width: 350,
+            height: 350,
           ),
           const SizedBox(height: 48),
           // Animated title
@@ -1100,7 +1100,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
             children: [
               const Icon(
                 CupertinoIcons.person_2,
-                color: Color(0xFFB85A3A),
+                color: Color(0xFFFFFFFF),
                 size: 22,
               ),
               const SizedBox(width: 10),

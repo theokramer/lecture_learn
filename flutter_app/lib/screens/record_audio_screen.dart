@@ -21,17 +21,34 @@ class RecordAudioScreen extends ConsumerStatefulWidget {
   ConsumerState<RecordAudioScreen> createState() => _RecordAudioScreenState();
 }
 
-class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
+class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> with TickerProviderStateMixin {
   final AudioRecorder _recorder = AudioRecorder();
   bool _isRecording = false;
   Duration _duration = Duration.zero;
   Timer? _timer;
   String? _audioPath;
+  late List<AnimationController> _waveControllers;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize 20 animation controllers for the waveform with staggered delays
+    _waveControllers = List.generate(
+      20,
+      (index) => AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 500),
+      ),
+    );
+  }
 
   @override
   void dispose() {
     _timer?.cancel();
     _recorder.dispose();
+    for (var controller in _waveControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -84,6 +101,15 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
           _duration = Duration.zero;
           _audioPath = path;
         });
+
+        // Start waveform animations with staggered delays
+        for (int i = 0; i < _waveControllers.length; i++) {
+          Future.delayed(Duration(milliseconds: i * 25), () {
+            if (mounted && _isRecording) {
+              _waveControllers[i].repeat(reverse: true);
+            }
+          });
+        }
 
         _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
           setState(() {
@@ -153,6 +179,13 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
   Future<void> _stopRecording() async {
     _timer?.cancel();
     final path = await _recorder.stop();
+    
+    // Stop waveform animations
+    for (var controller in _waveControllers) {
+      controller.stop();
+      controller.reset();
+    }
+    
     setState(() {
       _isRecording = false;
       if (path != null) {
@@ -233,26 +266,41 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
 
-    if (hours > 0) {
-      return '${twoDigits(hours)}:${twoDigits(minutes)}:${twoDigits(seconds)}';
-    }
-    return '${twoDigits(minutes)}:${twoDigits(seconds)}';
+    // Always show hours:minutes:seconds format
+    return '${twoDigits(hours)}:${twoDigits(minutes)}:${twoDigits(seconds)}';
+  }
+
+  Widget _buildCircularAnimation() {
+    return SizedBox(
+      height: 330,
+      width: double.infinity,
+      child: Image.asset(
+        'assets/images/Wave Animation.gif',
+        fit: BoxFit.contain,
+        width: double.infinity,
+        height: 400,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
       backgroundColor: const Color(0xFF1A1A1A),
-      navigationBar: const CupertinoNavigationBar(
-        backgroundColor: Color(0xFF2A2A2A),
-        border: Border(
+      navigationBar: CupertinoNavigationBar(
+        backgroundColor: const Color(0xFF2A2A2A),
+        border: const Border(
           bottom: BorderSide(
             color: Color(0xFF3A3A3A),
             width: 0.5,
           ),
         ),
-        middle: Text(
-          'Voice Recording',
+        leading: CupertinoNavigationBarBackButton(
+          onPressed: () => context.pop(),
+          color: const Color(0xFFFFFFFF),
+        ),
+        middle: const Text(
+          'Live Recording',
           style: TextStyle(
             color: Color(0xFFFFFFFF),
             fontSize: 17,
@@ -266,36 +314,38 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text(
-                'Voice Recording',
-                style: TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFFFFFFFF),
-                  letterSpacing: -0.5,
+              const Spacer(flex: 2),
+              // Circular Animation
+              _buildCircularAnimation(),
+              const Spacer(flex: 6),
+              // Divider
+              Container(
+                height: 1,
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(horizontal: 40),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      const Color(0xFF3A3A3A).withOpacity(0.5),
+                      Colors.transparent,
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Record your voice note',
-                style: TextStyle(
-                  fontSize: 17,
-                  color: Color(0xFF9CA3AF),
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-              const SizedBox(height: 60),
+              const Spacer(flex: 3),
               // Timer
               Text(
                 _formatDuration(_duration),
                 style: const TextStyle(
-                  fontSize: 76,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 25,
+                  fontWeight: FontWeight.w400,
                   color: Color(0xFFFFFFFF),
-                  letterSpacing: -2,
+                  letterSpacing: -0.5,
+                  height: 1.0,
                 ),
               ),
-              const SizedBox(height: 60),
+              const SizedBox(height: 22),
               // Record Button
               GestureDetector(
                 onTap: () {
@@ -310,68 +360,54 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
                   width: 96,
                   height: 96,
                   decoration: BoxDecoration(
-                    color: _isRecording ? const Color(0xFFEF4444) : const Color(0xFFB85A3A),
+                    color: Colors.transparent,
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: (_isRecording ? const Color(0xFFEF4444) : const Color(0xFFB85A3A)).withOpacity(0.4),
-                        blurRadius: 20,
-                        spreadRadius: 4,
-                      ),
-                    ],
+                    border: Border.all(
+                      color: const Color(0xFFFFFFFF),
+                      width: 3,
+                    ),
                   ),
-                  child: Icon(
-                    _isRecording ? CupertinoIcons.stop_fill : CupertinoIcons.mic_fill,
-                    color: const Color(0xFFFFFFFF),
-                    size: 48,
-                  ),
+                  child: _isRecording
+                      ? Container(
+                          margin: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFFFFF), // Purple square
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        )
+                      : const Center(
+                          child: Icon(
+                            CupertinoIcons.play_fill,
+                            color: Color(0xFFFFFFFF),
+                            size: 48,
+                          ),
+                        ),
                 ),
               ),
-              const SizedBox(height: 60),
-              // Action Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: CupertinoButton(
-                      onPressed: () {
-                        HapticFeedback.selectionClick();
-                        context.pop();
-                      },
-                      color: const Color(0xFF2A2A2A),
-                      borderRadius: BorderRadius.circular(14),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: const Text(
-                        'Cancel',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+              const Spacer(flex: 2),
+              // Action Button
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoButton.filled(
+                  onPressed: _audioPath != null
+                      ? () {
+                          HapticFeedback.mediumImpact();
+                          _processRecording();
+                        }
+                      : null,
+                  color: const Color(0xFFFFFFFF),
+                  disabledColor: const Color(0xFF3A3A3A),
+                  borderRadius: BorderRadius.circular(14),
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: const Text(
+                    'Generate Notes',
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1A1A1A),
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: CupertinoButton.filled(
-                      onPressed: _audioPath != null
-                          ? () {
-                              HapticFeedback.mediumImpact();
-                              _processRecording();
-                            }
-                          : null,
-                      color: const Color(0xFFB85A3A),
-                      disabledColor: const Color(0xFF3A3A3A),
-                      borderRadius: BorderRadius.circular(14),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: const Text(
-                        'Done',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
           ),
