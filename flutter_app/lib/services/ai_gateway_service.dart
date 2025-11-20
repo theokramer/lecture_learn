@@ -37,294 +37,68 @@ class AIGatewayService {
     return;
   }
 
-  /// Transcribe audio using Supabase Edge Function
-  /// Matches the website's implementation exactly
+  /// Transcribe audio using AssemblyAI directly (no Supabase Edge Function)
+  /// Uploads file to Supabase storage, gets signed URL, and calls AssemblyAI API
   Future<String> transcribeAudio(File audioFile, {String? storagePath, String? userId}) async {
+    String? tempStoragePath;
+    
     try {
-      // If storage path is provided (legacy Supabase storage), convert to S4 URL
-      // If audioUrl is provided (S4 URL), use it directly
-      if (storagePath != null && storagePath.isNotEmpty) {
-        final supabase = _supabase.client;
-        // Legacy: If it's a Supabase storage path, we need to get a signed URL
-        // For new code, use audioUrl parameter instead
-        AppLogger.debug('Using storage-based transcription for path: $storagePath', tag: 'AIGatewayService');
-        
-        // Wrap in timeout - Edge Function polls for up to 4 minutes, then returns job ID if still processing
-        // For very long transcriptions, the Edge Function will return a job ID for client-side polling
-        final result = await supabase.functions.invoke(
-          'ai-generate',
-          body: {
-            'type': 'transcription',
-            'storagePath': storagePath, // Legacy support
-          },
-        ).timeout(
-          const Duration(minutes: 20),
-          onTimeout: () {
-            throw Exception('Transcription request timed out. Large audio files may take up to 15 minutes to process. Please try again or use a shorter recording.');
-          },
-        );
-
-        // Handle response data
-        if (result.data != null) {
-          final data = result.data as Map<String, dynamic>;
-          
-          // Check if response contains an error
-          if (data.containsKey('error')) {
-            var errorMsg = data['error'] as String? ?? 'Transcription failed';
-            // Remove OpenAI Whisper references if present
-            errorMsg = errorMsg.replaceAll('OpenAI Whisper has a 25MB limit', '');
-            errorMsg = errorMsg.trim();
-            if (errorMsg.isEmpty) {
-              errorMsg = 'Audio file is too large. Please record a shorter audio or try again later.';
-            }
-            // Check for rate limit errors in error message
-            if (errorMsg.contains('DAILY_LIMIT_REACHED') || errorMsg.contains('ACCOUNT_LIMIT_REACHED')) {
-              throw RateLimitError(
-                code: errorMsg.contains('ACCOUNT_LIMIT_REACHED') ? 'ACCOUNT_LIMIT_REACHED' : 'DAILY_LIMIT_REACHED',
-                message: errorMsg,
-              );
-            }
-            throw Exception(errorMsg);
-          }
-          
-          // Check if job is still processing (for very long transcriptions)
-          if (data.containsKey('jobId') && data['status'] == 'processing') {
-            final jobId = data['jobId'] as String;
-            AppLogger.info('Transcription job still processing, jobId: $jobId', tag: 'AIGatewayService');
-            // For now, throw an error indicating the transcription is still processing
-            // In the future, we could implement client-side polling here
-            throw Exception('Transcription is still processing. This may take a while for long audio files. Please try again in a few minutes.');
-          }
-          
-          final text = data['text'] as String? ?? '';
-          if (text.isEmpty) {
-            throw Exception('Transcription returned empty text');
-          }
-          return text;
-        }
-
-        // If no data and status is not 200, it's an error
-        if (result.status != 200) {
-          final errorData = result.data as Map<String, dynamic>?;
-          if (errorData != null) {
-            final error = _extractError(errorData);
-            if (error['code'] == 'DAILY_LIMIT_REACHED' || error['code'] == 'ACCOUNT_LIMIT_REACHED') {
-              throw RateLimitError(
-                code: error['code'] as String,
-                message: error['message'] as String? ?? 'Rate limit reached',
-                limit: error['limit'] as int?,
-                remaining: error['remaining'] as int?,
-                resetAt: error['resetAt'] as String?,
-              );
-            }
-            var errorMsg = error['message'] as String? ?? 'Transcription failed';
-            // Remove OpenAI Whisper references if present
-            errorMsg = errorMsg.replaceAll('OpenAI Whisper has a 25MB limit', '');
-            errorMsg = errorMsg.trim();
-            if (errorMsg.isEmpty) {
-              errorMsg = 'Transcription failed. Please try again later.';
-            }
-            throw Exception(errorMsg);
-          }
-          throw Exception('Transcription failed with status ${result.status}');
-        }
-
-        throw Exception('No transcription data received');
-      }
-
-      // Upload audio file temporarily to Supabase storage for AssemblyAI transcription
-      // AssemblyAI supports URL parameter, so we upload to storage and pass the signed URL
-      AppLogger.debug('Uploading audio file to Supabase storage for AssemblyAI transcription', tag: 'AIGatewayService');
-      String? tempStoragePath;
-      try {
+      // If storage path is provided, use it; otherwise upload the file
+      if (storagePath == null || storagePath.isEmpty) {
         if (userId == null) {
           throw Exception('UserId required for audio transcription');
         }
+        AppLogger.debug('Uploading audio file to Supabase storage for AssemblyAI transcription', tag: 'AIGatewayService');
         tempStoragePath = await _supabase.uploadFile(userId, audioFile);
-        AppLogger.debug('Audio uploaded temporarily to storage: $tempStoragePath', tag: 'AIGatewayService');
-        
-        // Use the storage path for transcription via AssemblyAI
-        final supabase = _supabase.client;
-        final requestBody = <String, dynamic>{
-          'type': 'transcription',
-          'storagePath': tempStoragePath, // Pass storage path for AssemblyAI transcription
-        };
-        
-        AppLogger.debug('Calling Edge Function with AssemblyAI transcription', tag: 'AIGatewayService');
-        
-        // AssemblyAI uses polling, Edge Function polls for 3 minutes then returns transcript ID if still processing
-        // Set timeout to 5 minutes to allow for Edge Function processing and transcript ID return
-        final result = await supabase.functions.invoke(
-          'ai-generate',
-          body: requestBody,
-        ).timeout(
-          const Duration(minutes: 5), // Allow time for Edge Function processing and transcript ID return
-          onTimeout: () {
-            throw Exception('Transcription request timed out. Please try again.');
-          },
-        );
-
-        // Handle response data
-        if (result.data != null) {
-          final data = result.data as Map<String, dynamic>;
-          
-          // Check if response contains an error
-          if (data.containsKey('error')) {
-            var errorMsg = data['error'] as String? ?? 'Transcription failed';
-            // Remove OpenAI Whisper references if present
-            errorMsg = errorMsg.replaceAll('OpenAI Whisper has a 25MB limit', '');
-            errorMsg = errorMsg.trim();
-            if (errorMsg.isEmpty) {
-              errorMsg = 'Audio file is too large. Please record a shorter audio or try again later.';
-            }
-            // Check for rate limit errors in error message
-            if (errorMsg.contains('DAILY_LIMIT_REACHED') || errorMsg.contains('ACCOUNT_LIMIT_REACHED')) {
-              throw RateLimitError(
-                code: errorMsg.contains('ACCOUNT_LIMIT_REACHED') ? 'ACCOUNT_LIMIT_REACHED' : 'DAILY_LIMIT_REACHED',
-                message: errorMsg,
-              );
-            }
-            throw Exception(errorMsg);
-          }
-          
-          // Check if job is still processing (for very long transcriptions)
-          if (data.containsKey('transcriptId') && data['status'] == 'processing') {
-            final transcriptId = data['transcriptId'] as String;
-            AppLogger.info('Transcription job still processing, polling client-side for transcriptId: $transcriptId', tag: 'AIGatewayService');
-            // Poll client-side for job completion
-            return await _pollAssemblyAITranscription(transcriptId);
-          }
-          
-          final text = data['text'] as String? ?? '';
-          if (text.isEmpty) {
-            throw Exception('Transcription returned empty text');
-          }
-          
-          // Clean up temporary storage file
-          try {
-            await _supabase.client.storage.from('documents').remove([tempStoragePath]);
-            AppLogger.debug('Deleted temporary audio file from storage: $tempStoragePath', tag: 'AIGatewayService');
-          } catch (e) {
-            AppLogger.warning('Failed to delete temporary audio file from storage', error: e, tag: 'AIGatewayService');
-            // Non-critical error - file will be cleaned up later
-          }
-          
-          return text;
-        }
-
-        // If no data and status is not 200, it's an error
-        if (result.status != 200) {
-          final errorData = result.data as Map<String, dynamic>?;
-          if (errorData != null) {
-            final error = _extractError(errorData);
-            if (error['code'] == 'DAILY_LIMIT_REACHED' || error['code'] == 'ACCOUNT_LIMIT_REACHED') {
-              throw RateLimitError(
-                code: error['code'] as String,
-                message: error['message'] as String? ?? 'Rate limit reached',
-                limit: error['limit'] as int?,
-                remaining: error['remaining'] as int?,
-                resetAt: error['resetAt'] as String?,
-              );
-            }
-            var errorMsg = error['message'] as String? ?? 'Transcription failed';
-            // Remove OpenAI Whisper references if present
-            errorMsg = errorMsg.replaceAll('OpenAI Whisper has a 25MB limit', '');
-            errorMsg = errorMsg.trim();
-            if (errorMsg.isEmpty) {
-              errorMsg = 'Transcription failed. Please try again later.';
-            }
-            throw Exception(errorMsg);
-          }
-          throw Exception('Transcription failed with status ${result.status}');
-        }
-
-        throw Exception('No transcription data received');
-      } catch (uploadError) {
-        AppLogger.error('Storage upload failed', error: uploadError, tag: 'AIGatewayService');
-        throw Exception('Failed to upload audio to storage: $uploadError');
-      } finally {
-        // Clean up temporary storage file in case of error
-        if (tempStoragePath != null) {
-          try {
-            await _supabase.client.storage.from('documents').remove([tempStoragePath]);
-            AppLogger.debug('Deleted temporary audio file from storage: $tempStoragePath', tag: 'AIGatewayService');
-          } catch (cleanupError) {
-            AppLogger.warning('Failed to delete temporary audio file from storage', error: cleanupError, tag: 'AIGatewayService');
-            // Non-critical error
-          }
+        AppLogger.debug('Audio uploaded to storage: $tempStoragePath', tag: 'AIGatewayService');
+        storagePath = tempStoragePath;
+      } else {
+        AppLogger.debug('Using provided storage path: $storagePath', tag: 'AIGatewayService');
+      }
+      
+      // Get signed URL from Supabase storage (valid for 1 hour)
+      AppLogger.debug('Getting signed URL from Supabase storage', tag: 'AIGatewayService');
+      final audioUrl = await _supabase.getSignedUrl(storagePath, expiresIn: 3600);
+      AppLogger.debug('Got signed URL for AssemblyAI', tag: 'AIGatewayService');
+      
+      // Submit transcription request to AssemblyAI
+      final transcriptId = await _submitAssemblyAITranscription(audioUrl);
+      AppLogger.info('Transcription submitted to AssemblyAI, transcriptId: $transcriptId', tag: 'AIGatewayService');
+      
+      // Poll for transcription completion
+      final transcription = await _pollAssemblyAITranscription(transcriptId);
+      
+      // Clean up temporary storage file
+      if (tempStoragePath != null) {
+        try {
+          await _supabase.client.storage.from('documents').remove([tempStoragePath]);
+          AppLogger.debug('Deleted temporary audio file from storage: $tempStoragePath', tag: 'AIGatewayService');
+        } catch (e) {
+          AppLogger.warning('Failed to delete temporary audio file from storage', error: e, tag: 'AIGatewayService');
+          // Non-critical error - file will be cleaned up later
         }
       }
+      
+      return transcription;
     } catch (e) {
+      // Clean up temporary storage file in case of error
+      if (tempStoragePath != null) {
+        try {
+          await _supabase.client.storage.from('documents').remove([tempStoragePath]);
+          AppLogger.debug('Deleted temporary audio file from storage after error: $tempStoragePath', tag: 'AIGatewayService');
+        } catch (cleanupError) {
+          AppLogger.warning('Failed to delete temporary audio file from storage', error: cleanupError, tag: 'AIGatewayService');
+          // Non-critical error
+        }
+      }
+      
       if (e is RateLimitError) {
         rethrow;
       }
+      
       final errorMessage = e.toString();
       AppLogger.error('Transcription error', error: e, tag: 'AIGatewayService');
-      
-      // Check if it's a timeout or gateway timeout
-      if (errorMessage.contains('timeout') || errorMessage.contains('504') || errorMessage.contains('Gateway Timeout')) {
-        throw Exception('Transcription timed out. The audio file may be too long or the service is busy. Please try with a shorter recording or try again later.');
-      }
-      
-      // Check if it's a FunctionException
-      if (errorMessage.contains('FunctionException')) {
-        // Try to extract error message from details field
-        // Look for error: "message" pattern in the details
-        final errorStart = errorMessage.indexOf('error:');
-        if (errorStart != -1) {
-          final afterError = errorMessage.substring(errorStart + 6);
-          // Find the error message (could be in quotes or not)
-          String? extractedError;
-          if (afterError.trim().startsWith('"')) {
-            final quoteEnd = afterError.indexOf('"', 1);
-            if (quoteEnd != -1) {
-              extractedError = afterError.substring(1, quoteEnd);
-            }
-          } else if (afterError.trim().startsWith("'")) {
-            final quoteEnd = afterError.indexOf("'", 1);
-            if (quoteEnd != -1) {
-              extractedError = afterError.substring(1, quoteEnd);
-            }
-          } else {
-            // No quotes, find the end (comma, closing brace, or end of string)
-            final commaIndex = afterError.indexOf(',');
-            final braceIndex = afterError.indexOf('}');
-            final endIndex = commaIndex != -1 && braceIndex != -1
-                ? (commaIndex < braceIndex ? commaIndex : braceIndex)
-                : (commaIndex != -1 ? commaIndex : braceIndex);
-            if (endIndex != -1) {
-              extractedError = afterError.substring(0, endIndex).trim();
-            } else {
-              extractedError = afterError.trim();
-            }
-          }
-          
-          if (extractedError != null && extractedError.isNotEmpty) {
-            // Remove OpenAI Whisper references if present
-            final cleanedError = extractedError.replaceAll('OpenAI Whisper has a 25MB limit', '').trim();
-            throw Exception(cleanedError.isEmpty 
-              ? 'Audio file is too large. Please record a shorter audio or try again later.'
-              : cleanedError);
-          }
-        }
-        
-        final statusMatch = RegExp(r'status: (\d+)').firstMatch(errorMessage);
-        if (statusMatch != null) {
-          final status = int.tryParse(statusMatch.group(1) ?? '');
-          if (status == 504) {
-            throw Exception('Transcription timed out. The audio file may be too long. Please try with a shorter recording.');
-          } else if (status == 413) {
-            throw Exception('Audio file is too large. Please record a shorter audio or try again later.');
-          }
-        }
-      }
-      
-      // Clean up error message - remove OpenAI Whisper references
-      var cleanedErrorMessage = errorMessage.replaceAll(RegExp(r'^Exception: '), '');
-      cleanedErrorMessage = cleanedErrorMessage.replaceAll('OpenAI Whisper has a 25MB limit', '');
-      cleanedErrorMessage = cleanedErrorMessage.replaceAll(RegExp(r'\s+'), ' ').trim();
-      
-      throw Exception('Failed to transcribe audio: ${cleanedErrorMessage.isEmpty ? "Please try again later." : cleanedErrorMessage}');
+      throw Exception('Failed to transcribe audio: ${errorMessage.contains("Exception:") ? errorMessage.split("Exception:")[1].trim() : errorMessage}');
     }
   }
 
@@ -1408,6 +1182,48 @@ Rules:
       return {'message': error};
     }
     return {'message': error.toString()};
+  }
+
+  /// Submit transcription request to AssemblyAI
+  /// Returns the transcript ID for polling
+  Future<String> _submitAssemblyAITranscription(String audioUrl) async {
+    const assemblyApiUrl = 'https://api.assemblyai.com/v2/transcript';
+    final assemblyApiKey = Environment.assemblyAiApiKey;
+    
+    AppLogger.debug('Submitting transcription request to AssemblyAI', tag: 'AIGatewayService');
+    
+    try {
+      final response = await http.post(
+        Uri.parse(assemblyApiUrl),
+        headers: {
+          'authorization': assemblyApiKey,
+          'content-type': 'application/json',
+        },
+        body: jsonEncode({
+          'audio_url': audioUrl,
+          'language_detection': true,
+        }),
+      ).timeout(const Duration(seconds: 30));
+      
+      if (response.statusCode != 200) {
+        final errorBody = response.body;
+        AppLogger.error('AssemblyAI transcription submission failed: ${response.statusCode} - $errorBody', tag: 'AIGatewayService');
+        throw Exception('Failed to submit transcription: ${response.statusCode} ${errorBody}');
+      }
+      
+      final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+      final transcriptId = responseData['id'] as String?;
+      
+      if (transcriptId == null || transcriptId.isEmpty) {
+        throw Exception('AssemblyAI did not return a transcript ID');
+      }
+      
+      AppLogger.success('Transcription submitted successfully, transcriptId: $transcriptId', tag: 'AIGatewayService');
+      return transcriptId;
+    } catch (e) {
+      AppLogger.error('Error submitting transcription to AssemblyAI', error: e, tag: 'AIGatewayService');
+      rethrow;
+    }
   }
 
   /// Poll AssemblyAI API for transcription completion

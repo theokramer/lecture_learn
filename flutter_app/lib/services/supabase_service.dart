@@ -517,6 +517,18 @@ class SupabaseService {
     return client.storage.from('documents').getPublicUrl(path);
   }
 
+  /// Get a signed URL for a file in storage (expires in specified seconds)
+  Future<String> getSignedUrl(String path, {int expiresIn = 3600}) async {
+    try {
+      final signedUrl = await client.storage
+          .from('documents')
+          .createSignedUrl(path, expiresIn);
+      return signedUrl;
+    } catch (e) {
+      throw Exception('Failed to create signed URL: $e');
+    }
+  }
+
   // Study Content
   Future<StudyContent> getStudyContent(String noteId) async {
     try {

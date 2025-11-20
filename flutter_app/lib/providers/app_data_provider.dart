@@ -12,7 +12,7 @@ import '../utils/logger.dart';
 import '../utils/error_handler.dart';
 import '../utils/environment.dart';
 import 'auth_provider.dart';
-import 'revenuecat_provider.dart';
+// import 'revenuecat_provider.dart'; // Commented out - only used in disabled note limit check
 import 'dart:io';
 
 /// Exception thrown when user has reached the limit of free notes with study content
@@ -100,7 +100,14 @@ class AppDataNotifier extends Notifier<AppDataState> {
   /// Check if user can create notes with study content
   /// Returns true if user has premium or hasn't reached the limit (1 free note)
   /// Throws NoteCreationLimitException if limit is reached
+  /// 
+  /// DEBUG MODE: Currently disabled for debugging - allows unlimited notes
   Future<bool> canCreateNoteWithStudyContent() async {
+    // DEBUG: Allow unlimited notes for debugging purposes
+    AppLogger.debug('DEBUG MODE: Note limit check disabled - allowing unlimited notes', tag: 'AppDataProvider');
+    return true;
+    
+    /* ORIGINAL CODE - DISABLED FOR DEBUGGING
     final authValue = ref.read(authProvider);
     User? user;
     try {
@@ -174,6 +181,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
       // On other errors, allow creation to avoid blocking users (graceful degradation)
       return true;
     }
+    */
   }
 
   Future<String> createNote(String title, {String? folderId, String content = ''}) async {

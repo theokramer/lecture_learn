@@ -28,8 +28,7 @@ class Environment {
   /// In production, this should be set via environment variables or secure storage
   static String get assemblyAiApiKey {
     // TODO: Load from secure storage or environment variables
-    // For now, using the same key as Edge Function (should be moved to secure storage)
-    return '399b27eda7b7465ab87c1d3fad55a8a0';
+    return '42728db54fe2479db46db325f479b89f';
   }
 }
 
