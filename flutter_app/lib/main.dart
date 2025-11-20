@@ -222,16 +222,20 @@ final _router = GoRouter(
       builder: (context, state) {
         final extra = state.extra as Map<String, dynamic>?;
         final folderId = state.uri.queryParameters['folderId'];
-        // Check if extra contains text content (from web link) or audio blob
+        // Check if extra contains text content (from web link), audio blob, or files
         final textContent = extra != null && extra.containsKey('text')
             ? extra
             : null;
         final audioBlob = extra != null && extra.containsKey('audioFile')
             ? extra
             : null;
+        final files = extra != null && extra.containsKey('files')
+            ? (extra['files'] as List<File>?)
+            : null;
         return ProcessingScreen(
           audioBlob: audioBlob,
           textContent: textContent,
+          files: files,
           folderId: folderId,
         );
       },

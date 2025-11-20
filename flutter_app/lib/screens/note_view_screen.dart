@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../providers/app_data_provider.dart';
 import '../models/study_content.dart';
 import '../models/note.dart';
+import '../models/document.dart';
 import '../services/supabase_service.dart';
 import '../services/ai_gateway_service.dart';
 import '../services/study_content_polling_service.dart';
@@ -43,6 +44,26 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
         // IMPORTANT: When viewing a note, we ONLY fetch from Supabase
         // We NEVER trigger regeneration of study content
         ref.read(appDataProvider.notifier).setSelectedNoteId(widget.noteId);
+        
+        // Check if note has audio documents - if so, set transcription mode first
+        final appData = ref.read(appDataProvider);
+        final note = appData.notes.firstWhere(
+          (n) => n.id == widget.noteId,
+          orElse: () => Note(
+            id: widget.noteId!,
+            title: 'Note',
+            content: '',
+            createdAt: DateTime.now(),
+            documents: [],
+          ),
+        );
+        
+        // If note has audio documents, set transcription mode as initial view
+        final hasAudioDocuments = note.documents.any((doc) => doc.type == DocumentType.audio);
+        if (hasAudioDocuments) {
+          ref.read(appDataProvider.notifier).setCurrentStudyMode(StudyMode.transcription);
+        }
+        
         _loadNote(); // Load note with full content first
         _loadStudyContent(); // Fetches from Supabase only
         _startPolling(); // Polls Supabase to check if background generation completed
@@ -61,6 +82,25 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
       _hasContent = false;
       _currentNote = null; // Reset current note to trigger reload
       if (widget.noteId != null) {
+        // Check if new note has audio documents - if so, set transcription mode first
+        final appData = ref.read(appDataProvider);
+        final note = appData.notes.firstWhere(
+          (n) => n.id == widget.noteId,
+          orElse: () => Note(
+            id: widget.noteId!,
+            title: 'Note',
+            content: '',
+            createdAt: DateTime.now(),
+            documents: [],
+          ),
+        );
+        
+        // If note has audio documents, set transcription mode as initial view
+        final hasAudioDocuments = note.documents.any((doc) => doc.type == DocumentType.audio);
+        if (hasAudioDocuments) {
+          ref.read(appDataProvider.notifier).setCurrentStudyMode(StudyMode.transcription);
+        }
+        
         _loadNote(); // Load note with full content
         _loadStudyContent();
         _startPolling();
@@ -80,6 +120,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
 
     AppLogger.info('Loading study content from Supabase for note: ${widget.noteId}', tag: 'NoteViewScreen');
 
+    if (!mounted) return;
     setState(() {
       _loadingContent = true;
     });
@@ -117,29 +158,34 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
 
       AppLogger.success('Study content loaded from Supabase. Has content: $hasContent, isNewNote: $isNewNote, isAlreadyPolling: $isAlreadyPolling', tag: 'NoteViewScreen');
 
-      setState(() {
-        _studyContent = content;
-        _loadingContent = false;
-        _hasContent = hasContent;
-        // Only show initial generation loading if note is new AND has no content
-        // If content loaded successfully (even if empty), we're not in initial generation
-        // Also check if background polling is active (means generation might still be in progress)
-        _isInitialGeneration = isNewNote && !hasContent && (isAlreadyPolling || timeSinceCreation.inMinutes < 2);
-      });
+      if (mounted) {
+        setState(() {
+          _studyContent = content;
+          _loadingContent = false;
+          _hasContent = hasContent;
+          // Only show initial generation loading if note is new AND has no content
+          // If content loaded successfully (even if empty), we're not in initial generation
+          // Also check if background polling is active (means generation might still be in progress)
+          _isInitialGeneration = isNewNote && !hasContent && (isAlreadyPolling || timeSinceCreation.inMinutes < 2);
+        });
+      }
     } catch (e) {
       AppLogger.error('Error loading study content', error: e, tag: 'NoteViewScreen');
-      setState(() {
-        _loadingContent = false;
-        // On error, set empty content so generate buttons can show
-        _studyContent = StudyContent();
-        _isInitialGeneration = false; // Don't show initial generation if load failed
-      });
+      if (mounted) {
+        setState(() {
+          _loadingContent = false;
+          // On error, set empty content so generate buttons can show
+          _studyContent = StudyContent();
+          _isInitialGeneration = false; // Don't show initial generation if load failed
+        });
+      }
     }
   }
 
   Future<void> _generateContentType(String contentType) async {
     if (widget.noteId == null) return;
 
+    if (!mounted) return;
     setState(() {
       _generatingContentType = contentType;
       _isInitialGeneration = false; // User manually triggered, so not initial generation
@@ -152,10 +198,11 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
             contentType,
           );
       
-      // Reload study content after generation
-      await _loadStudyContent();
-      
-      HapticFeedback.selectionClick();
+      // Reload study content after generation (only if still mounted)
+      if (mounted) {
+        await _loadStudyContent();
+        HapticFeedback.selectionClick();
+      }
     } catch (e) {
       AppLogger.error('Error generating $contentType', error: e, tag: 'NoteViewScreen');
       ErrorHandler.logError(e, context: 'Generating $contentType', tag: 'NoteViewScreen');
@@ -202,22 +249,36 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
 
     // Start background polling service
     // This continues even if widget is disposed or app goes to background
+    // Polling will update content as individual types become available
     _pollingService.startPolling(
       noteId: widget.noteId!,
       noteCreatedAt: note.createdAt,
       onContentFound: (content) {
-        // Callback when content is found
+        // Callback when content is found (called on every poll with current content)
+        // This allows UI to show content as it becomes available individually
         if (mounted && widget.noteId == note.id) {
-          AppLogger.success('Study content detected via background polling', tag: 'NoteViewScreen');
-          setState(() {
-            _studyContent = content;
-            _loadingContent = false;
-            _hasContent = true;
-            _isInitialGeneration = false; // Generation completed
-          });
+          final hasAnyContent = content.flashcards.isNotEmpty ||
+              content.quizQuestions.isNotEmpty ||
+              content.exercises.isNotEmpty ||
+              content.feynmanTopics.isNotEmpty ||
+              content.summary.isNotEmpty;
+          
+          if (hasAnyContent) {
+            AppLogger.debug('Study content updated via polling (partial or complete)', tag: 'NoteViewScreen');
+            setState(() {
+              // Merge new content with existing (preserve what we already have)
+              _studyContent = content;
+              _loadingContent = false;
+              _hasContent = hasAnyContent;
+              // Only set initial generation to false if we have substantial content
+              if (hasAnyContent && (_studyContent?.summary.isNotEmpty ?? false)) {
+                _isInitialGeneration = false;
+              }
+            });
+          }
         }
       },
-      maxDuration: const Duration(minutes: 5), // Poll for up to 5 minutes
+      maxDuration: const Duration(minutes: 10), // Poll for up to 10 minutes to catch all content types
     );
 
     // Also set up a timeout to stop showing initial generation after 2 minutes
@@ -236,6 +297,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
   Future<void> _loadNote() async {
     if (widget.noteId == null || _loadingNote) return;
     
+    if (!mounted) return;
     setState(() {
       _loadingNote = true;
     });
@@ -243,16 +305,29 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
     try {
       final supabase = SupabaseService();
       final note = await supabase.getNoteById(widget.noteId!);
-      setState(() {
-        _currentNote = note;
-        _loadingNote = false;
-      });
-      AppLogger.debug('Loaded note with content length: ${note.content.length}', tag: 'NoteViewScreen');
+      if (mounted) {
+        setState(() {
+          _currentNote = note;
+          _loadingNote = false;
+        });
+        AppLogger.debug('Loaded note with content length: ${note.content.length}', tag: 'NoteViewScreen');
+        
+        // If note has audio documents and we're not already in transcription mode, set it
+        final hasAudioDocuments = note.documents.any((doc) => doc.type.toString().split('.').last == 'audio');
+        if (hasAudioDocuments) {
+          final appData = ref.read(appDataProvider);
+          if (appData.currentStudyMode != StudyMode.transcription) {
+            ref.read(appDataProvider.notifier).setCurrentStudyMode(StudyMode.transcription);
+          }
+        }
+      }
     } catch (e) {
       AppLogger.error('Error loading note', error: e, tag: 'NoteViewScreen');
-      setState(() {
-        _loadingNote = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loadingNote = false;
+        });
+      }
       // Fallback to app data
       final appData = ref.read(appDataProvider);
       _currentNote = appData.notes.firstWhere(
@@ -335,23 +410,15 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
       child: SafeArea(
         child: Builder(
           builder: (context) {
-            // Automatically switch from transcription to summary if transcription is selected
-            if (appData.currentStudyMode == StudyMode.transcription) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                ref.read(appDataProvider.notifier).setCurrentStudyMode(StudyMode.summary);
-              });
-            }
-            
             return Column(
               children: [
                 StudyModeSelector(
-                  currentMode: appData.currentStudyMode == StudyMode.transcription 
-                      ? StudyMode.summary 
-                      : appData.currentStudyMode,
+                  currentMode: appData.currentStudyMode,
                   onModeChanged: (mode) {
                     HapticFeedback.selectionClick();
                     ref.read(appDataProvider.notifier).setCurrentStudyMode(mode);
                   },
+                  note: note,
                 ),
                 Expanded(
                   child: _buildContent(note, appData.currentStudyMode),
@@ -377,8 +444,8 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
       case StudyMode.summary:
         return _buildSummaryView();
       case StudyMode.transcription:
-        // Transcription mode is hidden - default to summary
-        return _buildSummaryView();
+        // Show transcription view for notes with audio
+        return _buildTranscriptionView(note);
       case StudyMode.flashcards:
         return _buildFlashcardsView();
       case StudyMode.quiz:
@@ -718,7 +785,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                     ],
                   ),
                   const SizedBox(height: 32),
-                  // Transcription content
+                  // Transcription content - formatted like AssemblyAI
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(24),
@@ -730,13 +797,83 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                         width: 1,
                       ),
                     ),
-                    child: HtmlWithLatexRenderer(
-                      htmlContent: note.content,
-                    ),
+                    child: _buildFormattedTranscript(note.content),
                   ),
                 ],
               ),
             ),
+    );
+  }
+
+  /// Build formatted transcript with proper paragraph breaks (like AssemblyAI)
+  /// AssemblyAI returns paragraphs separated by double newlines (\n\n)
+  Widget _buildFormattedTranscript(String content) {
+    if (content.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
+    // Split by double newlines (paragraph breaks from AssemblyAI)
+    // This matches AssemblyAI's paragraph segmentation
+    final rawParagraphs = content.split('\n\n');
+    final paragraphs = rawParagraphs
+        .map((p) => p.trim().replaceAll('\n', ' ')) // Replace single newlines with spaces within paragraphs
+        .where((p) => p.isNotEmpty)
+        .toList();
+    
+    // If no double newlines found, try splitting by single newlines as fallback
+    if (paragraphs.length == 1 && content.contains('\n')) {
+      final lines = content.split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+      
+      // Group lines into paragraphs (empty line indicates paragraph break)
+      paragraphs.clear();
+      String currentParagraph = '';
+      for (final line in lines) {
+        if (line.isEmpty) {
+          if (currentParagraph.isNotEmpty) {
+            paragraphs.add(currentParagraph);
+            currentParagraph = '';
+          }
+        } else {
+          currentParagraph += (currentParagraph.isNotEmpty ? ' ' : '') + line;
+        }
+      }
+      if (currentParagraph.isNotEmpty) {
+        paragraphs.add(currentParagraph);
+      }
+    }
+    
+    // If still only one paragraph, treat entire content as single paragraph
+    if (paragraphs.isEmpty) {
+      paragraphs.add(content.trim().replaceAll('\n', ' '));
+    }
+    
+    // Build list of widgets with proper spacing
+    final List<Widget> paragraphWidgets = [];
+    for (int i = 0; i < paragraphs.length; i++) {
+      paragraphWidgets.add(
+        Padding(
+          padding: EdgeInsets.only(
+            bottom: i < paragraphs.length - 1 ? 24 : 0, // Space between paragraphs, no space after last
+          ),
+          child: SelectableText(
+            paragraphs[i],
+            style: const TextStyle(
+              color: Color(0xFFFFFFFF),
+              fontSize: 16,
+              height: 1.6, // Line height similar to AssemblyAI (1.6 = 160%)
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
+      );
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: paragraphWidgets,
     );
   }
 

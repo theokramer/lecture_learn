@@ -24,12 +24,6 @@ class Environment {
   /// Check if we should enable verbose logging
   static bool get enableVerboseLogging => kDebugMode;
   
-  /// Get AssemblyAI API key from environment
-  /// In production, this should be set via environment variables or secure storage
-  static String get assemblyAiApiKey {
-    // TODO: Load from secure storage or environment variables
-    return '42728db54fe2479db46db325f479b89f';
-  }
 }
 
 

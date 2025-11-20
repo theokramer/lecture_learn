@@ -2,19 +2,26 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/study_content.dart';
+import '../models/note.dart';
+import '../models/document.dart';
 
 class StudyModeSelector extends StatelessWidget {
   final StudyMode currentMode;
   final Function(StudyMode) onModeChanged;
+  final Note? note; // Optional note to check for audio documents
 
   const StudyModeSelector({
     super.key,
     required this.currentMode,
     required this.onModeChanged,
+    this.note,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Check if note has audio documents (uploaded or recorded audio)
+    final hasAudioDocuments = note?.documents.any((doc) => doc.type == DocumentType.audio) ?? false;
+    
     final modes = [
       StudyMode.summary,
       StudyMode.aiChat,
@@ -23,6 +30,11 @@ class StudyModeSelector extends StatelessWidget {
       StudyMode.exercises,
       StudyMode.feynman,
     ];
+    
+    // Add transcription mode only if note has audio documents
+    if (hasAudioDocuments) {
+      modes.insert(1, StudyMode.transcription); // Insert after summary, before aiChat
+    }
 
     return Container(
       height: 70,

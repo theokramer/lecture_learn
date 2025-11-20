@@ -30,9 +30,9 @@ class StudyContentPollingService {
     _callbacks[noteId] = onContentFound;
 
     final startTime = DateTime.now();
-    final maxPollDuration = maxDuration ?? const Duration(minutes: 5);
+    final maxPollDuration = maxDuration ?? const Duration(minutes: 10);
     int pollCount = 0;
-    const maxPolls = 100; // 100 polls * 3 seconds = 5 minutes max
+    const maxPolls = 200; // 200 polls * 3 seconds = 10 minutes max (to catch all content types)
 
     AppLogger.info('Starting background polling for note: $noteId', tag: 'PollingService');
 
@@ -62,15 +62,20 @@ class StudyContentPollingService {
             content.feynmanTopics.isNotEmpty ||
             content.summary.isNotEmpty;
 
+        // Always notify callback with current content (even if partial)
+        // This allows UI to show content as it becomes available individually
+        final callback = _callbacks[noteId];
+        if (callback != null) {
+          callback(content);
+        }
+
+        // Continue polling to catch additional content types as they become available
+        // Only stop after timeout or max duration
         if (hasContent) {
-          AppLogger.success('Study content found for note: $noteId', tag: 'PollingService');
-          // Notify callback
-          final callback = _callbacks[noteId];
-          if (callback != null) {
-            callback(content);
+          if (pollCount % 10 == 0) {
+            // Log every 10 polls when we have content (every 30 seconds)
+            AppLogger.debug('Polling for note: $noteId - content available, continuing to check for more (poll $pollCount)', tag: 'PollingService');
           }
-          // Stop polling
-          stopPolling(noteId);
         } else {
           // Still no content, continue polling
           if (pollCount % 10 == 0) {

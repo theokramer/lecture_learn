@@ -183,30 +183,15 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         rethrow;
       }
 
-      final title = _selectedFiles.length == 1
-          ? _selectedFiles[0].path.split('/').last.replaceAll(RegExp(r'\.[^.]*$'), '')
-          : 'Uploaded ${_selectedFiles.length} files';
-
-      await appData.processUploadedFiles(_selectedFiles, title, folderId: widget.folderId);
-
+      // Navigate to processing screen with files
       if (mounted) {
-        final noteId = ref.read(appDataProvider).selectedNoteId;
-        
-        // Navigate back to home first (clearing the note creation flow)
-        // Then navigate to the note if it was created
-        if (noteId != null) {
-          // Go to home (this clears the navigation stack)
-          context.go('/home');
-          // Then push the note screen on top
-          Future.delayed(const Duration(milliseconds: 150), () {
-            if (mounted && context.mounted) {
-              context.push('/note?id=$noteId');
-            }
-          });
-        } else {
-          // Just go back to home
-          context.go('/home');
-        }
+        final folderIdParam = widget.folderId != null ? '?folderId=${widget.folderId}' : '';
+        context.push(
+          '/note-creation/processing$folderIdParam',
+          extra: {
+            'files': _selectedFiles,
+          },
+        );
       }
     } catch (e) {
       // Handle note creation limit exception

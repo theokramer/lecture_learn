@@ -46,6 +46,7 @@ dependencies:
   syncfusion_flutter_pdf: ^31.2.5
   archive: ^4.0.7
   
+  
   # Utilities
   intl: ^0.20.2
   uuid: ^4.2.1
