@@ -110,43 +110,49 @@ class StudyModeSelector extends StatelessWidget {
         return {
           'label': 'Summary',
           'icon': CupertinoIcons.doc_text_fill,
-          'color': const Color(0xFF3B82F6),
+          'color': const Color(0xFF8D1647) // Vibrant teal
         };
       case StudyMode.feynman:
         return {
           'label': 'Feynman',
           'icon': CupertinoIcons.lightbulb_fill,
-          'color': const Color(0xFFF59E0B),
+          'color': const Color(0xFF8D1647) // Vibrant teal
         };
       case StudyMode.flashcards:
         return {
           'label': 'Flashcards',
           'icon': CupertinoIcons.collections,
-          'color': const Color(0xFF10B981),
+          'color': const Color(0xFF8D1647) // Vibrant teal
         };
       case StudyMode.quiz:
         return {
           'label': 'Quiz',
           'icon': CupertinoIcons.question_circle_fill,
-          'color': const Color(0xFF8B5CF6),
+          'color': const Color(0xFF8D1647) // Vibrant teal
         };
       case StudyMode.exercises:
         return {
           'label': 'Exercises',
           'icon': CupertinoIcons.pencil_ellipsis_rectangle,
-          'color': const Color(0xFFEF4444),
+          'color': const Color(0xFF8D1647) // Vibrant teal
         };
       case StudyMode.documents:
         return {
           'label': 'Documents',
           'icon': CupertinoIcons.doc_on_doc_fill,
-          'color': const Color(0xFF6366F1),
+          'color': const Color(0xFF8D1647) // Vibrant teal
         };
       case StudyMode.aiChat:
         return {
           'label': 'AI Chat',
           'icon': CupertinoIcons.chat_bubble_2_fill,
-          'color': const Color(0xFF06B6D4),
+          'color': const Color(0xFF8D1647) // Vibrant teal
+        };
+      case StudyMode.transcription:
+        return {
+          'label': 'Transcription',
+          'icon': CupertinoIcons.mic_fill,
+          'color': const Color(0xFF8D1647) // Vibrant teal
         };
     }
   }

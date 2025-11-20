@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'supabase_service.dart';
 import '../utils/logger.dart';
+import '../utils/environment.dart';
 
 class RateLimitError implements Exception {
   final String code;
@@ -39,23 +41,26 @@ class AIGatewayService {
   /// Matches the website's implementation exactly
   Future<String> transcribeAudio(File audioFile, {String? storagePath, String? userId}) async {
     try {
-      final supabase = _supabase.client;
-      
-      // If storage path is provided, use it (preferred method)
+      // If storage path is provided (legacy Supabase storage), convert to S4 URL
+      // If audioUrl is provided (S4 URL), use it directly
       if (storagePath != null && storagePath.isNotEmpty) {
+        final supabase = _supabase.client;
+        // Legacy: If it's a Supabase storage path, we need to get a signed URL
+        // For new code, use audioUrl parameter instead
         AppLogger.debug('Using storage-based transcription for path: $storagePath', tag: 'AIGatewayService');
         
-        // Wrap in timeout - transcription can take up to 5 minutes for long audio
+        // Wrap in timeout - Edge Function polls for up to 4 minutes, then returns job ID if still processing
+        // For very long transcriptions, the Edge Function will return a job ID for client-side polling
         final result = await supabase.functions.invoke(
           'ai-generate',
           body: {
             'type': 'transcription',
-            'storagePath': storagePath,
+            'storagePath': storagePath, // Legacy support
           },
         ).timeout(
-          const Duration(minutes: 5),
+          const Duration(minutes: 20),
           onTimeout: () {
-            throw Exception('Transcription timed out. The audio file may be too long. Please try with a shorter recording.');
+            throw Exception('Transcription request timed out. Large audio files may take up to 15 minutes to process. Please try again or use a shorter recording.');
           },
         );
 
@@ -65,7 +70,13 @@ class AIGatewayService {
           
           // Check if response contains an error
           if (data.containsKey('error')) {
-            final errorMsg = data['error'] as String? ?? 'Transcription failed';
+            var errorMsg = data['error'] as String? ?? 'Transcription failed';
+            // Remove OpenAI Whisper references if present
+            errorMsg = errorMsg.replaceAll('OpenAI Whisper has a 25MB limit', '');
+            errorMsg = errorMsg.trim();
+            if (errorMsg.isEmpty) {
+              errorMsg = 'Audio file is too large. Please record a shorter audio or try again later.';
+            }
             // Check for rate limit errors in error message
             if (errorMsg.contains('DAILY_LIMIT_REACHED') || errorMsg.contains('ACCOUNT_LIMIT_REACHED')) {
               throw RateLimitError(
@@ -74,6 +85,15 @@ class AIGatewayService {
               );
             }
             throw Exception(errorMsg);
+          }
+          
+          // Check if job is still processing (for very long transcriptions)
+          if (data.containsKey('jobId') && data['status'] == 'processing') {
+            final jobId = data['jobId'] as String;
+            AppLogger.info('Transcription job still processing, jobId: $jobId', tag: 'AIGatewayService');
+            // For now, throw an error indicating the transcription is still processing
+            // In the future, we could implement client-side polling here
+            throw Exception('Transcription is still processing. This may take a while for long audio files. Please try again in a few minutes.');
           }
           
           final text = data['text'] as String? ?? '';
@@ -97,7 +117,14 @@ class AIGatewayService {
                 resetAt: error['resetAt'] as String?,
               );
             }
-            throw Exception(error['message'] as String? ?? 'Transcription failed');
+            var errorMsg = error['message'] as String? ?? 'Transcription failed';
+            // Remove OpenAI Whisper references if present
+            errorMsg = errorMsg.replaceAll('OpenAI Whisper has a 25MB limit', '');
+            errorMsg = errorMsg.trim();
+            if (errorMsg.isEmpty) {
+              errorMsg = 'Transcription failed. Please try again later.';
+            }
+            throw Exception(errorMsg);
           }
           throw Exception('Transcription failed with status ${result.status}');
         }
@@ -105,84 +132,128 @@ class AIGatewayService {
         throw Exception('No transcription data received');
       }
 
-      // Fallback to base64 for small files (< 2MB)
-      final fileSize = await audioFile.length();
-      const storageThreshold = 2 * 1024 * 1024; // 2 MB
-
-      if (fileSize > storageThreshold) {
+      // Upload audio file temporarily to Supabase storage for AssemblyAI transcription
+      // AssemblyAI supports URL parameter, so we upload to storage and pass the signed URL
+      AppLogger.debug('Uploading audio file to Supabase storage for AssemblyAI transcription', tag: 'AIGatewayService');
+      String? tempStoragePath;
+      try {
         if (userId == null) {
-          throw Exception('UserId required for large audio file transcription');
+          throw Exception('UserId required for audio transcription');
         }
-        // Upload to storage first, then transcribe
-        final uploadedPath = await _supabase.uploadFile(userId, audioFile);
-        return transcribeAudio(audioFile, storagePath: uploadedPath, userId: userId);
-      }
-
-      // Use base64 for small files
-      AppLogger.debug('Using direct base64 transcription for small file ($fileSize bytes)', tag: 'AIGatewayService');
-      final bytes = await audioFile.readAsBytes();
-      final base64 = base64Encode(bytes);
-      final mimeType = 'audio/m4a'; // Adjust based on file type
-
-      // Wrap in timeout - transcription can take up to 5 minutes for long audio
-      final result = await supabase.functions.invoke(
-        'ai-generate',
-        body: {
+        tempStoragePath = await _supabase.uploadFile(userId, audioFile);
+        AppLogger.debug('Audio uploaded temporarily to storage: $tempStoragePath', tag: 'AIGatewayService');
+        
+        // Use the storage path for transcription via AssemblyAI
+        final supabase = _supabase.client;
+        final requestBody = <String, dynamic>{
           'type': 'transcription',
-          'audioBase64': base64,
-          'mimeType': mimeType,
-        },
-      ).timeout(
-        const Duration(minutes: 5),
-        onTimeout: () {
-          throw Exception('Transcription timed out. The audio file may be too long. Please try with a shorter recording.');
-        },
-      );
-
-      // Handle response data
-      if (result.data != null) {
-        final data = result.data as Map<String, dynamic>;
+          'storagePath': tempStoragePath, // Pass storage path for AssemblyAI transcription
+        };
         
-        // Check if response contains an error
-        if (data.containsKey('error')) {
-          final errorMsg = data['error'] as String? ?? 'Transcription failed';
-          // Check for rate limit errors in error message
-          if (errorMsg.contains('DAILY_LIMIT_REACHED') || errorMsg.contains('ACCOUNT_LIMIT_REACHED')) {
-            throw RateLimitError(
-              code: errorMsg.contains('ACCOUNT_LIMIT_REACHED') ? 'ACCOUNT_LIMIT_REACHED' : 'DAILY_LIMIT_REACHED',
-              message: errorMsg,
-            );
-          }
-          throw Exception(errorMsg);
-        }
+        AppLogger.debug('Calling Edge Function with AssemblyAI transcription', tag: 'AIGatewayService');
         
-        final text = data['text'] as String? ?? '';
-        if (text.isEmpty) {
-          throw Exception('Transcription returned empty text');
-        }
-        return text;
-      }
+        // AssemblyAI uses polling, Edge Function polls for 3 minutes then returns transcript ID if still processing
+        // Set timeout to 5 minutes to allow for Edge Function processing and transcript ID return
+        final result = await supabase.functions.invoke(
+          'ai-generate',
+          body: requestBody,
+        ).timeout(
+          const Duration(minutes: 5), // Allow time for Edge Function processing and transcript ID return
+          onTimeout: () {
+            throw Exception('Transcription request timed out. Please try again.');
+          },
+        );
 
-      // If no data and status is not 200, it's an error
-      if (result.status != 200) {
-        final errorData = result.data as Map<String, dynamic>?;
-        if (errorData != null) {
-          final error = _extractError(errorData);
-          if (error['code'] == 'DAILY_LIMIT_REACHED' || error['code'] == 'ACCOUNT_LIMIT_REACHED') {
-            throw RateLimitError(
-              code: error['code'] as String,
-              message: error['message'] as String? ?? 'Rate limit reached',
-              limit: error['limit'] as int?,
-              remaining: error['remaining'] as int?,
-              resetAt: error['resetAt'] as String?,
-            );
+        // Handle response data
+        if (result.data != null) {
+          final data = result.data as Map<String, dynamic>;
+          
+          // Check if response contains an error
+          if (data.containsKey('error')) {
+            var errorMsg = data['error'] as String? ?? 'Transcription failed';
+            // Remove OpenAI Whisper references if present
+            errorMsg = errorMsg.replaceAll('OpenAI Whisper has a 25MB limit', '');
+            errorMsg = errorMsg.trim();
+            if (errorMsg.isEmpty) {
+              errorMsg = 'Audio file is too large. Please record a shorter audio or try again later.';
+            }
+            // Check for rate limit errors in error message
+            if (errorMsg.contains('DAILY_LIMIT_REACHED') || errorMsg.contains('ACCOUNT_LIMIT_REACHED')) {
+              throw RateLimitError(
+                code: errorMsg.contains('ACCOUNT_LIMIT_REACHED') ? 'ACCOUNT_LIMIT_REACHED' : 'DAILY_LIMIT_REACHED',
+                message: errorMsg,
+              );
+            }
+            throw Exception(errorMsg);
           }
-          throw Exception(error['message'] as String? ?? 'Transcription failed');
+          
+          // Check if job is still processing (for very long transcriptions)
+          if (data.containsKey('transcriptId') && data['status'] == 'processing') {
+            final transcriptId = data['transcriptId'] as String;
+            AppLogger.info('Transcription job still processing, polling client-side for transcriptId: $transcriptId', tag: 'AIGatewayService');
+            // Poll client-side for job completion
+            return await _pollAssemblyAITranscription(transcriptId);
+          }
+          
+          final text = data['text'] as String? ?? '';
+          if (text.isEmpty) {
+            throw Exception('Transcription returned empty text');
+          }
+          
+          // Clean up temporary storage file
+          try {
+            await _supabase.client.storage.from('documents').remove([tempStoragePath]);
+            AppLogger.debug('Deleted temporary audio file from storage: $tempStoragePath', tag: 'AIGatewayService');
+          } catch (e) {
+            AppLogger.warning('Failed to delete temporary audio file from storage', error: e, tag: 'AIGatewayService');
+            // Non-critical error - file will be cleaned up later
+          }
+          
+          return text;
         }
-        throw Exception('Transcription failed with status ${result.status}');
-      }
 
-      throw Exception('No transcription data received');
+        // If no data and status is not 200, it's an error
+        if (result.status != 200) {
+          final errorData = result.data as Map<String, dynamic>?;
+          if (errorData != null) {
+            final error = _extractError(errorData);
+            if (error['code'] == 'DAILY_LIMIT_REACHED' || error['code'] == 'ACCOUNT_LIMIT_REACHED') {
+              throw RateLimitError(
+                code: error['code'] as String,
+                message: error['message'] as String? ?? 'Rate limit reached',
+                limit: error['limit'] as int?,
+                remaining: error['remaining'] as int?,
+                resetAt: error['resetAt'] as String?,
+              );
+            }
+            var errorMsg = error['message'] as String? ?? 'Transcription failed';
+            // Remove OpenAI Whisper references if present
+            errorMsg = errorMsg.replaceAll('OpenAI Whisper has a 25MB limit', '');
+            errorMsg = errorMsg.trim();
+            if (errorMsg.isEmpty) {
+              errorMsg = 'Transcription failed. Please try again later.';
+            }
+            throw Exception(errorMsg);
+          }
+          throw Exception('Transcription failed with status ${result.status}');
+        }
+
+        throw Exception('No transcription data received');
+      } catch (uploadError) {
+        AppLogger.error('Storage upload failed', error: uploadError, tag: 'AIGatewayService');
+        throw Exception('Failed to upload audio to storage: $uploadError');
+      } finally {
+        // Clean up temporary storage file in case of error
+        if (tempStoragePath != null) {
+          try {
+            await _supabase.client.storage.from('documents').remove([tempStoragePath]);
+            AppLogger.debug('Deleted temporary audio file from storage: $tempStoragePath', tag: 'AIGatewayService');
+          } catch (cleanupError) {
+            AppLogger.warning('Failed to delete temporary audio file from storage', error: cleanupError, tag: 'AIGatewayService');
+            // Non-critical error
+          }
+        }
+      }
     } catch (e) {
       if (e is RateLimitError) {
         rethrow;
@@ -197,16 +268,63 @@ class AIGatewayService {
       
       // Check if it's a FunctionException
       if (errorMessage.contains('FunctionException')) {
+        // Try to extract error message from details field
+        // Look for error: "message" pattern in the details
+        final errorStart = errorMessage.indexOf('error:');
+        if (errorStart != -1) {
+          final afterError = errorMessage.substring(errorStart + 6);
+          // Find the error message (could be in quotes or not)
+          String? extractedError;
+          if (afterError.trim().startsWith('"')) {
+            final quoteEnd = afterError.indexOf('"', 1);
+            if (quoteEnd != -1) {
+              extractedError = afterError.substring(1, quoteEnd);
+            }
+          } else if (afterError.trim().startsWith("'")) {
+            final quoteEnd = afterError.indexOf("'", 1);
+            if (quoteEnd != -1) {
+              extractedError = afterError.substring(1, quoteEnd);
+            }
+          } else {
+            // No quotes, find the end (comma, closing brace, or end of string)
+            final commaIndex = afterError.indexOf(',');
+            final braceIndex = afterError.indexOf('}');
+            final endIndex = commaIndex != -1 && braceIndex != -1
+                ? (commaIndex < braceIndex ? commaIndex : braceIndex)
+                : (commaIndex != -1 ? commaIndex : braceIndex);
+            if (endIndex != -1) {
+              extractedError = afterError.substring(0, endIndex).trim();
+            } else {
+              extractedError = afterError.trim();
+            }
+          }
+          
+          if (extractedError != null && extractedError.isNotEmpty) {
+            // Remove OpenAI Whisper references if present
+            final cleanedError = extractedError.replaceAll('OpenAI Whisper has a 25MB limit', '').trim();
+            throw Exception(cleanedError.isEmpty 
+              ? 'Audio file is too large. Please record a shorter audio or try again later.'
+              : cleanedError);
+          }
+        }
+        
         final statusMatch = RegExp(r'status: (\d+)').firstMatch(errorMessage);
         if (statusMatch != null) {
           final status = int.tryParse(statusMatch.group(1) ?? '');
           if (status == 504) {
             throw Exception('Transcription timed out. The audio file may be too long. Please try with a shorter recording.');
+          } else if (status == 413) {
+            throw Exception('Audio file is too large. Please record a shorter audio or try again later.');
           }
         }
       }
       
-      throw Exception('Failed to transcribe audio: ${errorMessage.replaceAll(RegExp(r'^Exception: '), '')}');
+      // Clean up error message - remove OpenAI Whisper references
+      var cleanedErrorMessage = errorMessage.replaceAll(RegExp(r'^Exception: '), '');
+      cleanedErrorMessage = cleanedErrorMessage.replaceAll('OpenAI Whisper has a 25MB limit', '');
+      cleanedErrorMessage = cleanedErrorMessage.replaceAll(RegExp(r'\s+'), ' ').trim();
+      
+      throw Exception('Failed to transcribe audio: ${cleanedErrorMessage.isEmpty ? "Please try again later." : cleanedErrorMessage}');
     }
   }
 
@@ -221,8 +339,8 @@ class AIGatewayService {
           : _truncateContent(content, detailLevel == 'concise' ? 1800 : 2600);
       
       // Determine chunk size based on detail level
-      // Much larger chunk size for comprehensive to maintain more context and allow longer outputs
-      final chunkSize = detailLevel == 'concise' ? 900 : detailLevel == 'comprehensive' ? 8000 : 1300;
+      // Reduced chunk sizes to prevent timeouts - Edge Functions have execution time limits
+      final chunkSize = detailLevel == 'concise' ? 600 : detailLevel == 'comprehensive' ? 4000 : 1000;
       
       // Split into chunks if content is very long
       final chunks = _splitIntoChunksByWords(balancedContent, chunkSize);
@@ -231,30 +349,53 @@ class AIGatewayService {
         // Generate partial summaries for each chunk
         final partialSummaries = <String>[];
         for (int i = 0; i < chunks.length; i++) {
-          final partPrompt = _generateSummaryUserPrompt(
-            chunks[i],
-            documents: documents,
-            detailLevel: detailLevel,
-            partInfo: {'index': i + 1, 'total': chunks.length},
-            language: language,
-          );
-          
-          final partRaw = await chatCompletion([
-            {'role': 'system', 'content': _generateSummarySystemPrompt(detailLevel, language: language)},
-            {'role': 'user', 'content': partPrompt},
-          ], model: 'gpt-4o-mini', temperature: 0.7);
-          
-          partialSummaries.add(_sanitizeHtmlOutput(partRaw));
+          try {
+            final partPrompt = _generateSummaryUserPrompt(
+              chunks[i],
+              documents: documents,
+              detailLevel: detailLevel,
+              partInfo: {'index': i + 1, 'total': chunks.length},
+              language: language,
+            );
+            
+            final partRaw = await chatCompletion([
+              {'role': 'system', 'content': _generateSummarySystemPrompt(detailLevel, language: language)},
+              {'role': 'user', 'content': partPrompt},
+            ], model: 'gpt-4o-mini', temperature: 0.3);
+            
+            partialSummaries.add(_sanitizeHtmlOutput(partRaw));
+          } catch (e) {
+            // If a chunk times out, log and continue with other chunks
+            if (e.toString().contains('timeout') || e.toString().contains('504')) {
+              AppLogger.warning('Chunk ${i + 1} timed out, skipping', tag: 'AIGatewayService');
+              // Add a placeholder or skip this chunk
+              continue;
+            }
+            rethrow;
+          }
+        }
+        
+        if (partialSummaries.isEmpty) {
+          throw Exception('All summary chunks timed out. The content may be too long. Please try with shorter content.');
         }
         
         // Merge partial summaries
-        final mergePrompt = _generateSummaryMergePrompt(partialSummaries, detailLevel, language: language);
-        final mergedRaw = await chatCompletion([
-          {'role': 'system', 'content': _generateSummarySystemPrompt(detailLevel, language: language)},
-          {'role': 'user', 'content': mergePrompt},
-        ], model: 'gpt-4o-mini', temperature: 0.5);
-        
-        return _sanitizeHtmlOutput(mergedRaw);
+        try {
+          final mergePrompt = _generateSummaryMergePrompt(partialSummaries, detailLevel, language: language);
+          final mergedRaw = await chatCompletion([
+            {'role': 'system', 'content': _generateSummarySystemPrompt(detailLevel, language: language)},
+            {'role': 'user', 'content': mergePrompt},
+          ], model: 'gpt-4o-mini', temperature: 0.3);
+          
+          return _sanitizeHtmlOutput(mergedRaw);
+        } catch (e) {
+          // If merge times out, return the partial summaries joined together
+          if (e.toString().contains('timeout') || e.toString().contains('504')) {
+            AppLogger.warning('Merge timed out, returning partial summaries', tag: 'AIGatewayService');
+            return partialSummaries.join('\n\n');
+          }
+          rethrow;
+        }
       } else {
         // Single chunk - generate summary directly
         final userPrompt = _generateSummaryUserPrompt(
@@ -267,7 +408,7 @@ class AIGatewayService {
         final raw = await chatCompletion([
           {'role': 'system', 'content': _generateSummarySystemPrompt(detailLevel, language: language)},
           {'role': 'user', 'content': userPrompt},
-        ], model: 'gpt-4o-mini', temperature: 0.7);
+        ], model: 'gpt-4o-mini', temperature: 0.3);
         
         return _sanitizeHtmlOutput(raw);
       }
@@ -275,6 +416,65 @@ class AIGatewayService {
       if (e is RateLimitError) rethrow;
       AppLogger.error('Error generating summary', error: e, tag: 'AIGatewayService');
       throw Exception('Failed to generate summary: $e');
+    }
+  }
+
+  /// Edit an existing summary based on user instructions
+  /// Examples: "Add analogy for x", "Rewrite the section about y", "Remove the part about z"
+  Future<String> editSummary(String currentSummary, String userInstruction, {String? originalContent}) async {
+    try {
+      final messages = [
+        {
+          'role': 'system',
+          'content': '''You are an expert educational content editor. Your task is to modify an existing summary based on user instructions while maintaining the overall structure and quality of the summary.
+
+CRITICAL REQUIREMENTS:
+- Preserve the HTML formatting and structure of the original summary
+- Only make the specific changes requested by the user
+- Maintain consistency in style, tone, and formatting
+- Keep all other content unchanged unless explicitly requested
+- Use proper HTML tags (p, h2, h3, h4, ul, ol, li, strong, em, blockquote, mark, etc.)
+- For mathematical content, use LaTeX: inline equations with \$...\$ and block equations with \$\$...\$\$
+
+When adding content:
+- Integrate new content naturally into the existing structure
+- Match the writing style and tone of the original summary
+- Use appropriate HTML formatting
+
+When rewriting:
+- Keep the same level of detail and explanation
+- Maintain the same structure unless requested otherwise
+- Preserve important information that isn't being rewritten
+
+When removing:
+- Remove only the specified content
+- Ensure the remaining text flows naturally
+- Fix any broken references or incomplete sentences
+
+Return ONLY the modified HTML summary, no explanations or additional text.''',
+        },
+        {
+          'role': 'user',
+          'content': '''Current Summary:
+$currentSummary
+
+${originalContent != null ? 'Original Note Content (for context):\n${_truncateContent(originalContent, 2000)}\n\n' : ''}User Instruction: $userInstruction
+
+Please modify the summary according to the instruction above. Return the complete modified summary in HTML format.''',
+        },
+      ];
+
+      final response = await chatCompletion(
+        messages,
+        model: 'gpt-4o-mini',
+        temperature: 0.7,
+      );
+
+      return _sanitizeHtmlOutput(response);
+    } catch (e) {
+      if (e is RateLimitError) rethrow;
+      AppLogger.error('Error editing summary', error: e, tag: 'AIGatewayService');
+      throw Exception('Failed to edit summary: $e');
     }
   }
 
@@ -286,6 +486,14 @@ class AIGatewayService {
     
     if (isComprehensive) {
       return '''You are an expert educational content writer. Your task is to REWRITE and RESTRUCTURE the provided content in a more organized, detailed, and comprehensive way. This is NOT a summary - you should cover EVERYTHING from the original content, but present it better structured and explained.$languageInstruction
+
+CRITICAL REQUIREMENTS FOR CONTENT ACCURACY:
+1. Summarize EVERYTHING the user said - do NOT pick just one topic and write about it
+2. Cover ALL topics, points, and concepts mentioned in the source material
+3. If the recording is very short, make the rewrite proportionally shorter - do NOT expand or make up content
+4. ONLY include information that is actually present in the source material - do NOT invent or hallucinate content
+5. For short recordings, focus on accurately capturing what was said without adding unnecessary detail
+6. If multiple topics are mentioned, cover ALL of them, not just one
 
 CRITICAL REQUIREMENTS:
 - DO NOT summarize - instead, rewrite and expand on ALL content from the original
@@ -326,6 +534,14 @@ Return ONLY valid HTML, no markdown or code fences.''';
     
     return '''You are an expert educational content summarizer. Create a ${detailLevel == 'concise' ? 'brief and focused' : 'balanced and informative'} summary in HTML format.$languageInstruction
 
+CRITICAL REQUIREMENTS FOR CONTENT ACCURACY:
+1. Summarize EVERYTHING the user said - do NOT pick just one topic and write about it
+2. Cover ALL topics, points, and concepts mentioned in the source material
+3. If the recording is very short, make the summary proportionally shorter - do NOT expand or make up content
+4. ONLY include information that is actually present in the source material - do NOT invent or hallucinate content
+5. For short recordings, focus on accurately capturing what was said without adding unnecessary detail
+6. If multiple topics are mentioned, cover ALL of them, not just one
+
 Requirements:
 - Use proper HTML tags (p, h2, h3, h4, ul, ol, li, strong, em, blockquote, mark, etc.)
 - Structure the summary with clear sections and subsections
@@ -353,22 +569,46 @@ Requirements:
         ? '\n\nThis is part ${partInfo['index']} of ${partInfo['total']} parts. Focus on this section while maintaining context.'
         : '';
     
-    // Calculate word target based solely on content length (not detail level)
-    // Rule of thumb: 30 slides should produce 3x longer output than 10 slides
-    final contentLength = content.length;
-    final estimatedWords = contentLength / 5; // Rough estimate: 5 chars per word
-    final estimatedSlides = (estimatedWords / 500).ceil(); // ~500 words per slide
-    final lengthMultiplier = estimatedSlides / 10.0; // Base is 10 slides
+    // Calculate word target based on content length
+    // Count actual words for more accurate estimation
+    final wordCount = content.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    final isShortRecording = wordCount < 300;
     
-    // Base word count: 2000-4000 words for 10 slides
-    // Scales proportionally: 30 slides = 3x = 6000-12000 words
-    final baseMinWords = 2000;
-    final baseMaxWords = 4000;
-    final minWords = (baseMinWords * lengthMultiplier).round();
-    final maxWords = (baseMaxWords * lengthMultiplier).round();
+    // Calculate estimated slides for comprehensive mode instructions
+    final estimatedSlides = (wordCount / 500).ceil();
+    final lengthMultiplier = (estimatedSlides / 10.0).clamp(0.1, 5.0); // Cap multiplier
     
-    // Ensure minimum word count even for very short content
-    final wordTarget = '${minWords < 500 ? 500 : minWords}-${maxWords < 1000 ? 1000 : maxWords}';
+    // Calculate word target with special handling for very short recordings
+    int minWords;
+    int maxWords;
+    String wordTarget;
+    
+    if (wordCount < 100) {
+      // Very short recordings (e.g., 10-50 words) should get very short summaries
+      minWords = (wordCount * 0.8).round().clamp(50, 200);
+      maxWords = (wordCount * 1.5).round().clamp(100, 300);
+      wordTarget = '$minWords-$maxWords';
+    } else if (wordCount < 300) {
+      // Short recordings (e.g., 100-300 words) should get proportionally shorter summaries
+      minWords = (wordCount * 0.4).round().clamp(100, 400);
+      maxWords = (wordCount * 0.7).round().clamp(200, 600);
+      wordTarget = '$minWords-$maxWords';
+    } else {
+      // Longer content - use slide-based estimation
+      // Base word count: 2000-4000 words for 10 slides
+      final baseMinWords = 2000;
+      final baseMaxWords = 4000;
+      minWords = (baseMinWords * lengthMultiplier).round();
+      maxWords = (baseMaxWords * lengthMultiplier).round();
+      
+      // Ensure minimum word count for medium-length content
+      if (wordCount < 800) {
+        minWords = (minWords * 0.5).round().clamp(200, 1000);
+        maxWords = (maxWords * 0.6).round().clamp(400, 1500);
+      }
+      
+      wordTarget = '$minWords-$maxWords';
+    }
     
     final comprehensiveInstructions = detailLevel == 'comprehensive' ? '''
 
@@ -402,15 +642,18 @@ STRUCTURE:
 - Provide smooth transitions between sections
 - Make the organization better than the original while covering everything''' : '';
     
-    return '''${detailLevel == 'comprehensive' ? 'REWRITE and RESTRUCTURE' : 'Create a ${detailLevel} summary of'} the following content in HTML format.$comprehensiveInstructions
+    final shortRecordingNote = isShortRecording 
+        ? '\n\nCRITICAL: This is a short recording (${wordCount} words). Summarize EVERYTHING mentioned - cover ALL topics, points, and concepts. Do NOT focus on just one topic. Keep the summary brief and proportional - do NOT expand beyond what was actually said. Aim for the lower end of the word range.'
+        : '\n\nCRITICAL: Summarize EVERYTHING mentioned in the source material. Cover ALL topics, points, and concepts - do NOT focus on just one topic. If multiple things are discussed, include ALL of them.';
+    
+    return '''${detailLevel == 'comprehensive' ? 'REWRITE and RESTRUCTURE' : 'Create a ${detailLevel} summary of'} the following content in HTML format.$comprehensiveInstructions$shortRecordingNote
 
 Content:
 $content
 
 $docInfo$partText
 
-Target length: $wordTarget words (scaled based on content length: approximately $estimatedSlides slides).
-Aim for the higher end of the word range to ensure comprehensive coverage. The length is determined by the content size, not by detail preferences.
+Target length: $wordTarget words${wordCount >= 300 ? ' (scaled based on content length: approximately $estimatedSlides slides)' : ''}.${isShortRecording ? ' For short recordings, aim for the lower end of this range.' : ' Aim for the higher end of the word range to ensure comprehensive coverage.'}
 Return ONLY valid HTML content, no markdown or code fences.''';
   }
 
@@ -562,6 +805,8 @@ Rules:
     try {
       final supabase = _supabase.client;
 
+      // Add timeout to prevent hanging (Edge Functions typically timeout at 60-300s)
+      // Use 50 seconds to be safe (leaving buffer for network overhead)
       final result = await supabase.functions.invoke(
         'ai-generate',
         body: {
@@ -569,6 +814,11 @@ Rules:
           'messages': messages,
           'model': model,
           'temperature': temperature,
+        },
+      ).timeout(
+        const Duration(seconds: 50),
+        onTimeout: () {
+          throw Exception('Request timed out. The content may be too long. Please try with shorter content or try again later.');
         },
       );
 
@@ -623,10 +873,23 @@ Rules:
       if (e is RateLimitError) {
         rethrow;
       }
+      
+      // Check for timeout errors
+      final errorStr = e.toString();
+      if (errorStr.contains('timeout') || errorStr.contains('504') || errorStr.contains('Gateway Timeout')) {
+        AppLogger.warning('Chat completion timed out - content may be too long', tag: 'AIGatewayService');
+        throw Exception('Request timed out. The content may be too long. Please try with shorter content or try again later.');
+      }
+      
       // Check if it's a Supabase FunctionException
-      if (e.toString().contains('FunctionException')) {
+      if (errorStr.contains('FunctionException')) {
+        // Check for 504 Gateway Timeout
+        if (errorStr.contains('504') || errorStr.contains('Gateway Timeout')) {
+          AppLogger.warning('Edge Function timed out (504)', tag: 'AIGatewayService');
+          throw Exception('Request timed out. The content may be too long. Please try with shorter content or try again later.');
+        }
+        
         // Try to parse the error details
-        final errorStr = e.toString();
         if (errorStr.contains('DAILY_LIMIT_REACHED') || errorStr.contains('ACCOUNT_LIMIT_REACHED')) {
           throw RateLimitError(
             code: errorStr.contains('ACCOUNT_LIMIT_REACHED') ? 'ACCOUNT_LIMIT_REACHED' : 'DAILY_LIMIT_REACHED',
@@ -634,6 +897,7 @@ Rules:
           );
         }
       }
+      
       final errorMessage = e.toString();
       AppLogger.error('Chat completion error', error: errorMessage, tag: 'AIGatewayService');
       throw Exception('Failed to complete chat: $errorMessage');
@@ -697,7 +961,7 @@ Rules:
         },
         {
           'role': 'user',
-          'content': 'Create EXACTLY $count quiz questions from the following text content. The text below is the actual content extracted from documents - you do NOT need to access any files. Use this text directly to create quiz questions.$languageInstruction\n\nRequirements:\n1. Give EQUAL coverage to all sections; do not bias earlier sections\n2. Mix difficulty (recall → application → analysis) and cover different topics\n3. Make distractors plausible but clearly wrong\n4. If the same fact appears multiple times, combine knowledge and avoid duplicate questions\n5. For each question, include a "hint" property that provides a subtle tip to help the user think about the answer without giving it away. The hint should guide thinking but not spoil the answer.\n6. For each question, include an "explanation" property that explains WHY the correct answer is correct. This should be educational and help the user understand the concept better.\n\nText Content:\n${_truncateContent(content, 1500)}\n\nReturn exactly $count quiz questions as a JSON array with "question", "options" (array of 4 strings), "correctAnswer" (index 0-3), "hint", and "explanation" properties.',
+          'content': 'Create EXACTLY $count quiz questions from the following text content. The text below is the actual content extracted from documents - you do NOT need to access any files. Use this text directly to create quiz questions.$languageInstruction\n\nRequirements:\n1. Give EQUAL coverage to all sections; do not bias earlier sections\n2. Mix difficulty (recall → application → analysis) and cover different topics\n3. Make distractors plausible but clearly wrong\n4. If the same fact appears multiple times, combine knowledge and avoid duplicate questions\n5. For each question, include a "hint" property that provides a subtle tip to help the user think about the answer without giving it away. The hint should guide thinking but not spoil the answer.\n6. For each question, include an "explanation" property that is SHORT and concise (2-3 sentences max). It should: (a) briefly explain why the correct answer is correct, and (b) briefly explain why the other options are incorrect. Be direct and educational. Do NOT simply state what the correct answer is (e.g., "The correct answer is A").\n\nText Content:\n${_truncateContent(content, 1500)}\n\nReturn exactly $count quiz questions as a JSON array with "question", "options" (array of 4 strings), "correctAnswer" (index 0-3), "hint", and "explanation" properties.',
         },
       ];
 
@@ -888,7 +1152,7 @@ Rules:
   }
 
   /// Generate Feynman topics using chat completion (matches website's generateFeynmanTopicsHelper)
-  Future<List<Map<String, dynamic>>> generateFeynmanTopics(String content, {String? language}) async {
+  Future<List<Map<String, dynamic>>> generateFeynmanTopics(String content, {String? language, int count = 4}) async {
     try {
       final languageInstruction = language != null && language != 'en' 
           ? '\n\nIMPORTANT: The content is in ${_getLanguageName(language)}. You MUST generate the topics in the SAME language (${_getLanguageName(language)}). Do NOT translate to English - keep the same language as the input.'
@@ -901,7 +1165,7 @@ Rules:
         },
         {
           'role': 'user',
-          'content': 'Based on this note content, generate 3-4 specific topics that a student could practice explaining using the Feynman Technique. Focus on the main concepts, terms, or ideas that would be good for teaching.$languageInstruction\n\nNote content:\n${_truncateContent(content, 1000)}\n\nReturn a JSON array of objects with "title" (short topic title starting with "Explain:") and "description" (brief description). Keep titles concise (max 50 chars).',
+          'content': 'Based on this note content, generate exactly $count specific topics that a student could practice explaining using the Feynman Technique. Focus on the main concepts, terms, or ideas that would be good for teaching.$languageInstruction\n\nNote content:\n${_truncateContent(content, 1000)}\n\nReturn a JSON array of objects with "title" (short topic title starting with "Explain:") and "description" (brief description). Keep titles concise (max 50 chars). Generate exactly $count topics.',
         },
       ];
 
@@ -922,7 +1186,7 @@ Rules:
       }
       
       final topics = jsonDecode(jsonContent) as List;
-      return topics.asMap().entries.map((entry) {
+      return topics.asMap().entries.take(count).map((entry) {
         final topic = entry.value as Map<String, dynamic>;
         return {
           'id': (entry.key + 1).toString(),
@@ -1144,6 +1408,81 @@ Rules:
       return {'message': error};
     }
     return {'message': error.toString()};
+  }
+
+  /// Poll AssemblyAI API for transcription completion
+  /// Handles long-running transcriptions that exceed Edge Function timeout
+  Future<String> _pollAssemblyAITranscription(String transcriptId) async {
+    const assemblyApiUrl = 'https://api.assemblyai.com/v2/transcript';
+    final assemblyApiKey = Environment.assemblyAiApiKey;
+    
+    const maxPollTime = Duration(minutes: 30); // Poll for up to 30 minutes
+    final startTime = DateTime.now();
+    var pollInterval = Duration(seconds: 3); // Start with 3 seconds
+    const maxPollInterval = Duration(seconds: 10); // Max 10 seconds between polls
+    
+    AppLogger.info('Starting client-side polling for AssemblyAI transcription: $transcriptId', tag: 'AIGatewayService');
+    
+    while (DateTime.now().difference(startTime) < maxPollTime) {
+      await Future.delayed(pollInterval);
+      
+      final elapsed = DateTime.now().difference(startTime);
+      AppLogger.debug('Polling transcription status (${elapsed.inSeconds}s elapsed)...', tag: 'AIGatewayService');
+      
+      try {
+        final response = await http.get(
+          Uri.parse('$assemblyApiUrl/$transcriptId'),
+          headers: {
+            'authorization': assemblyApiKey,
+          },
+        ).timeout(const Duration(seconds: 30));
+        
+        if (response.statusCode != 200) {
+          AppLogger.error('Failed to check transcription status: ${response.statusCode}', tag: 'AIGatewayService');
+          // Continue polling on error
+          pollInterval = Duration(milliseconds: (pollInterval.inMilliseconds * 1.2).round());
+          if (pollInterval > maxPollInterval) pollInterval = maxPollInterval;
+          continue;
+        }
+        
+        final statusData = jsonDecode(response.body) as Map<String, dynamic>;
+        final status = statusData['status'] as String?;
+        
+        AppLogger.debug('Transcription status: $status', tag: 'AIGatewayService');
+        
+        if (status == 'completed') {
+          final transcriptionText = statusData['text'] as String? ?? '';
+          
+          if (transcriptionText.isEmpty) {
+            throw Exception('Transcription completed but no text was returned');
+          }
+          
+          AppLogger.success('Transcription completed via client-side polling. Length: ${transcriptionText.length} characters', tag: 'AIGatewayService');
+          return transcriptionText;
+        } else if (status == 'error') {
+          final errorMsg = statusData['error']?.toString() ?? 'Unknown error';
+          AppLogger.error('Transcription failed: $errorMsg', tag: 'AIGatewayService');
+          throw Exception('Transcription failed: $errorMsg');
+        } else if (status == 'queued' || status == 'processing') {
+          // Job is still processing, continue polling
+          pollInterval = Duration(milliseconds: (pollInterval.inMilliseconds * 1.2).round());
+          if (pollInterval > maxPollInterval) pollInterval = maxPollInterval;
+          continue;
+        } else {
+          // Unknown status, continue polling
+          continue;
+        }
+      } catch (e) {
+        AppLogger.warning('Error polling transcription status: $e', tag: 'AIGatewayService');
+        // Continue polling on error
+        pollInterval = Duration(milliseconds: (pollInterval.inMilliseconds * 1.2).round());
+        if (pollInterval > maxPollInterval) pollInterval = maxPollInterval;
+        continue;
+      }
+    }
+    
+    // Timeout reached
+    throw Exception('Transcription is taking longer than expected. The job is still processing. Please try again in a few minutes.');
   }
 }
 

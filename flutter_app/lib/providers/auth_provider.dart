@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../services/supabase_service.dart';
+import '../services/onboarding_service.dart';
 import '../utils/logger.dart';
 import 'dart:async';
 import 'revenuecat_provider.dart';
@@ -24,7 +25,8 @@ class AuthNotifier extends AsyncNotifier<User?> {
     final user = _supabase.getCurrentUser();
     
     if (user != null) {
-      AppLogger.success('Found persisted user: ${user.email}', tag: 'AuthProvider');
+      final userDisplay = user.email.isNotEmpty ? user.email : "anonymous (${user.id})";
+      AppLogger.success('Found persisted user: $userDisplay', tag: 'AuthProvider');
       
       // Set RevenueCat user ID for existing session (after a delay to ensure provider is ready)
       Future.delayed(const Duration(milliseconds: 500), () async {
@@ -47,6 +49,28 @@ class AuthNotifier extends AsyncNotifier<User?> {
       });
     } else {
       AppLogger.info('No persisted user found', tag: 'AuthProvider');
+      
+      // If onboarding is completed, try to sign in anonymously automatically
+      final isOnboardingCompleted = await OnboardingService.isOnboardingCompleted();
+      if (isOnboardingCompleted) {
+        AppLogger.info('Onboarding completed, attempting automatic anonymous sign-in...', tag: 'AuthProvider');
+        // Try to sign in anonymously (will fail gracefully if disabled)
+        try {
+          final result = await signInAnonymously();
+          if (result['success'] == true) {
+            AppLogger.success('Automatic anonymous sign-in successful', tag: 'AuthProvider');
+            // Get the newly signed-in user
+            final newUser = _supabase.getCurrentUser();
+            if (newUser != null) {
+              return newUser;
+            }
+          } else {
+            AppLogger.info('Automatic anonymous sign-in not available (may be disabled), continuing without auth', tag: 'AuthProvider');
+          }
+        } catch (e) {
+          AppLogger.info('Automatic anonymous sign-in failed (may be disabled), continuing without auth: $e', tag: 'AuthProvider');
+        }
+      }
     }
     
     // Listen for auth state changes (handles session refresh, new logins, and logouts)
@@ -217,6 +241,45 @@ class AuthNotifier extends AsyncNotifier<User?> {
         };
       }
       return {'success': false, 'error': errorMsg};
+    }
+  }
+
+  Future<Map<String, dynamic>> signInAnonymously() async {
+    AppLogger.info('Signing in anonymously...', tag: 'AuthProvider');
+    try {
+      state = const AsyncLoading();
+      final response = await _supabase.signInAnonymously();
+      
+      if (response.user != null && response.session != null) {
+        final user = User.fromJson(response.user!.toJson());
+        AppLogger.success('Anonymous sign in successful for user: ${user.id}', tag: 'AuthProvider');
+        state = AsyncData(user);
+        
+        // Set RevenueCat user ID for anonymous user
+        try {
+          if (!ref.exists(revenueCatProvider)) {
+            AppLogger.warning('RevenueCat provider not ready yet, skipping user ID set', tag: 'AuthProvider');
+          } else {
+            final revenueCatNotifier = ref.read(revenueCatProvider.notifier);
+            await revenueCatNotifier.setUserId(user.id);
+            // Restore purchases to link any anonymous purchases to this user
+            await revenueCatNotifier.restorePurchases();
+          }
+        } catch (e) {
+          if (!e.toString().contains('uninitialized provider')) {
+            AppLogger.warning('Failed to set RevenueCat user ID for anonymous user', error: e, tag: 'AuthProvider');
+          }
+        }
+        
+        return {'success': true};
+      }
+      
+      AppLogger.warning('Anonymous sign in failed: no user or session in response', tag: 'AuthProvider');
+      return {'success': false, 'error': 'Failed to sign in anonymously'};
+    } catch (e, stackTrace) {
+      AppLogger.error('Anonymous sign in error', error: e, stackTrace: stackTrace, tag: 'AuthProvider');
+      state = AsyncError(e, stackTrace);
+      return {'success': false, 'error': 'Failed to sign in anonymously'};
     }
   }
 

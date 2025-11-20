@@ -82,12 +82,12 @@ class HtmlWithLatexRenderer extends StatelessWidget {
           fontStyle: FontStyle.italic,
         ),
         'a': Style(
-          color: const Color(0xFF60A5FA),
+          color: const Color(0xFF8D1647),
           textDecoration: TextDecoration.underline,
         ),
         'strong': Style(
           fontWeight: FontWeight.bold,
-          color: const Color(0xFF3B82F6), // Blue color for bold text in summary
+          color: const Color(0xFFcD6226D) // White color for bold text in summary
         ),
         'em': Style(
           fontStyle: FontStyle.italic,

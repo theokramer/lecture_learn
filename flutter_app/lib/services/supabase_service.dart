@@ -5,6 +5,7 @@ import '../models/folder.dart';
 import '../models/document.dart';
 import '../models/user.dart' as app_models;
 import '../models/study_content.dart';
+import '../models/chat_message.dart';
 import '../utils/logger.dart';
 import 'dart:io';
 import 'dart:convert';
@@ -150,6 +151,21 @@ class SupabaseService {
     return response;
   }
 
+  Future<AuthResponse> signInAnonymously() async {
+    AppLogger.info('Signing in anonymously...', tag: 'SupabaseService');
+    final response = await client.auth.signInAnonymously();
+    
+    if (response.session != null) {
+      AppLogger.success('Anonymous sign in successful, saving session...', tag: 'SupabaseService');
+      await _saveSessionToStorage(response.session!);
+      AppLogger.success('Anonymous session saved for user: ${response.user?.id}', tag: 'SupabaseService');
+    } else {
+      AppLogger.warning('Anonymous sign in response has no session', tag: 'SupabaseService');
+    }
+    
+    return response;
+  }
+
   Future<void> signOut() async {
     AppLogger.info('Signing out user...', tag: 'SupabaseService');
     await client.auth.signOut();
@@ -223,9 +239,10 @@ class SupabaseService {
 
   // Notes
   Future<List<Note>> getNotes(String userId, {String? folderId}) async {
+    // Explicitly select all fields including content to ensure full content is fetched
     final response = await client
         .from('notes')
-        .select()
+        .select('id, user_id, folder_id, title, content, created_at, updated_at')
         .eq('user_id', userId)
         .order('created_at', ascending: false);
     
@@ -252,6 +269,29 @@ class SupabaseService {
     }
 
     return notesWithDocs;
+  }
+
+  /// Fetch a single note with full content (useful for large transcriptions)
+  Future<Note> getNoteById(String noteId) async {
+    try {
+      final response = await client
+          .from('notes')
+          .select('id, user_id, folder_id, title, content, created_at, updated_at')
+          .eq('id', noteId)
+          .single();
+      
+      final note = Note.fromJson(response);
+      
+      // Load documents for the note
+      final docs = await getDocuments(note.id);
+      
+      AppLogger.debug('Fetched note: id=$noteId, contentLength=${note.content.length}', tag: 'SupabaseService');
+      
+      return note.copyWith(documents: docs);
+    } catch (e) {
+      AppLogger.error('Error fetching note by ID: $noteId', error: e, tag: 'SupabaseService');
+      rethrow;
+    }
   }
 
   Future<Note> createNote(String userId, String title, String? folderId, {String content = ''}) async {
@@ -468,6 +508,12 @@ class SupabaseService {
   }
 
   Future<String> getFileUrl(String path) async {
+    // Check if it's a local path (starts with "local://")
+    if (path.startsWith('local://')) {
+      // For local paths, return the path as-is (will be handled by LocalDocumentService)
+      return path;
+    }
+    // For remote paths, get the public URL from Supabase storage
     return client.storage.from('documents').getPublicUrl(path);
   }
 
@@ -518,12 +564,15 @@ class SupabaseService {
         'id': f.id,
         'front': f.front,
         'back': f.back,
+        'hint': f.hint,
       }).toList(),
       'quiz_questions': content.quizQuestions.map((q) => {
         'id': q.id,
         'question': q.question,
         'options': q.options,
         'correct': q.correctAnswer,
+        'hint': q.hint,
+        'explanation': q.explanation,
       }).toList(),
       'exercises': content.exercises.map((e) => {
         'id': e.id,
@@ -548,6 +597,253 @@ class SupabaseService {
       await client.from('study_content').update(data).eq('id', existing['id']);
     } else {
       await client.from('study_content').insert(data);
+    }
+  }
+
+  /// Get or create a conversation for a note
+  Future<String> getOrCreateConversation(String userId, String? noteId) async {
+    try {
+      // Try to find existing conversation for this note
+      if (noteId != null) {
+        final existing = await client
+            .from('chat_conversations')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('note_id', noteId)
+            .maybeSingle();
+
+        if (existing != null) {
+          return existing['id'] as String;
+        }
+      }
+
+      // Create new conversation
+      final response = await client
+          .from('chat_conversations')
+          .insert({
+            'user_id': userId,
+            'note_id': noteId,
+            'title': noteId != null ? 'Note Conversation' : 'General Conversation',
+          })
+          .select('id')
+          .single();
+
+      return response['id'] as String;
+    } catch (e) {
+      AppLogger.error('Error getting/creating conversation', error: e, tag: 'SupabaseService');
+      rethrow;
+    }
+  }
+
+  /// Load messages from a conversation
+  Future<List<ChatMessage>> loadConversationMessages(String conversationId) async {
+    try {
+      final response = await client
+          .from('chat_messages')
+          .select()
+          .eq('conversation_id', conversationId)
+          .order('created_at', ascending: true);
+
+      if (response.isEmpty) {
+        return [];
+      }
+
+      return (response as List).map((msg) {
+        return ChatMessage(
+          id: msg['id'] as String,
+          role: msg['role'] as String,
+          content: msg['content'] as String,
+          timestamp: DateTime.parse(msg['created_at'] as String),
+        );
+      }).toList();
+    } catch (e) {
+      AppLogger.error('Error loading conversation messages', error: e, tag: 'SupabaseService');
+      rethrow;
+    }
+  }
+
+  /// Save a message to a conversation
+  Future<void> saveMessage(String conversationId, String role, String content) async {
+    try {
+      await client.from('chat_messages').insert({
+        'conversation_id': conversationId,
+        'role': role,
+        'content': content,
+      });
+
+      // Update conversation's updated_at timestamp
+      await client
+          .from('chat_conversations')
+          .update({'updated_at': DateTime.now().toIso8601String()})
+          .eq('id', conversationId);
+
+      AppLogger.debug('Message saved to conversation: $conversationId', tag: 'SupabaseService');
+    } catch (e) {
+      AppLogger.error('Error saving message', error: e, tag: 'SupabaseService');
+      rethrow;
+    }
+  }
+
+  /// Get count of notes with study content (including deleted ones)
+  /// Returns the count of notes with study content for the user.
+  /// If account_limits is blocked by RLS, counts directly from study_content table.
+  Future<int> getNotesWithStudyContentCount(String userId) async {
+    try {
+      final response = await client
+          .from('account_limits')
+          .select('notes_with_study_content_count')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (response == null) {
+        // Try to create default entry if it doesn't exist
+        try {
+          await client.from('account_limits').insert({
+            'user_id': userId,
+            'daily_ai_limit': 150,
+            'notes_with_study_content_count': 0,
+          });
+          return 0;
+        } catch (insertError) {
+          // If insert fails due to RLS, count directly from study_content table
+          final errorStr = insertError.toString();
+          if (errorStr.contains('row-level security') || errorStr.contains('42501')) {
+            AppLogger.warning('RLS policy blocked account_limits insert - counting from study_content table', tag: 'SupabaseService');
+            return await _countNotesWithStudyContentFromTable(userId);
+          }
+          rethrow;
+        }
+      }
+
+      return (response['notes_with_study_content_count'] as int?) ?? 0;
+    } catch (e) {
+      AppLogger.error('Error getting notes with study content count', error: e, tag: 'SupabaseService');
+      final errorStr = e.toString();
+      // If RLS error, count directly from study_content table
+      if (errorStr.contains('row-level security') || errorStr.contains('42501')) {
+        AppLogger.warning('RLS error accessing account_limits - counting from study_content table', tag: 'SupabaseService');
+        return await _countNotesWithStudyContentFromTable(userId);
+      }
+      // For other errors, return 0 to allow note creation (graceful degradation)
+      return 0;
+    }
+  }
+
+  /// Count notes with study content directly from the study_content table.
+  /// This is used as a fallback when account_limits is blocked by RLS.
+  Future<int> _countNotesWithStudyContentFromTable(String userId) async {
+    try {
+      // Get all notes for the user that have study content
+      // Join notes with study_content to count distinct notes with actual content
+      final notesResponse = await client
+          .from('notes')
+          .select('id')
+          .eq('user_id', userId);
+
+      if (notesResponse.isEmpty) {
+        return 0;
+      }
+
+      final noteIds = (notesResponse as List).map((n) => n['id'] as String).toList();
+      
+      // Count distinct notes that have study content with actual data
+      int count = 0;
+      for (final noteId in noteIds) {
+        try {
+          // Check if study_content exists for this note
+          final studyContentResponse = await client
+              .from('study_content')
+              .select('summary, flashcards, quiz_questions, exercises, feynman_topics')
+              .eq('note_id', noteId)
+              .order('updated_at', ascending: false)
+              .limit(1);
+          
+          if (studyContentResponse.isNotEmpty) {
+            final data = studyContentResponse.first;
+            // Check if any study content actually exists
+            final hasSummary = (data['summary'] as String? ?? '').trim().isNotEmpty;
+            final hasFlashcards = (data['flashcards'] as List? ?? []).isNotEmpty;
+            final hasQuiz = (data['quiz_questions'] as List? ?? []).isNotEmpty;
+            final hasExercises = (data['exercises'] as List? ?? []).isNotEmpty;
+            final hasFeynman = (data['feynman_topics'] as List? ?? []).isNotEmpty;
+            
+            if (hasSummary || hasFlashcards || hasQuiz || hasExercises || hasFeynman) {
+              count++;
+            }
+          }
+        } catch (e) {
+          // Skip notes that can't be accessed
+          continue;
+        }
+      }
+
+      AppLogger.info('Counted $count notes with study content from table for user: $userId', tag: 'SupabaseService');
+      return count;
+    } catch (e) {
+      AppLogger.error('Error counting notes with study content from table', error: e, tag: 'SupabaseService');
+      // On error, return 0 to allow note creation (graceful degradation)
+      return 0;
+    }
+  }
+
+  /// Increment count of notes with study content
+  /// If this fails due to RLS, the count will be accurate when queried from the table
+  Future<void> incrementNotesWithStudyContentCount(String userId) async {
+    try {
+      // First, ensure the account_limits entry exists
+      final existing = await client
+          .from('account_limits')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (existing == null) {
+        // Create entry with count = 1
+        try {
+          await client.from('account_limits').insert({
+            'user_id': userId,
+            'daily_ai_limit': 150,
+            'notes_with_study_content_count': 1,
+          });
+          AppLogger.info('Created account_limits entry with count=1 for user: $userId', tag: 'SupabaseService');
+        } catch (insertError) {
+          final errorStr = insertError.toString();
+          if (errorStr.contains('row-level security') || errorStr.contains('42501')) {
+            AppLogger.warning('RLS blocked account_limits insert - count will be tracked via table queries', tag: 'SupabaseService');
+            // Don't throw - count will be accurate when queried from table
+            return;
+          }
+          rethrow;
+        }
+      } else {
+        // Increment existing count
+        try {
+          await client.rpc('increment_notes_count', params: {'user_id_param': userId});
+          AppLogger.info('Incremented notes with study content count via RPC for user: $userId', tag: 'SupabaseService');
+        } catch (rpcError) {
+          // If RPC doesn't exist or fails, use update with increment
+          final currentCount = await getNotesWithStudyContentCount(userId);
+          try {
+            await client
+                .from('account_limits')
+                .update({'notes_with_study_content_count': currentCount + 1})
+                .eq('user_id', userId);
+            AppLogger.info('Incremented notes with study content count via update for user: $userId (new count: ${currentCount + 1})', tag: 'SupabaseService');
+          } catch (updateError) {
+            final errorStr = updateError.toString();
+            if (errorStr.contains('row-level security') || errorStr.contains('42501')) {
+              AppLogger.warning('RLS blocked account_limits update - count will be tracked via table queries', tag: 'SupabaseService');
+              // Don't throw - count will be accurate when queried from table
+              return;
+            }
+            rethrow;
+          }
+        }
+      }
+    } catch (e) {
+      AppLogger.error('Error incrementing notes with study content count', error: e, tag: 'SupabaseService');
+      // Don't throw - this is not critical for note creation
+      // The count will be accurate when queried from the table
     }
   }
 }

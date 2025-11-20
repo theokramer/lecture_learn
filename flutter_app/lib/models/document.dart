@@ -1,10 +1,12 @@
+import '../services/local_document_service.dart';
+
 enum DocumentType { audio, video, pdf, doc, text }
 
 class Document {
   final String id;
   final String name;
   final DocumentType type;
-  final String url;
+  final String url; // Can be a storage path or local path identifier (starts with "local://")
   final int size;
   final DateTime uploadedAt;
 
@@ -16,6 +18,9 @@ class Document {
     required this.size,
     required this.uploadedAt,
   });
+
+  /// Check if this document is stored locally
+  bool get isLocal => LocalDocumentService.isLocalPath(url);
 
   factory Document.fromJson(Map<String, dynamic> json) {
     return Document(

@@ -30,19 +30,19 @@ class OptionButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         decoration: BoxDecoration(
           color: isSelected
-              ? const Color(0xFF6366F1) // Indigo when selected
+              ? const Color(0xFF8D1647) // Vibrant teal // Indigo when selected
               : const Color(0xFF2A2A2A), // Dark gray when not selected
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFF818CF8).withOpacity(0.5)
+                ? const Color(0xFF8D1647).withOpacity(0.5)
                 : const Color(0xFF3A3A3A),
             width: 1.5,
           ),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.3),
+                    color: const Color(0xFF8D1647).withOpacity(0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -89,7 +89,7 @@ class OptionButton extends StatelessWidget {
                 ),
                 child: const Icon(
                   CupertinoIcons.checkmark,
-                  color: Color(0xFF6366F1),
+                  color: Color(0xFF8D1647),
                   size: 16,
                 ),
               ),

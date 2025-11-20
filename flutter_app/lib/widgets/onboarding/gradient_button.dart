@@ -26,7 +26,7 @@ class GradientButton extends StatelessWidget {
         gradient: onPressed != null && !isLoading
             ? const LinearGradient(
                 colors: [
-                  Color(0xFF6366F1), // Indigo
+                  Color(0xFF8D1647), // Vibrant teal,
                   Color(0xFFFFFFFF), // White
                 ],
                 begin: Alignment.centerLeft,
@@ -39,7 +39,7 @@ class GradientButton extends StatelessWidget {
         boxShadow: onPressed != null && !isLoading
             ? [
                 BoxShadow(
-                  color: const Color(0xFF6366F1).withOpacity(0.3),
+                  color: const Color(0xFF8D1647).withOpacity(0.3),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -64,14 +64,16 @@ class GradientButton extends StatelessWidget {
                 children: [
                   Text(
                     text,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: (onPressed != null && !isLoading)
+                          ? Colors.white
+                          : const Color(0xFF9CA3AF),
                       fontSize: 17,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.5,
                     ),
                   ),
-                  if (trailingIcon != null) ...[
+                  if (trailingIcon != null && (onPressed != null && !isLoading)) ...[
                     const SizedBox(width: 8),
                     Icon(
                       trailingIcon,

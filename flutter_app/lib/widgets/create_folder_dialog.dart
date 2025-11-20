@@ -236,10 +236,12 @@ class _CreateFolderDialogState extends State<CreateFolderDialog>
                                   borderRadius: BorderRadius.circular(12),
                                   disabledColor: const Color(0xFF3A3A3A),
                                   onPressed: _hasText ? _createFolder : null,
-                                  child: const Text(
+                                  child: Text(
                                     'Create',
                                     style: TextStyle(
-                                      color: Color(0xFFFFFFFF),
+                                      color: _hasText
+                                          ? const Color(0xFF1A1A1A)
+                                          : const Color(0xFF9CA3AF),
                                       fontSize: 17,
                                       fontWeight: FontWeight.w600,
                                     ),

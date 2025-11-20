@@ -3,7 +3,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../providers/auth_provider.dart';
 import '../utils/logger.dart';
 import '../services/onboarding_service.dart';
 import '../constants/onboarding_colors.dart';
@@ -75,49 +74,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       return;
     }
 
-    // If onboarding is completed, check auth state
-    int attempts = 0;
-    const maxAttempts = 10;
-    
-    while (attempts < maxAttempts && mounted) {
-      final authState = ref.read(authProvider);
-      
-      final shouldNavigate = authState.when(
-        data: (user) {
-          if (mounted) {
-            if (user != null) {
-              AppLogger.info('User logged in, navigating to /home', tag: 'SplashScreen');
-              context.go('/home');
-            } else {
-              AppLogger.info('No user, navigating to /login', tag: 'SplashScreen');
-              context.go('/login');
-            }
-          }
-          return true;
-        },
-        loading: () {
-          return false; // Keep waiting
-        },
-        error: (error, stackTrace) {
-          AppLogger.error('Auth error, navigating to /login', error: error, stackTrace: stackTrace, tag: 'SplashScreen');
-          if (mounted) {
-            context.go('/login');
-          }
-          return true;
-        },
-      );
-      
-      if (shouldNavigate) break;
-      
-      // Wait a bit before checking again
-      await Future.delayed(const Duration(milliseconds: 300));
-      attempts++;
-    }
-    
-    // If still loading after max attempts, navigate to login
-    if (attempts >= maxAttempts && mounted) {
-      AppLogger.warning('Auth check timeout, navigating to /login', tag: 'SplashScreen');
-      context.go('/login');
+    // If onboarding is completed, navigate directly to home
+    // No authentication required - users can access the app anonymously
+    AppLogger.info('Onboarding completed, navigating to /home', tag: 'SplashScreen');
+    if (mounted) {
+      context.go('/home');
     }
   }
 
@@ -166,18 +127,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                               shape: BoxShape.circle,
                               gradient: RadialGradient(
                                 colors: [
-                                  OnboardingColors.buttonGradientColors[0].withOpacity(0.4 * _fadeAnimation.value),
-                                  OnboardingColors.buttonGradientColors[0].withOpacity(0.0),
+                                  OnboardingColors.optionButtonGradientColors[0].withOpacity(0.4 * _fadeAnimation.value),
+                                  OnboardingColors.optionButtonGradientColors[0].withOpacity(0.0),
                                 ],
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: OnboardingColors.buttonGradientColors[0].withOpacity(0.6 * _fadeAnimation.value),
+                                  color: OnboardingColors.optionButtonGradientColors[0].withOpacity(0.6 * _fadeAnimation.value),
                                   blurRadius: 50,
                                   spreadRadius: 15,
                                 ),
                                 BoxShadow(
-                                  color: OnboardingColors.buttonGradientColors[1].withOpacity(0.3 * _fadeAnimation.value),
+                                  color: OnboardingColors.optionButtonGradientColors[1].withOpacity(0.3 * _fadeAnimation.value),
                                   blurRadius: 80,
                                   spreadRadius: 25,
                                 ),

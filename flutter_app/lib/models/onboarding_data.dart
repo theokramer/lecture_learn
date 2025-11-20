@@ -1,9 +1,9 @@
 /// Model to store user onboarding responses
 class OnboardingData {
   final String? studentStatus;
-  final String? learningStyle;
+  final List<String>? studyProblems; // Changed to list for multi-select
+  final List<String>? learningStyles; // Changed to list for multi-select
   final String? difficultFormat;
-  final String? studyProblem;
   final String? reviewStruggle;
   final String? stuckStrategy;
   final String? examReadiness;
@@ -12,14 +12,19 @@ class OnboardingData {
   final int? hoursPerWeek;
   final int? dailyTimeCommitment;
   final String? academicGoal;
-  final String? extraTimeUsage;
+  final List<String>? extraTimeUsage; // Changed to list for multi-select
   final String? freeTimeFeeling;
+  
+  // Legacy single-select fields (for backward compatibility)
+  final String? learningStyle;
+  final String? studyProblem;
+  final String? extraTimeUsageSingle;
 
   OnboardingData({
     this.studentStatus,
-    this.learningStyle,
+    this.studyProblems,
+    this.learningStyles,
     this.difficultFormat,
-    this.studyProblem,
     this.reviewStruggle,
     this.stuckStrategy,
     this.examReadiness,
@@ -30,14 +35,18 @@ class OnboardingData {
     this.academicGoal,
     this.extraTimeUsage,
     this.freeTimeFeeling,
+    // Legacy fields
+    this.learningStyle,
+    this.studyProblem,
+    this.extraTimeUsageSingle,
   });
 
   Map<String, dynamic> toJson() {
     return {
       'studentStatus': studentStatus,
-      'learningStyle': learningStyle,
+      'studyProblems': studyProblems,
+      'learningStyles': learningStyles,
       'difficultFormat': difficultFormat,
-      'studyProblem': studyProblem,
       'reviewStruggle': reviewStruggle,
       'stuckStrategy': stuckStrategy,
       'examReadiness': examReadiness,
@@ -48,14 +57,18 @@ class OnboardingData {
       'academicGoal': academicGoal,
       'extraTimeUsage': extraTimeUsage,
       'freeTimeFeeling': freeTimeFeeling,
+      // Legacy fields for backward compatibility
+      'learningStyle': learningStyle ?? (learningStyles?.isNotEmpty == true ? learningStyles!.first : null),
+      'studyProblem': studyProblem ?? (studyProblems?.isNotEmpty == true ? studyProblems!.first : null),
+      'extraTimeUsageSingle': extraTimeUsageSingle ?? (extraTimeUsage?.isNotEmpty == true ? extraTimeUsage!.first : null),
     };
   }
 
   OnboardingData copyWith({
     String? studentStatus,
-    String? learningStyle,
+    List<String>? studyProblems,
+    List<String>? learningStyles,
     String? difficultFormat,
-    String? studyProblem,
     String? reviewStruggle,
     String? stuckStrategy,
     String? examReadiness,
@@ -64,14 +77,18 @@ class OnboardingData {
     int? hoursPerWeek,
     int? dailyTimeCommitment,
     String? academicGoal,
-    String? extraTimeUsage,
+    List<String>? extraTimeUsage,
     String? freeTimeFeeling,
+    // Legacy fields
+    String? learningStyle,
+    String? studyProblem,
+    String? extraTimeUsageSingle,
   }) {
     return OnboardingData(
       studentStatus: studentStatus ?? this.studentStatus,
-      learningStyle: learningStyle ?? this.learningStyle,
+      studyProblems: studyProblems ?? this.studyProblems,
+      learningStyles: learningStyles ?? this.learningStyles,
       difficultFormat: difficultFormat ?? this.difficultFormat,
-      studyProblem: studyProblem ?? this.studyProblem,
       reviewStruggle: reviewStruggle ?? this.reviewStruggle,
       stuckStrategy: stuckStrategy ?? this.stuckStrategy,
       examReadiness: examReadiness ?? this.examReadiness,
@@ -82,6 +99,10 @@ class OnboardingData {
       academicGoal: academicGoal ?? this.academicGoal,
       extraTimeUsage: extraTimeUsage ?? this.extraTimeUsage,
       freeTimeFeeling: freeTimeFeeling ?? this.freeTimeFeeling,
+      // Legacy fields
+      learningStyle: learningStyle ?? this.learningStyle,
+      studyProblem: studyProblem ?? this.studyProblem,
+      extraTimeUsageSingle: extraTimeUsageSingle ?? this.extraTimeUsageSingle,
     );
   }
 }

@@ -11,6 +11,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../utils/logger.dart';
 import '../utils/error_handler.dart';
+import '../providers/app_data_provider.dart';
+import '../widgets/free_notes_limit_widget.dart';
 
 class RecordAudioScreen extends ConsumerStatefulWidget {
   final String? folderId;
@@ -54,6 +56,28 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> with Tick
 
   Future<void> _startRecording() async {
     try {
+      // Check note creation limit FIRST, before any recording starts
+      final appData = ref.read(appDataProvider.notifier);
+      try {
+        final canCreate = await appData.canCreateNoteWithStudyContent();
+        if (!canCreate) {
+          // This shouldn't happen as exception is thrown, but handle it anyway
+          if (mounted) {
+            _showLimitReachedScreen();
+          }
+          return;
+        }
+      } catch (e) {
+        if (e is NoteCreationLimitException) {
+          if (mounted) {
+            _showLimitReachedScreen();
+          }
+          return;
+        }
+        // For other errors, log and continue (might be network issues)
+        AppLogger.error('Error checking note creation limit', error: e, tag: 'RecordAudioScreen');
+      }
+
       // Check if running on iOS Simulator
       if (Platform.isIOS && !kIsWeb) {
         // Check if running on simulator
@@ -83,7 +107,7 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> with Tick
 
       if (await _recorder.hasPermission()) {
         final directory = await getApplicationDocumentsDirectory();
-        // Use WAV format (PCM16) for maximum compatibility with OpenAI Whisper
+        // Use WAV format (PCM16) for maximum compatibility with transcription service
         // This matches the website's approach of using well-supported formats
         final path = '${directory.path}/recording_${DateTime.now().millisecondsSinceEpoch}.wav';
         
@@ -229,6 +253,27 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> with Tick
     AppLogger.debug('Processing recording: ${file.path}, size: $fileSize bytes', tag: 'RecordAudioScreen');
 
     try {
+      // Check if user can create notes with study content BEFORE navigating
+      final appData = ref.read(appDataProvider.notifier);
+      try {
+        final canCreate = await appData.canCreateNoteWithStudyContent();
+        if (!canCreate) {
+          // This shouldn't happen as exception is thrown, but handle it anyway
+          if (mounted) {
+            _showLimitReachedScreen();
+          }
+          return;
+        }
+      } catch (e) {
+        if (e is NoteCreationLimitException) {
+          if (mounted) {
+            _showLimitReachedScreen();
+          }
+          return;
+        }
+        rethrow;
+      }
+
       // Navigate to processing screen
       if (mounted) {
         final path = widget.folderId != null 
@@ -258,6 +303,19 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> with Tick
         );
       }
     }
+  }
+
+  void _showLimitReachedScreen() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => FreeNotesLimitWidget(
+        onDismiss: () {
+          if (mounted) {
+            Navigator.of(context).pop(); // Dismiss current dialog
+          }
+        },
+      ),
+    );
   }
 
   String _formatDuration(Duration duration) {
@@ -376,10 +434,13 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> with Tick
                           ),
                         )
                       : const Center(
-                          child: Icon(
-                            CupertinoIcons.play_fill,
-                            color: Color(0xFFFFFFFF),
-                            size: 48,
+                          child: Padding(
+                            padding: EdgeInsets.only(left: 2),
+                            child: Icon(
+                              CupertinoIcons.play_fill,
+                              color: Color(0xFFFFFFFF),
+                              size: 48,
+                            ),
                           ),
                         ),
                 ),
@@ -399,12 +460,14 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> with Tick
                   disabledColor: const Color(0xFF3A3A3A),
                   borderRadius: BorderRadius.circular(14),
                   padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: const Text(
+                  child: Text(
                     'Generate Notes',
                     style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF1A1A1A),
+                      color: _audioPath != null
+                          ? const Color(0xFF1A1A1A)
+                          : const Color(0xFF9CA3AF),
                     ),
                   ),
                 ),

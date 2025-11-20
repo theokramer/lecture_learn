@@ -58,6 +58,16 @@ class ValidationUtils {
     }
   }
 
+  /// Validate audio file size
+  static bool isValidAudioFileSize(File file) {
+    try {
+      final size = file.lengthSync();
+      return size > 0 && size <= AppConstants.maxAudioFileSizeBytes;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /// Validate audio file format
   static bool isValidAudioFormat(String fileName) {
     final extension = fileName.split('.').last.toLowerCase();

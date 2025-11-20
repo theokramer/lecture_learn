@@ -2,6 +2,7 @@ import '../utils/logger.dart';
 
 enum StudyMode {
   summary,
+  transcription,
   feynman,
   flashcards,
   quiz,

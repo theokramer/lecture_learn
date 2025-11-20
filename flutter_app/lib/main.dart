@@ -13,14 +13,15 @@ import 'screens/record_audio_screen.dart';
 import 'screens/processing_screen.dart';
 import 'screens/upload_screen.dart';
 import 'screens/web_link_screen.dart';
+import 'screens/settings_screen.dart';
 import 'services/supabase_service.dart';
 import 'providers/auth_provider.dart';
 import 'models/user.dart';
 import 'utils/logger.dart';
 import 'utils/environment.dart';
 import 'dart:io';
-import 'package:superwallkit_flutter/superwallkit_flutter.dart';
 import 'services/revenuecat_service.dart';
+import 'package:superwallkit_flutter/superwallkit_flutter.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -64,8 +65,11 @@ void main() async {
     
     // Initialize Superwall
     try {
-      await Superwall.configure('pk_1YJ5Wv8Q-S9nHoSylZRJe');
-      AppLogger.info('Superwall initialized successfully', tag: 'main');
+      final options = SuperwallOptions();
+      options.logging.level = LogLevel.debug;
+      
+      await Superwall.configure('pk_1YJ5Wv8Q-S9nHoSylZRJe', options: options);
+      AppLogger.info('Superwall initialized successfully with debug logging', tag: 'main');
     } catch (e) {
       AppLogger.error('Failed to initialize Superwall', error: e, tag: 'main');
     }
@@ -148,7 +152,7 @@ class MyApp extends ConsumerWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6366F1), // Indigo - neutral primary color
+          seedColor: const Color(0xFF8D1647), // Vibrant teal // Indigo - neutral primary color
           brightness: Brightness.dark,
         ),
         scaffoldBackgroundColor: const Color(0xFF1A1A1A),
@@ -246,6 +250,10 @@ final _router = GoRouter(
                 return UploadScreen(folderId: folderId);
               },
             ),
+    GoRoute(
+      path: '/settings',
+      builder: (context, state) => const SettingsScreen(),
+    ),
   ],
   redirect: (context, state) {
     final currentLocation = state.matchedLocation;
@@ -255,48 +263,10 @@ final _router = GoRouter(
       return null;
     }
     
-    final authState = ProviderScope.containerOf(context).read(authProvider);
-    final isGoingToLogin = currentLocation == '/login';
-
-    // Wait for auth state to finish loading before making routing decisions
-    // This ensures we check for persisted sessions properly
-    return authState.when(
-      data: (user) {
-        final isLoggedIn = user != null;
-        AppLogger.debug(
-          'Auth state: ${isLoggedIn ? "Logged in as ${user.email}" : "Not logged in"}, going to: $currentLocation',
-          tag: 'Router',
-        );
-        
-        // If not logged in and not going to login, redirect to login
-        if (!isLoggedIn && !isGoingToLogin) {
-          AppLogger.debug('Redirecting to /login (not logged in)', tag: 'Router');
-          return '/login';
-        }
-        // If logged in and trying to go to login, redirect to home
-        if (isLoggedIn && isGoingToLogin) {
-          AppLogger.debug('Redirecting to /home (already logged in)', tag: 'Router');
-          return '/home';
-        }
-        AppLogger.debug('No redirect needed', tag: 'Router');
-        return null;
-      },
-      loading: () {
-        // While loading, don't redirect - let the current route stay
-        // This prevents flickering during session restoration
-        AppLogger.debug('Auth state loading, waiting...', tag: 'Router');
-        return null;
-      },
-      error: (error, stackTrace) {
-        // On error, redirect to login (unless already on splash)
-        AppLogger.error('Auth state error', error: error, stackTrace: stackTrace, tag: 'Router');
-        if (!isGoingToLogin && currentLocation != '/splash') {
-          AppLogger.debug('Redirecting to /login (error)', tag: 'Router');
-          return '/login';
-        }
-        return null;
-      },
-    );
+    // No authentication required - allow all routes to be accessible
+    // Users can access the app anonymously
+    AppLogger.debug('No auth redirect needed - allowing anonymous access', tag: 'Router');
+    return null;
   },
 );
 

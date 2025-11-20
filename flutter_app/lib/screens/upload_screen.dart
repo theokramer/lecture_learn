@@ -7,6 +7,9 @@ import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
 import '../providers/app_data_provider.dart';
 import '../utils/error_handler.dart';
+import '../utils/validation.dart';
+import '../constants/app_constants.dart';
+import '../widgets/free_notes_limit_widget.dart';
 
 class UploadScreen extends ConsumerStatefulWidget {
   final String? folderId;
@@ -30,12 +33,59 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       );
 
       if (result != null && result.files.isNotEmpty) {
-        setState(() {
-          _selectedFiles = result.paths
-              .where((path) => path != null)
-              .map((path) => File(path!))
-              .toList();
-        });
+        final validFiles = <File>[];
+        final invalidFiles = <String>[];
+        
+        for (final path in result.paths) {
+          if (path != null) {
+            final file = File(path);
+            final fileName = file.path.split('/').last.toLowerCase();
+            final isAudio = AppConstants.allowedAudioFormats.any(
+              (ext) => fileName.endsWith('.$ext'),
+            );
+            
+            // Check file size - use audio limit for audio files, regular limit for others
+            if (isAudio) {
+              if (ValidationUtils.isValidAudioFileSize(file)) {
+                validFiles.add(file);
+              } else {
+                final sizeMB = (file.lengthSync() / (1024 * 1024)).toStringAsFixed(2);
+                invalidFiles.add('${file.path.split('/').last} (${sizeMB} MB - max 100 MB)');
+              }
+            } else {
+              if (ValidationUtils.isValidFileSize(file)) {
+                validFiles.add(file);
+              } else {
+                final sizeMB = (file.lengthSync() / (1024 * 1024)).toStringAsFixed(2);
+                invalidFiles.add('${file.path.split('/').last} (${sizeMB} MB - max 50 MB)');
+              }
+            }
+          }
+        }
+        
+        if (invalidFiles.isNotEmpty && mounted) {
+          showCupertinoDialog(
+            context: context,
+            builder: (context) => CupertinoAlertDialog(
+              title: const Text('File Too Large'),
+              content: Text(
+                'The following files exceed the size limit:\n\n${invalidFiles.join('\n')}\n\nPlease select smaller files.',
+              ),
+              actions: [
+                CupertinoDialogAction(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+        
+        if (validFiles.isNotEmpty) {
+          setState(() {
+            _selectedFiles = validFiles;
+          });
+        }
       }
     } catch (e) {
       ErrorHandler.logError(e, context: 'Picking files', tag: 'UploadScreen');
@@ -61,16 +111,83 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   Future<void> _uploadFiles() async {
     if (_selectedFiles.isEmpty) return;
 
+    // Validate file sizes before uploading
+    final invalidFiles = <String>[];
+    for (final file in _selectedFiles) {
+      final fileName = file.path.split('/').last.toLowerCase();
+      final isAudio = AppConstants.allowedAudioFormats.any(
+        (ext) => fileName.endsWith('.$ext'),
+      );
+      
+      if (isAudio) {
+        if (!ValidationUtils.isValidAudioFileSize(file)) {
+          final sizeMB = (await file.length()) / (1024 * 1024);
+          invalidFiles.add('${file.path.split('/').last} (${sizeMB.toStringAsFixed(2)} MB)');
+        }
+      } else {
+        if (!ValidationUtils.isValidFileSize(file)) {
+          final sizeMB = (await file.length()) / (1024 * 1024);
+          invalidFiles.add('${file.path.split('/').last} (${sizeMB.toStringAsFixed(2)} MB)');
+        }
+      }
+    }
+    
+    if (invalidFiles.isNotEmpty && mounted) {
+      showCupertinoDialog(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text('File Too Large'),
+          content: Text(
+            'The following files exceed the size limit:\n\n${invalidFiles.join('\n')}\n\nAudio files: max 100 MB\nOther files: max 50 MB',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isUploading = true;
     });
 
     try {
+      // Check if user can create notes with study content
+      final appData = ref.read(appDataProvider.notifier);
+      try {
+        final canCreate = await appData.canCreateNoteWithStudyContent();
+        if (!canCreate) {
+          // This shouldn't happen as exception is thrown, but handle it anyway
+          if (mounted) {
+            setState(() {
+              _isUploading = false;
+            });
+            _showLimitReachedDialog();
+          }
+          return;
+        }
+      } catch (e) {
+        if (e is NoteCreationLimitException) {
+          if (mounted) {
+            setState(() {
+              _isUploading = false;
+            });
+            _showLimitReachedDialog();
+          }
+          return;
+        }
+        rethrow;
+      }
+
       final title = _selectedFiles.length == 1
           ? _selectedFiles[0].path.split('/').last.replaceAll(RegExp(r'\.[^.]*$'), '')
           : 'Uploaded ${_selectedFiles.length} files';
 
-      await ref.read(appDataProvider.notifier).processUploadedFiles(_selectedFiles, title, folderId: widget.folderId);
+      await appData.processUploadedFiles(_selectedFiles, title, folderId: widget.folderId);
 
       if (mounted) {
         final noteId = ref.read(appDataProvider).selectedNoteId;
@@ -92,6 +209,17 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         }
       }
     } catch (e) {
+      // Handle note creation limit exception
+      if (e is NoteCreationLimitException) {
+        if (mounted) {
+          setState(() {
+            _isUploading = false;
+          });
+          _showLimitReachedDialog();
+        }
+        return;
+      }
+
       ErrorHandler.logError(e, context: 'Uploading files', tag: 'UploadScreen');
       if (mounted) {
         setState(() {
@@ -120,6 +248,20 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     setState(() {
       _selectedFiles.removeAt(index);
     });
+  }
+
+  void _showLimitReachedDialog() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => FreeNotesLimitWidget(
+        onDismiss: () {
+          if (mounted) {
+            Navigator.of(context).pop();
+            context.pop();
+          }
+        },
+      ),
+    );
   }
 
   @override
@@ -299,6 +441,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w600,
+                          color: Color(0xFFFFFFFF),
                         ),
                       ),
                     ),
@@ -321,11 +464,14 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                               color: Color(0xFFFFFFFF),
                               radius: 10,
                             )
-                          : const Text(
+                          : Text(
                               'Upload',
                               style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w600,
+                                color: (_isUploading || _selectedFiles.isEmpty)
+                                    ? const Color(0xFF9CA3AF)
+                                    : const Color(0xFF1A1A1A),
                               ),
                             ),
                     ),

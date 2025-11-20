@@ -12,7 +12,7 @@ class AppConstants {
   
   // File upload limits
   static const int maxFileSizeBytes = 50 * 1024 * 1024; // 50MB
-  static const int maxAudioFileSizeBytes = 25 * 1024 * 1024; // 25MB
+  static const int maxAudioFileSizeBytes = 100 * 1024 * 1024; // 100MB
   static const List<String> allowedAudioFormats = ['m4a', 'mp3', 'wav', 'webm', 'ogg', 'flac'];
   static const List<String> allowedDocumentFormats = ['pdf', 'txt', 'md', 'docx', 'pptx', 'json'];
   

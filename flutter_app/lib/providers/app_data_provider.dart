@@ -6,15 +6,28 @@ import '../models/user.dart';
 import '../services/supabase_service.dart';
 import '../services/ai_gateway_service.dart';
 import '../services/document_processor_service.dart';
+import '../services/local_document_service.dart';
+import '../services/settings_service.dart';
 import '../utils/logger.dart';
 import '../utils/error_handler.dart';
 import '../utils/environment.dart';
 import 'auth_provider.dart';
+import 'revenuecat_provider.dart';
 import 'dart:io';
+
+/// Exception thrown when user has reached the limit of free notes with study content
+class NoteCreationLimitException implements Exception {
+  final String message;
+  NoteCreationLimitException(this.message);
+  
+  @override
+  String toString() => message;
+}
 
 class AppDataNotifier extends Notifier<AppDataState> {
   final _supabase = SupabaseService();
   final _aiGateway = AIGatewayService();
+  final _localStorage = LocalDocumentService();
 
   @override
   AppDataState build() {
@@ -62,8 +75,104 @@ class AppDataNotifier extends Notifier<AppDataState> {
         loading: false,
       );
     } catch (e) {
+      final errorStr = e.toString();
+      
+      // Handle auth retryable fetch exceptions (network/connection issues during token refresh)
+      if (errorStr.contains('AuthRetryableFetchException') || 
+          errorStr.contains('Connection closed') ||
+          errorStr.contains('ClientException')) {
+        AppLogger.warning(
+          'Network error during data refresh (likely transient). Will retry on next action.',
+          error: e,
+          tag: 'AppDataProvider',
+        );
+        // Don't show error to user for transient network issues
+        // The data will refresh on next user action
+        state = state.copyWith(loading: false);
+        return;
+      }
+      
       AppLogger.error('Error refreshing data', error: e, tag: 'AppDataProvider');
       state = state.copyWith(loading: false, error: ErrorHandler.getUserFriendlyMessage(e));
+    }
+  }
+
+  /// Check if user can create notes with study content
+  /// Returns true if user has premium or hasn't reached the limit (1 free note)
+  /// Throws NoteCreationLimitException if limit is reached
+  Future<bool> canCreateNoteWithStudyContent() async {
+    final authValue = ref.read(authProvider);
+    User? user;
+    try {
+      user = authValue.value;
+    } catch (_) {
+      return false;
+    }
+    if (user == null) return false;
+
+    try {
+      // FIRST: Check if user has premium subscription (safely handle provider initialization)
+      bool hasPremium = false;
+      try {
+        if (ref.exists(revenueCatProvider)) {
+          final revenueCatState = ref.read(revenueCatProvider);
+          hasPremium = revenueCatState.hasActiveSubscription;
+          
+          // If subscription status is unclear, try to refresh it
+          if (!hasPremium) {
+            AppLogger.debug('Subscription status is false, attempting to refresh...', tag: 'AppDataProvider');
+            try {
+              // Try to refresh customer info to get latest subscription status
+              await ref.read(revenueCatProvider.notifier).refreshCustomerInfo();
+              final refreshedState = ref.read(revenueCatProvider);
+              hasPremium = refreshedState.hasActiveSubscription;
+              AppLogger.debug('Refreshed subscription status: $hasPremium', tag: 'AppDataProvider');
+            } catch (refreshError) {
+              AppLogger.debug('Could not refresh subscription status: $refreshError', tag: 'AppDataProvider');
+              // Continue with hasPremium = false
+            }
+          }
+        }
+      } catch (e) {
+        // Provider might be initializing, try to refresh subscription status
+        AppLogger.debug('RevenueCat provider error, attempting to refresh subscription status', tag: 'AppDataProvider');
+        try {
+          if (ref.exists(revenueCatProvider)) {
+            await ref.read(revenueCatProvider.notifier).refreshCustomerInfo();
+            final refreshedState = ref.read(revenueCatProvider);
+            hasPremium = refreshedState.hasActiveSubscription;
+            AppLogger.debug('Refreshed subscription status after error: $hasPremium', tag: 'AppDataProvider');
+          }
+        } catch (refreshError) {
+          AppLogger.debug('Could not refresh subscription status after error: $refreshError', tag: 'AppDataProvider');
+          hasPremium = false;
+        }
+      }
+      
+      // If user has active subscription, allow unlimited notes
+      if (hasPremium) {
+        AppLogger.debug('User has active subscription - allowing note creation', tag: 'AppDataProvider');
+        return true; // Premium users can create unlimited notes
+      }
+
+      // ONLY check note count if user is NOT subscribed
+      // Check count of notes with study content
+      final count = await _supabase.getNotesWithStudyContentCount(user.id);
+      AppLogger.debug('User is not subscribed. Notes with study content count: $count', tag: 'AppDataProvider');
+      
+      // Allow exactly 1 free note with study content (count 0 = first note allowed)
+      if (count >= 1) {
+        throw NoteCreationLimitException('You have reached the limit of free notes with study content. Please upgrade to premium to create more notes.');
+      }
+      
+      return true; // Allow 1 free note with study content (count is 0)
+    } catch (e) {
+      if (e is NoteCreationLimitException) {
+        rethrow; // Re-throw limit exceptions
+      }
+      AppLogger.error('Error checking if user can create note with study content', error: e, tag: 'AppDataProvider');
+      // On other errors, allow creation to avoid blocking users (graceful degradation)
+      return true;
     }
   }
 
@@ -149,6 +258,12 @@ class AppDataNotifier extends Notifier<AppDataState> {
     if (user == null) throw Exception('Not authenticated');
 
     try {
+      // Check if user can create notes with study content
+      final canCreate = await canCreateNoteWithStudyContent();
+      if (!canCreate) {
+        throw NoteCreationLimitException('You have reached the limit of free notes with study content. Please upgrade to premium to create more notes.');
+      }
+
       // Validate audio file exists and has content
       if (!await audioFile.exists()) {
         throw Exception('Audio file does not exist');
@@ -162,42 +277,51 @@ class AppDataNotifier extends Notifier<AppDataState> {
       // Check rate limit
       await _aiGateway.checkRateLimit(user.id, user.email);
 
-      // Upload audio
-      final storagePath = await _supabase.uploadFile(user.id, audioFile);
-      AppLogger.debug('Audio uploaded to storage: $storagePath', tag: 'AppDataProvider');
+      // Store audio file locally
+      final localPath = await _localStorage.storeFile(audioFile, user.id);
+      AppLogger.debug('Audio stored locally: $localPath', tag: 'AppDataProvider');
 
-      // Transcribe using Supabase Edge Function (exactly like website)
-      final transcription = await _aiGateway.transcribeAudio(
-        audioFile,
-        storagePath: storagePath,
-        userId: user.id,
-      );
-
-      // Generate title using Supabase Edge Function (exactly like website)
-      String? aiTitle;
+      // Upload to Salad S4 storage for transcription (no temporary Supabase storage needed)
       try {
-        aiTitle = await _aiGateway.generateTitle(transcription);
+        // Transcribe using Salad S4 storage (via Edge Function)
+        final transcription = await _aiGateway.transcribeAudio(
+          audioFile,
+          userId: user.id,
+        );
+
+        // Generate title using Supabase Edge Function (exactly like website)
+        String? aiTitle;
+        try {
+          aiTitle = await _aiGateway.generateTitle(transcription);
+        } catch (e) {
+          // Title generation is optional - will use provided title or default
+          AppLogger.warning('Title generation failed (non-critical)', error: e, tag: 'AppDataProvider');
+        }
+
+        // Create note
+        final noteId = await createNote(aiTitle ?? title, folderId: folderId, content: transcription);
+
+        // Increment count AFTER note is successfully created and check has passed
+        // This ensures the first note can be created (check happens before increment)
+        await _supabase.incrementNotesWithStudyContentCount(user.id);
+
+        // Create document record with local path (not storage path)
+        await _supabase.createDocument(
+          noteId,
+          audioFile.path.split('/').last,
+          localPath, // Use local path identifier, not storage path
+          await audioFile.length(),
+          'audio',
+        );
+
+        // Generate study content and wait for completion
+        await _generateStudyContent(noteId, transcription);
+
+        state = state.copyWith(selectedNoteId: noteId);
       } catch (e) {
-        // Title generation is optional - will use provided title or default
-        AppLogger.warning('Title generation failed (non-critical)', error: e, tag: 'AppDataProvider');
+        // Re-throw to outer catch block
+        rethrow;
       }
-
-      // Create note
-      final noteId = await createNote(aiTitle ?? title, folderId: folderId, content: transcription);
-
-      // Create document record
-      await _supabase.createDocument(
-        noteId,
-        audioFile.path.split('/').last,
-        storagePath,
-        await audioFile.length(),
-        'audio',
-      );
-
-      // Generate study content in background
-      _generateStudyContent(noteId, transcription);
-
-      state = state.copyWith(selectedNoteId: noteId);
     } catch (e) {
       if (e is RateLimitError) {
         rethrow;
@@ -217,6 +341,12 @@ class AppDataNotifier extends Notifier<AppDataState> {
     if (user == null) throw Exception('Not authenticated');
 
     try {
+      // Check if user can create notes with study content
+      final canCreate = await canCreateNoteWithStudyContent();
+      if (!canCreate) {
+        throw NoteCreationLimitException('You have reached the limit of free notes with study content. Please upgrade to premium to create more notes.');
+      }
+
       await _aiGateway.checkRateLimit(user.id, user.email);
 
       String combinedText = '';
@@ -224,26 +354,20 @@ class AppDataNotifier extends Notifier<AppDataState> {
       final documentProcessor = DocumentProcessorService();
 
       for (final file in files) {
-        // Upload file to storage first
-        final storagePath = await _supabase.uploadFile(user.id, file);
-        fileMetadata.add({
-          'file': file,
-          'storagePath': storagePath,
-        });
-
-        // Extract content from file (matches website's UploadPage.tsx)
+        // Store file locally first
+        final localPath = await _localStorage.storeFile(file, user.id);
+        final fileName = file.path.split('/').last;
+        final fileSize = await file.length();
+        final mimeType = await _getMimeType(file);
+        
+        AppLogger.debug('Processing file: $fileName (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB, type: $mimeType)', tag: 'AppDataProvider');
+        
         try {
-          final fileName = file.path.split('/').last;
-          final fileSize = await file.length();
-          final mimeType = await _getMimeType(file);
-          
-          AppLogger.debug('Processing file: $fileName (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB, type: $mimeType)', tag: 'AppDataProvider');
-          
           if (documentProcessor.isAudioFile(mimeType)) {
-            // Audio file - transcribe using Edge Function
+            // Transcribe using Salad S4 storage (via Edge Function)
+            AppLogger.debug('Transcribing audio file using Salad S4', tag: 'AppDataProvider');
             final transcription = await _aiGateway.transcribeAudio(
               file,
-              storagePath: storagePath,
               userId: user.id,
             );
             combinedText += 'File: $fileName\n$transcription\n\n';
@@ -251,7 +375,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
             // Video file - for now, just note it (video audio extraction is complex)
             combinedText += 'File: $fileName\n[Video file - audio extraction not yet implemented]\n\n';
           } else {
-            // Document file (PDF, DOCX, PPTX, TXT, etc.) - extract text
+            // Document file (PDF, DOCX, PPTX, TXT, etc.) - extract text locally
             AppLogger.debug('Extracting text from document: $fileName', tag: 'AppDataProvider');
             final text = await documentProcessor.processDocument(file);
             final textLength = text.length;
@@ -263,10 +387,19 @@ class AppDataNotifier extends Notifier<AppDataState> {
             
             combinedText += 'File: $fileName\n$text\n\n';
           }
+          
+          // Store metadata with local path
+          fileMetadata.add({
+            'file': file,
+            'localPath': localPath,
+            'fileName': fileName,
+            'fileSize': fileSize,
+            'mimeType': mimeType,
+          });
         } catch (fileError) {
           AppLogger.error('Error processing file ${file.path}', error: fileError, tag: 'AppDataProvider');
           // Re-throw the error so user knows which file failed
-          throw Exception('Failed to process file "${file.path.split('/').last}": $fileError');
+          throw Exception('Failed to process file "$fileName": $fileError');
         }
       }
 
@@ -292,22 +425,29 @@ class AppDataNotifier extends Notifier<AppDataState> {
       
       final noteId = await createNote(finalTitle, folderId: folderId, content: combinedText);
 
-      // Create document records
+      // Increment count AFTER note is successfully created and check has passed
+      // This ensures the first note can be created (check happens before increment)
+      await _supabase.incrementNotesWithStudyContentCount(user.id);
+
+      // Create document records with local paths
       for (final metadata in fileMetadata) {
-        final file = metadata['file'] as File;
-        final extension = file.path.split('.').last.toLowerCase();
+        final fileName = metadata['fileName'] as String;
+        final localPath = metadata['localPath'] as String;
+        final fileSize = metadata['fileSize'] as int;
+        final extension = fileName.split('.').last.toLowerCase();
         final docType = _getDocumentType(extension);
+        
         await _supabase.createDocument(
           noteId,
-          file.path.split('/').last,
-          metadata['storagePath'] as String,
-          await file.length(),
+          fileName,
+          localPath, // Use local path identifier, not storage path
+          fileSize,
           docType,
         );
       }
 
-      // Generate study content in background
-      _generateStudyContent(noteId, combinedText);
+      // Generate study content and wait for completion
+      await _generateStudyContent(noteId, combinedText);
 
       state = state.copyWith(selectedNoteId: noteId);
     } catch (e) {
@@ -318,176 +458,245 @@ class AppDataNotifier extends Notifier<AppDataState> {
     }
   }
 
-  void _generateStudyContent(String noteId, String content) {
-    // Generate in background via Supabase Edge Function (exactly like website)
-    // NOTE: This is ONLY called during note creation, NEVER when viewing existing notes
-    Future(() async {
-      try {
-        if (content.trim().isEmpty || content.length < 50) {
-          AppLogger.warning('Not enough content to generate study content', tag: 'AppDataProvider');
-          return;
-        }
-
-        AppLogger.info('Starting study content generation for note: $noteId', tag: 'AppDataProvider');
-        AppLogger.debug('NOTE: This is only called during note creation, not when viewing notes', tag: 'AppDataProvider');
-        
-        // Detect language from content using AI
-        final detectedLanguage = await _aiGateway.detectLanguage(content);
-        AppLogger.info('Detected language: $detectedLanguage', tag: 'AppDataProvider');
-
-        // Check existing study content to avoid regenerating
-        final existing = await _supabase.getStudyContent(noteId);
-        final hasSummary = existing.summary.isNotEmpty;
-        final hasFlashcards = existing.flashcards.isNotEmpty;
-        final hasQuiz = existing.quizQuestions.isNotEmpty;
-        final hasExercises = existing.exercises.isNotEmpty;
-        final hasFeynmanTopics = existing.feynmanTopics.isNotEmpty;
-        
-        // If all content already exists, skip generation entirely
-        if (hasSummary && hasFlashcards && hasQuiz && hasExercises && hasFeynmanTopics) {
-          AppLogger.success('All study content already exists, skipping generation', tag: 'AppDataProvider');
-          return;
-        }
-        
-        AppLogger.debug('Existing content status - Summary: $hasSummary, Flashcards: $hasFlashcards, Quiz: $hasQuiz, Exercises: $hasExercises, Feynman: $hasFeynmanTopics', tag: 'AppDataProvider');
-        
-        // Get documents for summary context
-        final note = state.notes.firstWhere((n) => n.id == noteId, orElse: () => throw Exception('Note not found'));
-        final documents = note.documents.map((d) => <String, dynamic>{
-          'name': d.name,
-          'type': d.type.toString().split('.').last,
-        }).toList();
-
-        // Generate summary, flashcards, quiz, exercises, and feynman topics in parallel
-        final futures = <Future<dynamic>>[];
-
-        String summary = existing.summary;
-        List<Flashcard> flashcards = existing.flashcards;
-        List<QuizQuestion> quizQuestions = existing.quizQuestions;
-        List<Exercise> exercises = existing.exercises;
-        List<FeynmanTopic> feynmanTopics = existing.feynmanTopics;
-        
-        // Generate summary if it doesn't exist
-        if (!hasSummary) {
-          futures.add(_aiGateway.generateSummary(content, documents: documents, detailLevel: 'comprehensive', language: detectedLanguage).then((generatedSummary) {
-            return generatedSummary; // Return the summary string
-          }).catchError((e) {
-            AppLogger.error('Error generating summary', error: e, tag: 'AppDataProvider');
-            return ''; // Return empty string on error
-          }));
-        }
-
-        if (!hasFlashcards) {
-          futures.add(_aiGateway.generateFlashcards(content, count: 20, language: detectedLanguage).then((data) {
-            return data.asMap().entries.map((entry) {
-              final card = entry.value;
-              return Flashcard(
-                id: 'gen-${DateTime.now().millisecondsSinceEpoch}-${entry.key}',
-                front: card['front'] as String,
-                back: card['back'] as String,
-                hint: card['hint'] as String?,
-              );
-            }).toList();
-          }).catchError((e) {
-            AppLogger.error('Error generating flashcards', error: e, tag: 'AppDataProvider');
-            return <Flashcard>[];
-          }));
-        }
-
-        if (!hasQuiz) {
-          futures.add(_aiGateway.generateQuiz(content, count: 15, language: detectedLanguage).then((data) {
-            return data.asMap().entries.map((entry) {
-              final question = entry.value;
-              return QuizQuestion(
-                id: 'gen-${DateTime.now().millisecondsSinceEpoch}-${entry.key}',
-                question: question['question'] as String,
-                options: (question['options'] as List).cast<String>(),
-                correctAnswer: question['correctAnswer'] as int,
-                hint: question['hint'] as String?,
-                explanation: question['explanation'] as String?,
-              );
-            }).toList();
-          }).catchError((e) {
-            AppLogger.error('Error generating quiz', error: e, tag: 'AppDataProvider');
-            return <QuizQuestion>[];
-          }));
-        }
-
-        if (!hasExercises) {
-          futures.add(_aiGateway.generateExercises(content, count: 10, language: detectedLanguage).then((data) {
-            return data.asMap().entries.map((entry) {
-              final exercise = entry.value;
-              return Exercise(
-                id: 'gen-${DateTime.now().millisecondsSinceEpoch}-${entry.key}',
-                question: exercise['question'] as String,
-                solution: exercise['solution'] as String,
-                hint: exercise['hint'] as String?,
-              );
-            }).toList();
-          }).catchError((e) {
-            AppLogger.error('Error generating exercises', error: e, tag: 'AppDataProvider');
-            return <Exercise>[];
-          }));
-        }
-
-        if (!hasFeynmanTopics) {
-          futures.add(_aiGateway.generateFeynmanTopics(content, language: detectedLanguage).then((data) {
-            return data.map((topic) {
-              return FeynmanTopic(
-                id: topic['id'] as String,
-                title: topic['title'] as String,
-                description: topic['description'] as String,
-              );
-            }).toList();
-          }).catchError((e) {
-            AppLogger.error('Error generating feynman topics', error: e, tag: 'AppDataProvider');
-            return <FeynmanTopic>[];
-          }));
-        }
-
-        // Wait for all generations to complete and collect results
-        if (futures.isNotEmpty) {
-          final results = await Future.wait(futures);
-          int resultIndex = 0;
-          
-          if (!hasSummary && resultIndex < results.length) {
-            final summaryResult = results[resultIndex++];
-            summary = summaryResult is String ? summaryResult : (summaryResult?.toString() ?? '');
-          }
-          if (!hasFlashcards && resultIndex < results.length) {
-            final flashcardResult = results[resultIndex++];
-            flashcards = flashcardResult is List<Flashcard> ? flashcardResult : <Flashcard>[];
-          }
-          if (!hasQuiz && resultIndex < results.length) {
-            final quizResult = results[resultIndex++];
-            quizQuestions = quizResult is List<QuizQuestion> ? quizResult : <QuizQuestion>[];
-          }
-          if (!hasExercises && resultIndex < results.length) {
-            final exerciseResult = results[resultIndex++];
-            exercises = exerciseResult is List<Exercise> ? exerciseResult : <Exercise>[];
-          }
-          if (!hasFeynmanTopics && resultIndex < results.length) {
-            final feynmanResult = results[resultIndex++];
-            feynmanTopics = feynmanResult is List<FeynmanTopic> ? feynmanResult : <FeynmanTopic>[];
-          }
-        }
-
-        // Save study content
-        final studyContent = StudyContent(
-          summary: summary,
-          flashcards: flashcards,
-          quizQuestions: quizQuestions,
-          exercises: exercises,
-          feynmanTopics: feynmanTopics,
-        );
-
-        await _supabase.saveStudyContent(noteId, studyContent);
-        AppLogger.success('Study content generation completed for note: $noteId', tag: 'AppDataProvider');
-      } catch (e) {
-        AppLogger.error('Background study content generation failed', error: e, tag: 'AppDataProvider');
-        // Don't throw - this is background processing
+  /// Generate study content for a note with timeout and error handling
+  /// Returns a Future that completes when generation is done or throws on error
+  Future<void> _generateStudyContent(String noteId, String content) async {
+    try {
+      if (content.trim().isEmpty || content.length < 50) {
+        AppLogger.warning('Not enough content to generate study content', tag: 'AppDataProvider');
+        return;
       }
-    });
+
+      AppLogger.info('Starting study content generation for note: $noteId', tag: 'AppDataProvider');
+      
+      // Detect language from content using AI
+      final detectedLanguage = await _aiGateway.detectLanguage(content);
+      AppLogger.info('Detected language: $detectedLanguage', tag: 'AppDataProvider');
+
+      // Check existing study content to avoid regenerating
+      final existing = await _supabase.getStudyContent(noteId);
+      final hasSummary = existing.summary.isNotEmpty;
+      final hasFlashcards = existing.flashcards.isNotEmpty;
+      final hasQuiz = existing.quizQuestions.isNotEmpty;
+      final hasExercises = existing.exercises.isNotEmpty;
+      final hasFeynmanTopics = existing.feynmanTopics.isNotEmpty;
+      
+      // If all content already exists, skip generation entirely
+      if (hasSummary && hasFlashcards && hasQuiz && hasExercises && hasFeynmanTopics) {
+        AppLogger.success('All study content already exists, skipping generation', tag: 'AppDataProvider');
+        return;
+      }
+      
+      AppLogger.debug('Existing content status - Summary: $hasSummary, Flashcards: $hasFlashcards, Quiz: $hasQuiz, Exercises: $hasExercises, Feynman: $hasFeynmanTopics', tag: 'AppDataProvider');
+      
+      // Get documents for summary context
+      final note = state.notes.firstWhere((n) => n.id == noteId, orElse: () => throw Exception('Note not found'));
+      final documents = note.documents.map((d) => <String, dynamic>{
+        'name': d.name,
+        'type': d.type.toString().split('.').last,
+      }).toList();
+
+      // Get user preferences for study content counts
+      final flashcardCount = await SettingsService.getFlashcardCount();
+      final quizCount = await SettingsService.getQuizCount();
+      final exerciseCount = await SettingsService.getExerciseCount();
+      final feynmanTopicCount = await SettingsService.getFeynmanTopicCount();
+
+      // Generate summary, flashcards, quiz, exercises, and feynman topics in parallel
+      final futures = <Future<dynamic>>[];
+      final errors = <String>[];
+
+      String summary = existing.summary;
+      List<Flashcard> flashcards = existing.flashcards;
+      List<QuizQuestion> quizQuestions = existing.quizQuestions;
+      List<Exercise> exercises = existing.exercises;
+      List<FeynmanTopic> feynmanTopics = existing.feynmanTopics;
+      
+      // Helper to extract error message from exceptions
+      String _extractErrorMessage(dynamic e) {
+        final errorStr = e.toString();
+        // Check for Supabase FunctionException errors
+        if (errorStr.contains('FunctionException')) {
+          // Try to extract the actual error message
+          final match = RegExp(r'FunctionException[^:]*:\s*(.+)').firstMatch(errorStr);
+          if (match != null) {
+            return match.group(1) ?? errorStr;
+          }
+          // Check for specific error codes
+          if (errorStr.contains('504') || errorStr.contains('Gateway Timeout')) {
+            return 'Request timed out. The content may be too long. Please try with shorter content or try again later.';
+          }
+          if (errorStr.contains('DAILY_LIMIT_REACHED') || errorStr.contains('ACCOUNT_LIMIT_REACHED')) {
+            return 'Rate limit reached. Please try again later.';
+          }
+        }
+        // Check for timeout errors
+        if (errorStr.contains('timeout') || errorStr.contains('504') || errorStr.contains('Gateway Timeout')) {
+          return 'Request timed out. The content may be too long. Please try with shorter content or try again later.';
+        }
+        // Return user-friendly message
+        return ErrorHandler.getUserFriendlyMessage(e);
+      }
+      
+      // Generate summary if it doesn't exist (with timeout handling)
+      if (!hasSummary) {
+        futures.add(_aiGateway.generateSummary(content, documents: documents, detailLevel: 'comprehensive', language: detectedLanguage).then((generatedSummary) {
+          return generatedSummary; // Return the summary string
+        }).catchError((e) {
+          final errorMsg = _extractErrorMessage(e);
+          errors.add('Summary: $errorMsg');
+          AppLogger.error('Error generating summary', error: e, tag: 'AppDataProvider');
+          return ''; // Return empty string on error
+        }));
+      }
+
+      if (!hasFlashcards) {
+        futures.add(_aiGateway.generateFlashcards(content, count: flashcardCount, language: detectedLanguage).then((data) {
+          return data.asMap().entries.map((entry) {
+            final card = entry.value;
+            return Flashcard(
+              id: 'gen-${DateTime.now().millisecondsSinceEpoch}-${entry.key}',
+              front: card['front'] as String,
+              back: card['back'] as String,
+              hint: card['hint'] as String?,
+            );
+          }).toList();
+        }).catchError((e) {
+          final errorMsg = _extractErrorMessage(e);
+          errors.add('Flashcards: $errorMsg');
+          AppLogger.error('Error generating flashcards', error: e, tag: 'AppDataProvider');
+          return <Flashcard>[];
+        }));
+      }
+
+      if (!hasQuiz) {
+        futures.add(_aiGateway.generateQuiz(content, count: quizCount, language: detectedLanguage).then((data) {
+          return data.asMap().entries.map((entry) {
+            final question = entry.value;
+            return QuizQuestion(
+              id: 'gen-${DateTime.now().millisecondsSinceEpoch}-${entry.key}',
+              question: question['question'] as String,
+              options: (question['options'] as List).cast<String>(),
+              correctAnswer: question['correctAnswer'] as int,
+              hint: question['hint'] as String?,
+              explanation: question['explanation'] as String?,
+            );
+          }).toList();
+        }).catchError((e) {
+          final errorMsg = _extractErrorMessage(e);
+          errors.add('Quiz: $errorMsg');
+          AppLogger.error('Error generating quiz', error: e, tag: 'AppDataProvider');
+          return <QuizQuestion>[];
+        }));
+      }
+
+      if (!hasExercises) {
+        futures.add(_aiGateway.generateExercises(content, count: exerciseCount, language: detectedLanguage).then((data) {
+          return data.asMap().entries.map((entry) {
+            final exercise = entry.value;
+            return Exercise(
+              id: 'gen-${DateTime.now().millisecondsSinceEpoch}-${entry.key}',
+              question: exercise['question'] as String,
+              solution: exercise['solution'] as String,
+              hint: exercise['hint'] as String?,
+            );
+          }).toList();
+        }).catchError((e) {
+          final errorMsg = _extractErrorMessage(e);
+          errors.add('Exercises: $errorMsg');
+          AppLogger.error('Error generating exercises', error: e, tag: 'AppDataProvider');
+          return <Exercise>[];
+        }));
+      }
+
+      if (!hasFeynmanTopics) {
+        futures.add(_aiGateway.generateFeynmanTopics(content, language: detectedLanguage, count: feynmanTopicCount).then((data) {
+          return data.map((topic) {
+            return FeynmanTopic(
+              id: topic['id'] as String,
+              title: topic['title'] as String,
+              description: topic['description'] as String,
+            );
+          }).toList();
+        }).catchError((e) {
+          final errorMsg = _extractErrorMessage(e);
+          errors.add('Feynman topics: $errorMsg');
+          AppLogger.error('Error generating feynman topics', error: e, tag: 'AppDataProvider');
+          return <FeynmanTopic>[];
+        }));
+      }
+
+      // Wait for all generations to complete and collect results with timeout
+      if (futures.isNotEmpty) {
+        final results = await Future.wait(futures).timeout(
+          const Duration(minutes: 3),
+          onTimeout: () {
+            throw Exception('Study content generation timed out. The content may be too long or the service is busy. Please try again later.');
+          },
+        );
+        int resultIndex = 0;
+        
+        if (!hasSummary && resultIndex < results.length) {
+          final summaryResult = results[resultIndex++];
+          summary = summaryResult is String ? summaryResult : (summaryResult?.toString() ?? '');
+        }
+        if (!hasFlashcards && resultIndex < results.length) {
+          final flashcardResult = results[resultIndex++];
+          flashcards = flashcardResult is List<Flashcard> ? flashcardResult : <Flashcard>[];
+        }
+        if (!hasQuiz && resultIndex < results.length) {
+          final quizResult = results[resultIndex++];
+          quizQuestions = quizResult is List<QuizQuestion> ? quizResult : <QuizQuestion>[];
+        }
+        if (!hasExercises && resultIndex < results.length) {
+          final exerciseResult = results[resultIndex++];
+          exercises = exerciseResult is List<Exercise> ? exerciseResult : <Exercise>[];
+        }
+        if (!hasFeynmanTopics && resultIndex < results.length) {
+          final feynmanResult = results[resultIndex++];
+          feynmanTopics = feynmanResult is List<FeynmanTopic> ? feynmanResult : <FeynmanTopic>[];
+        }
+      }
+
+      // If all generations failed, throw an error
+      if (errors.isNotEmpty && summary.isEmpty && flashcards.isEmpty && quizQuestions.isEmpty && exercises.isEmpty && feynmanTopics.isEmpty) {
+        throw Exception('Failed to generate study content:\n${errors.join('\n')}');
+      }
+
+      // If some generations failed, log warnings but continue
+      if (errors.isNotEmpty) {
+        AppLogger.warning('Some study content generation failed: ${errors.join('; ')}', tag: 'AppDataProvider');
+      }
+
+      // Save study content
+      final studyContent = StudyContent(
+        summary: summary,
+        flashcards: flashcards,
+        quizQuestions: quizQuestions,
+        exercises: exercises,
+        feynmanTopics: feynmanTopics,
+      );
+
+      await _supabase.saveStudyContent(noteId, studyContent);
+      AppLogger.success('Study content generation completed for note: $noteId', tag: 'AppDataProvider');
+    } catch (e) {
+      AppLogger.error('Study content generation failed', error: e, tag: 'AppDataProvider');
+      // Extract proper error message
+      final errorStr = e.toString();
+      String errorMessage;
+      
+      if (errorStr.contains('timeout') || errorStr.contains('504') || errorStr.contains('Gateway Timeout')) {
+        errorMessage = 'Study content generation timed out. The content may be too long or the service is busy. Please try again later.';
+      } else if (errorStr.contains('FunctionException')) {
+        // Try to extract Supabase error message
+        final match = RegExp(r'FunctionException[^:]*:\s*(.+)').firstMatch(errorStr);
+        errorMessage = match?.group(1) ?? ErrorHandler.getUserFriendlyMessage(e);
+      } else {
+        errorMessage = ErrorHandler.getUserFriendlyMessage(e);
+      }
+      
+      throw Exception(errorMessage);
+    }
   }
 
   /// Generate specific study content type on demand
@@ -510,6 +719,12 @@ class AppDataNotifier extends Notifier<AppDataState> {
         'name': d.name,
         'type': d.type.toString().split('.').last,
       }).toList();
+
+      // Get user preferences for study content counts
+      final flashcardCount = await SettingsService.getFlashcardCount();
+      final quizCount = await SettingsService.getQuizCount();
+      final exerciseCount = await SettingsService.getExerciseCount();
+      final feynmanTopicCount = await SettingsService.getFeynmanTopicCount();
 
       String summary = existing.summary;
       List<Flashcard> flashcards = existing.flashcards;
@@ -535,7 +750,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
           break;
         case 'flashcards':
           if (flashcards.isEmpty) {
-            final data = await _aiGateway.generateFlashcards(note.content, count: 20, language: detectedLanguage);
+            final data = await _aiGateway.generateFlashcards(note.content, count: flashcardCount, language: detectedLanguage);
             flashcards = data.asMap().entries.map((entry) {
               final card = entry.value;
               return Flashcard(
@@ -549,7 +764,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
           break;
         case 'quiz':
           if (quizQuestions.isEmpty) {
-            final data = await _aiGateway.generateQuiz(note.content, count: 15, language: detectedLanguage);
+            final data = await _aiGateway.generateQuiz(note.content, count: quizCount, language: detectedLanguage);
             quizQuestions = data.asMap().entries.map((entry) {
               final question = entry.value;
               return QuizQuestion(
@@ -565,7 +780,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
           break;
         case 'exercises':
           if (exercises.isEmpty) {
-            final data = await _aiGateway.generateExercises(note.content, count: 10, language: detectedLanguage);
+            final data = await _aiGateway.generateExercises(note.content, count: exerciseCount, language: detectedLanguage);
             exercises = data.asMap().entries.map((entry) {
               final exercise = entry.value;
               return Exercise(
@@ -579,7 +794,7 @@ class AppDataNotifier extends Notifier<AppDataState> {
           break;
         case 'feynman':
           if (feynmanTopics.isEmpty) {
-            final data = await _aiGateway.generateFeynmanTopics(note.content, language: detectedLanguage);
+            final data = await _aiGateway.generateFeynmanTopics(note.content, language: detectedLanguage, count: feynmanTopicCount);
             feynmanTopics = data.map((topic) {
               return FeynmanTopic(
                 id: topic['id'] as String,
@@ -610,8 +825,31 @@ class AppDataNotifier extends Notifier<AppDataState> {
 
   /// Public method to generate study content for a note
   /// Used when creating notes from web links or manual creation
-  void generateStudyContentForNote(String noteId, String content) {
-    _generateStudyContent(noteId, content);
+  Future<void> generateStudyContentForNote(String noteId, String content) async {
+    // Check existing study content to avoid incrementing multiple times
+    final existing = await _supabase.getStudyContent(noteId);
+    final hasSummary = existing.summary.isNotEmpty;
+    final hasFlashcards = existing.flashcards.isNotEmpty;
+    final hasQuiz = existing.quizQuestions.isNotEmpty;
+    final hasExercises = existing.exercises.isNotEmpty;
+    final hasFeynmanTopics = existing.feynmanTopics.isNotEmpty;
+    
+    // Only increment if this is the first time generating study content for this note
+    // The check for limit already happened before note creation, so we can safely increment here
+    if (!hasSummary && !hasFlashcards && !hasQuiz && !hasExercises && !hasFeynmanTopics) {
+      final authValue = ref.read(authProvider);
+      User? user;
+      try {
+        user = authValue.value;
+      } catch (_) {
+        // User not available, skip increment
+      }
+      if (user != null) {
+        await _supabase.incrementNotesWithStudyContentCount(user.id);
+      }
+    }
+    
+    await _generateStudyContent(noteId, content);
   }
 
   Future<String> _getMimeType(File file) async {

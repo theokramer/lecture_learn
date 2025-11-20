@@ -17,29 +17,31 @@ class OnboardingColors {
   // Button gradient colors (Continue button, Get Started, etc.)
   // Vibrant teal to darker blue-green gradient (matching the image)
   static const List<Color> buttonGradientColors = [
-        Color(0xFFffb000), // Purple
-    Color(0xFFE85E5A), // Darker purple
+        Color.fromARGB(255, 255, 255, 255), // Purple
+    Color.fromARGB(255, 255, 234, 242), // Darker purple
 
   ];
   
   // Option button gradient colors (when selected)
   // Colorful but subtle purple gradient for answer buttons
   static const List<Color> optionButtonGradientColors = [
-    Color(0xFFbc003b), // Vibrant teal
-    Color.fromARGB(255, 148, 0, 47), // Darker blue-green
+    Color(0xFF650941), // Vibrant teal
+    Color(0xFF8D1647) // Vibrant teal
+
+    
   ];
   
   // Progress bar gradient colors
   // Matching the continue button teal/blue-green gradient
   static const List<Color> progressBarGradientColors = [
-        Color(0xFFffb000), // Purple
-    Color(0xFFff7500), // Darker purple
+        Color.fromARGB(255, 255, 255, 255), // Purple
+    Color.fromARGB(255, 255, 210, 227), // Darker purple
   ];
   
   // Notification button gradient
   static const List<Color> notificationButtonGradientColors = [
-    Color(0xFF6366F1), // Indigo
-    Color(0xFF8B5CF6), // Purple
+    Color(0xFF650941), // Vibrant teal
+    Color(0xFF8D1647) // Vibrant teal
   ];
   
   // Text colors

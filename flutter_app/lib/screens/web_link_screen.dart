@@ -1,10 +1,13 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../services/ai_gateway_service.dart';
 import '../providers/auth_provider.dart';
+import '../providers/app_data_provider.dart';
 import '../utils/error_handler.dart';
+import '../widgets/free_notes_limit_widget.dart';
 
 class WebLinkScreen extends ConsumerStatefulWidget {
   final String? folderId;
@@ -41,6 +44,33 @@ class _WebLinkScreenState extends ConsumerState<WebLinkScreen> {
       
       if (user == null) {
         throw Exception('User not authenticated');
+      }
+
+      // Check if user can create notes with study content BEFORE processing
+      final appData = ref.read(appDataProvider.notifier);
+      try {
+        final canCreate = await appData.canCreateNoteWithStudyContent();
+        if (!canCreate) {
+          // This shouldn't happen as exception is thrown, but handle it anyway
+          if (mounted) {
+            setState(() {
+              _isProcessing = false;
+            });
+            _showLimitReachedDialog();
+          }
+          return;
+        }
+      } catch (e) {
+        if (e is NoteCreationLimitException) {
+          if (mounted) {
+            setState(() {
+              _isProcessing = false;
+            });
+            _showLimitReachedDialog();
+          }
+          return;
+        }
+        rethrow;
       }
 
       // Process the web link
@@ -83,6 +113,19 @@ class _WebLinkScreenState extends ConsumerState<WebLinkScreen> {
     }
   }
 
+  void _showLimitReachedDialog() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => FreeNotesLimitWidget(
+        onDismiss: () {
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
@@ -108,6 +151,7 @@ class _WebLinkScreenState extends ConsumerState<WebLinkScreen> {
             HapticFeedback.selectionClick();
             Navigator.of(context).pop();
           },
+          color: const Color(0xFFFFFFFF),
         ),
       ),
       child: SafeArea(
@@ -183,11 +227,14 @@ class _WebLinkScreenState extends ConsumerState<WebLinkScreen> {
                 disabledColor: const Color(0xFF3A3A3A),
                 child: _isProcessing
                     ? const CupertinoActivityIndicator(color: Color(0xFFFFFFFF))
-                    : const Text(
+                    : Text(
                         'Process Link',
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.bold,
+                          color: (_urlController.text.trim().isNotEmpty && !_isProcessing)
+                              ? const Color(0xFFFFFFFF)
+                              : const Color(0xFF9CA3AF),
                         ),
                       ),
               ),

@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../providers/app_data_provider.dart';
 import '../models/study_content.dart';
 import '../models/note.dart';
@@ -42,6 +43,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
         // IMPORTANT: When viewing a note, we ONLY fetch from Supabase
         // We NEVER trigger regeneration of study content
         ref.read(appDataProvider.notifier).setSelectedNoteId(widget.noteId);
+        _loadNote(); // Load note with full content first
         _loadStudyContent(); // Fetches from Supabase only
         _startPolling(); // Polls Supabase to check if background generation completed
       });
@@ -57,7 +59,9 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
         _pollingService.stopPolling(oldWidget.noteId!);
       }
       _hasContent = false;
+      _currentNote = null; // Reset current note to trigger reload
       if (widget.noteId != null) {
+        _loadNote(); // Load note with full content
         _loadStudyContent();
         _startPolling();
       }
@@ -226,19 +230,72 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
     });
   }
 
+  Note? _currentNote;
+  bool _loadingNote = false;
+
+  Future<void> _loadNote() async {
+    if (widget.noteId == null || _loadingNote) return;
+    
+    setState(() {
+      _loadingNote = true;
+    });
+    
+    try {
+      final supabase = SupabaseService();
+      final note = await supabase.getNoteById(widget.noteId!);
+      setState(() {
+        _currentNote = note;
+        _loadingNote = false;
+      });
+      AppLogger.debug('Loaded note with content length: ${note.content.length}', tag: 'NoteViewScreen');
+    } catch (e) {
+      AppLogger.error('Error loading note', error: e, tag: 'NoteViewScreen');
+      setState(() {
+        _loadingNote = false;
+      });
+      // Fallback to app data
+      final appData = ref.read(appDataProvider);
+      _currentNote = appData.notes.firstWhere(
+        (n) => n.id == widget.noteId,
+        orElse: () => Note(
+          id: widget.noteId ?? '',
+          title: 'Note',
+          content: '',
+          createdAt: DateTime.now(),
+          documents: [],
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Load note with full content if not already loaded
+    if (widget.noteId != null && _currentNote?.id != widget.noteId) {
+      _loadNote();
+    }
+    
+    // Use loaded note or fallback to app data
     final appData = ref.watch(appDataProvider);
-    final note = appData.notes.firstWhere(
+    final note = _currentNote ?? appData.notes.firstWhere(
       (n) => n.id == widget.noteId,
       orElse: () => Note(
-        id: '',
+        id: widget.noteId ?? '',
         title: 'Note',
         content: '',
         createdAt: DateTime.now(),
         documents: [],
       ),
     );
+    
+    if (_loadingNote) {
+      return const CupertinoPageScaffold(
+        backgroundColor: Color(0xFF1A1A1A),
+        child: Center(
+          child: CupertinoActivityIndicator(radius: 15),
+        ),
+      );
+    }
 
     return CupertinoPageScaffold(
       backgroundColor: const Color(0xFF1A1A1A),
@@ -254,7 +311,13 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
           color: const Color(0xFFFFFFFF),
           onPressed: () {
             HapticFeedback.selectionClick();
-            Navigator.of(context).pop();
+            // Use go_router's pop, but check if we can pop first
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              // If we can't pop, navigate to home instead
+              context.go('/home');
+            }
           },
         ),
         middle: Text(
@@ -270,19 +333,32 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
         ),
       ),
       child: SafeArea(
-        child: Column(
-          children: [
-            StudyModeSelector(
-              currentMode: appData.currentStudyMode,
-              onModeChanged: (mode) {
-                HapticFeedback.selectionClick();
-                ref.read(appDataProvider.notifier).setCurrentStudyMode(mode);
-              },
-            ),
-            Expanded(
-              child: _buildContent(note, appData.currentStudyMode),
-            ),
-          ],
+        child: Builder(
+          builder: (context) {
+            // Automatically switch from transcription to summary if transcription is selected
+            if (appData.currentStudyMode == StudyMode.transcription) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                ref.read(appDataProvider.notifier).setCurrentStudyMode(StudyMode.summary);
+              });
+            }
+            
+            return Column(
+              children: [
+                StudyModeSelector(
+                  currentMode: appData.currentStudyMode == StudyMode.transcription 
+                      ? StudyMode.summary 
+                      : appData.currentStudyMode,
+                  onModeChanged: (mode) {
+                    HapticFeedback.selectionClick();
+                    ref.read(appDataProvider.notifier).setCurrentStudyMode(mode);
+                  },
+                ),
+                Expanded(
+                  child: _buildContent(note, appData.currentStudyMode),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -299,6 +375,9 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
 
     switch (mode) {
       case StudyMode.summary:
+        return _buildSummaryView();
+      case StudyMode.transcription:
+        // Transcription mode is hidden - default to summary
         return _buildSummaryView();
       case StudyMode.flashcards:
         return _buildFlashcardsView();
@@ -414,7 +493,7 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                 child: const Icon(
                   CupertinoIcons.doc_text_fill,
                   size: 50,
-                  color: Color(0xFFFFFFFF),
+                  color: Color(0xFF8D1647),
                 ),
               ),
               const SizedBox(height: 28),
@@ -443,19 +522,21 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                 color: modeColor,
                 borderRadius: BorderRadius.circular(16),
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
+                    const Icon(
                       CupertinoIcons.sparkles,
                       size: 20,
+                      color: Color(0xFFFFFFFF),
                     ),
-                    SizedBox(width: 8),
-                    Text(
+                    const SizedBox(width: 8),
+                    const Text(
                       'Generate Summary',
                       style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
+                        color: Color(0xFFFFFFFF),
                       ),
                     ),
                   ],
@@ -529,6 +610,133 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
       child: HtmlWithLatexRenderer(
         htmlContent: _studyContent!.summary,
       ),
+    );
+  }
+
+  Widget _buildTranscriptionView(Note note) {
+    final modeColor = StudyModeColors.getColor(StudyMode.transcription);
+    final hasTranscription = note.content.isNotEmpty;
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            const Color(0xFF1A1A1A),
+            const Color(0xFF1F1F1F),
+          ],
+        ),
+      ),
+      child: !hasTranscription
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: modeColor.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      CupertinoIcons.mic_fill,
+                      size: 40,
+                      color: modeColor,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'No Transcription Available',
+                    style: TextStyle(
+                      color: Color(0xFFFFFFFF),
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 48),
+                    child: Text(
+                      'This note doesn\'t have a transcription yet.\nTranscription is created when you record audio or upload audio files.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFF9CA3AF),
+                        fontSize: 15,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: modeColor.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          CupertinoIcons.mic_fill,
+                          color: modeColor,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Transcription',
+                              style: TextStyle(
+                                color: Color(0xFFFFFFFF),
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Exact transcription of your content',
+                              style: TextStyle(
+                                color: modeColor.withOpacity(0.8),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+                  // Transcription content
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2A2A2A),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFF3A3A3A),
+                        width: 1,
+                      ),
+                    ),
+                    child: HtmlWithLatexRenderer(
+                      htmlContent: note.content,
+                    ),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 
@@ -654,19 +862,21 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                 color: modeColor,
                 borderRadius: BorderRadius.circular(16),
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
+                    const Icon(
                       CupertinoIcons.sparkles,
                       size: 20,
+                      color: Color(0xFFFFFFFF),
                     ),
-                    SizedBox(width: 8),
-                    Text(
+                    const SizedBox(width: 8),
+                    const Text(
                       'Generate Flashcards',
                       style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
+                        color: Color(0xFFFFFFFF),
                       ),
                     ),
                   ],
@@ -863,19 +1073,21 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                 color: modeColor,
                 borderRadius: BorderRadius.circular(16),
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
+                    const Icon(
                       CupertinoIcons.sparkles,
                       size: 20,
+                      color: Color(0xFFFFFFFF),
                     ),
-                    SizedBox(width: 8),
-                    Text(
+                    const SizedBox(width: 8),
+                    const Text(
                       'Generate Quiz',
                       style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
+                        color: Color(0xFFFFFFFF),
                       ),
                     ),
                   ],
@@ -1072,19 +1284,21 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                 color: modeColor,
                 borderRadius: BorderRadius.circular(16),
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
+                    const Icon(
                       CupertinoIcons.sparkles,
                       size: 20,
+                      color: Color(0xFFFFFFFF),
                     ),
-                    SizedBox(width: 8),
-                    Text(
+                    const SizedBox(width: 8),
+                    const Text(
                       'Generate Exercises',
                       style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
+                        color: Color(0xFFFFFFFF),
                       ),
                     ),
                   ],
@@ -1281,19 +1495,21 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
                 color: modeColor,
                 borderRadius: BorderRadius.circular(16),
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
+                    const Icon(
                       CupertinoIcons.sparkles,
                       size: 20,
+                      color: Color(0xFFFFFFFF),
                     ),
-                    SizedBox(width: 8),
-                    Text(
+                    const SizedBox(width: 8),
+                    const Text(
                       'Generate Topics',
                       style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
+                        color: Color(0xFFFFFFFF),
                       ),
                     ),
                   ],
@@ -1452,7 +1668,13 @@ class _NoteViewScreenState extends ConsumerState<NoteViewScreen> {
   }
 
   Widget _buildAIChatView(Note note) {
-    return AIChatPanel(noteId: widget.noteId ?? '');
+    return AIChatPanel(
+      noteId: widget.noteId ?? '',
+      onSummaryUpdated: () {
+        // Reload study content when summary is updated
+        _loadStudyContent();
+      },
+    );
   }
 }
 
@@ -1524,6 +1746,105 @@ class _FlashcardViewerState extends State<_FlashcardViewer>
 
     return Column(
       children: [
+        // Hint button at the top - centered
+        if (!_showBack && card.hint != null && card.hint!.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 24, left: 24, right: 24),
+            child: Column(
+              children: [
+                Center(
+                  child: CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minSize: 0,
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      setState(() {
+                        _showHint = !_showHint;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: _showHint
+                            ? widget.modeColor.withOpacity(0.2)
+                            : const Color(0xFF2A2A2A),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: _showHint
+                              ? widget.modeColor
+                              : const Color(0xFF3A3A3A),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _showHint ? CupertinoIcons.lightbulb_fill : CupertinoIcons.lightbulb,
+                            color: _showHint
+                                ? widget.modeColor
+                                : const Color(0xFF9CA3AF),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Hint',
+                            style: TextStyle(
+                              color: _showHint
+                                  ? widget.modeColor
+                                  : const Color(0xFF9CA3AF),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (_showHint) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: widget.modeColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: widget.modeColor.withOpacity(0.4),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          CupertinoIcons.lightbulb_fill,
+                          color: widget.modeColor,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Text(
+                            card.hint!,
+                            style: const TextStyle(
+                              color: Color(0xFFFFFFFF),
+                              fontSize: 15,
+                              height: 1.5,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
         Expanded(
           child: Center(
             child: Column(
@@ -1547,93 +1868,6 @@ class _FlashcardViewerState extends State<_FlashcardViewer>
                     child: null, // Explicitly set child to null
                   ),
                 ),
-                if (!_showBack && card.hint != null && card.hint!.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    minSize: 0,
-                    onPressed: () {
-                      HapticFeedback.selectionClick();
-                      setState(() {
-                        _showHint = !_showHint;
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: _showHint
-                            ? widget.modeColor.withOpacity(0.2)
-                            : const Color(0xFF2A2A2A),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _showHint
-                              ? widget.modeColor
-                              : const Color(0xFF3A3A3A),
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            CupertinoIcons.lightbulb,
-                            color: _showHint
-                                ? widget.modeColor
-                                : const Color(0xFF9CA3AF),
-                            size: 18,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Hint',
-                            style: TextStyle(
-                              color: _showHint
-                                  ? widget.modeColor
-                                  : const Color(0xFF9CA3AF),
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (_showHint) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 24),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: widget.modeColor.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: widget.modeColor.withOpacity(0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            CupertinoIcons.lightbulb_fill,
-                            color: widget.modeColor,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              card.hint!,
-                              style: TextStyle(
-                                color: const Color(0xFFFFFFFF).withOpacity(0.9),
-                                fontSize: 15,
-                                height: 1.4,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
               ],
             ),
           ),
@@ -1690,10 +1924,10 @@ class _FlashcardViewerState extends State<_FlashcardViewer>
                       _flipController.reset();
                     });
                   },
-                  child: Text(
+                  child: const Text(
                     'Next',
                     style: TextStyle(
-                      color: widget.modeColor,
+                      color: Color(0xFFFFFFFF),
                       fontSize: 16,
                     ),
                   ),
@@ -2063,10 +2297,12 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.''';
                       ? const CupertinoActivityIndicator(
                           color: Color(0xFF1A1A1A),
                         )
-                      : const Text(
+                      : Text(
                           'Check My Work',
                           style: TextStyle(
-                            color: Color(0xFF1A1A1A),
+                            color: (_isChecking || !_hasText)
+                                ? const Color(0xFF9CA3AF)
+                                : const Color(0xFFFFFFFF),
                           ),
                         ),
                 ),
@@ -2075,29 +2311,29 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.''';
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: widget.modeColor.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(16),
+                      color: const Color(0xFF2A2A2A),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: widget.modeColor,
+                        color: const Color(0xFFFFFFFF),
                         width: 1,
                       ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'Feedback:',
                           style: TextStyle(
-                            color: widget.modeColor.withOpacity(0.8),
+                            color: Color(0xFFFFFFFF),
                             fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 12),
                         Text(
                           _feedback!,
-                          style: TextStyle(
-                            color: widget.modeColor.withOpacity(0.9),
+                          style: const TextStyle(
+                            color: Color(0xFF9CA3AF),
                             fontSize: 15,
                             height: 1.5,
                           ),
@@ -2196,10 +2432,10 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.''';
                       _resetExercise();
                     });
                   },
-                  child: Text(
+                  child: const Text(
                     'Next',
                     style: TextStyle(
-                      color: widget.modeColor,
+                      color: Color(0xFFFFFFFF),
                       fontSize: 16,
                     ),
                   ),
@@ -2481,29 +2717,29 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: widget.modeColor.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(16),
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: widget.modeColor,
+                  color: const Color(0xFFFFFFFF),
                   width: 1,
                 ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     'Feedback:',
                     style: TextStyle(
-                      color: widget.modeColor.withOpacity(0.8),
+                      color: Color(0xFFFFFFFF),
                       fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 12),
                   Text(
                     _feedback!,
-                    style: TextStyle(
-                      color: widget.modeColor.withOpacity(0.9),
+                    style: const TextStyle(
+                      color: Color(0xFF9CA3AF),
                       fontSize: 15,
                       height: 1.5,
                     ),
@@ -2515,7 +2751,12 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
                         child: CupertinoButton(
                           onPressed: _resetTopic,
                           color: const Color(0xFF2A2A2A),
-                          child: const Text('Choose Another Topic'),
+                          child: const Text(
+                            'Choose Another Topic',
+                            style: TextStyle(
+                              color: Color(0xFFFFFFFF),
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -2528,7 +2769,12 @@ Respond in JSON format: {"score": number (0-100), "feedback": "critical feedback
                             });
                           },
                           color: widget.modeColor,
-                          child: const Text('Try Again'),
+                          child: const Text(
+                            'Try Again',
+                            style: TextStyle(
+                              color: Color(0xFFFFFFFF),
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -2557,6 +2803,7 @@ class _QuizViewer extends StatefulWidget {
 class _QuizViewerState extends State<_QuizViewer> {
   int _currentIndex = 0;
   bool _showHint = false;
+
 
   @override
   Widget build(BuildContext context) {
@@ -2771,62 +3018,40 @@ class _QuizViewerState extends State<_QuizViewer> {
                   );
                 }),
                 // Show explanation when answer is selected
-                if (question.userAnswer != null) ...[
+                if (question.userAnswer != null && question.userAnswer != question.correctAnswer) ...[
                   const SizedBox(height: 16),
                   Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: question.userAnswer == question.correctAnswer
-                          ? const Color(0xFF10B981).withOpacity(0.15)
-                          : widget.modeColor.withOpacity(0.2),
+                      color: const Color(0xFF2A2A2A),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: question.userAnswer == question.correctAnswer
-                            ? const Color(0xFF10B981)
-                            : widget.modeColor,
+                        color: const Color(0xFFFFFFFF),
                         width: 1,
                       ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Icon(
-                              question.userAnswer == question.correctAnswer
-                                  ? CupertinoIcons.check_mark_circled_solid
-                                  : CupertinoIcons.info_circle_fill,
-                              color: question.userAnswer == question.correctAnswer
-                                  ? const Color(0xFF10B981)
-                                  : widget.modeColor,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              question.userAnswer == question.correctAnswer
-                                  ? 'Correct!'
-                                  : 'Correct Answer: ${String.fromCharCode(65 + question.correctAnswer)}. ${question.options[question.correctAnswer]}',
-                              style: TextStyle(
-                                color: question.userAnswer == question.correctAnswer
-                                    ? const Color(0xFF10B981)
-                                    : widget.modeColor,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (question.explanation != null && question.explanation!.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          Text(
-                            question.explanation!,
-                            style: TextStyle(
-                              color: const Color(0xFFFFFFFF).withOpacity(0.9),
-                              fontSize: 15,
-                              height: 1.4,
-                            ),
+                        const Text(
+                          'Correct Answer:',
+                          style: TextStyle(
+                            color: Color(0xFFFFFFFF),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
-                        ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          question.explanation != null && question.explanation!.isNotEmpty
+                              ? question.explanation!
+                              : 'The correct answer aligns with the key concepts and information presented in the material. Review the content to understand the reasoning behind this choice.',
+                          style: const TextStyle(
+                            color: Color(0xFF9CA3AF),
+                            fontSize: 15,
+                            height: 1.5,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -2868,10 +3093,10 @@ class _QuizViewerState extends State<_QuizViewer> {
                       _showHint = false;
                     });
                   },
-                  child: Text(
+                  child: const Text(
                     'Next',
                     style: TextStyle(
-                      color: widget.modeColor,
+                      color: Color(0xFFFFFFFF),
                       fontSize: 16,
                     ),
                   ),

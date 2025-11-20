@@ -4,7 +4,7 @@ import '../models/study_content.dart';
 class StudyModeColors {
   static Color getColor(StudyMode mode) {
     // All study modes use white as primary color
-    return const Color(0xFFFFFFFF);
+    return const Color(0xFF8D1647);
   }
 
   static List<Color> getGradientColors(StudyMode mode) {

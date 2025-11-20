@@ -51,6 +51,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             fontWeight: FontWeight.w600,
           ),
         ),
+        leading: CupertinoButton(
+          padding: EdgeInsets.zero,
+          minSize: 0,
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            context.push('/settings');
+          },
+          child: const Icon(
+            CupertinoIcons.settings,
+            color: Colors.white,
+            size: 24,
+          ),
+        ),
         trailing: CupertinoButton(
           padding: EdgeInsets.zero,
           minSize: 0,
@@ -139,7 +152,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           height: 64,
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
-                              colors: OnboardingColors.buttonGradientColors,
+                              colors: OnboardingColors.notificationButtonGradientColors,
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
@@ -250,7 +263,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       Icon(
                         CupertinoIcons.add_circled_solid,
                         size: 20,
-                        color: Colors.white,
+                        color: Colors.black,
                       ),
                       SizedBox(width: 8),
                       Text(
@@ -258,7 +271,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          color: Colors.black,
                         ),
                       ),
                     ],

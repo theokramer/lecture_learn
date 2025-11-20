@@ -75,6 +75,7 @@ class _FolderScreenState extends ConsumerState<FolderScreen> {
             HapticFeedback.selectionClick();
             Navigator.of(context).pop();
           },
+          color: const Color(0xFFFFFFFF),
         ),
       ),
       child: SafeArea(

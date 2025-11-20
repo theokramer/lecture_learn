@@ -46,13 +46,21 @@ class RevenueCatNotifier extends Notifier<RevenueCatState> {
 
   @override
   RevenueCatState build() {
-    // Set up listener for customer info updates
-    _revenueCat.listenToCustomerInfoUpdates((customerInfo) {
-      _updateStateFromCustomerInfo(customerInfo);
-    });
-
     // Load initial state asynchronously to avoid blocking build
-    Future.microtask(() => _loadInitialState());
+    Future.microtask(() {
+      // Set up listener for customer info updates after initial load
+      _revenueCat.listenToCustomerInfoUpdates((customerInfo) {
+        // Only update if provider is still mounted and not in error state
+        try {
+          if (ref.exists(revenueCatProvider)) {
+            _updateStateFromCustomerInfo(customerInfo);
+          }
+        } catch (e) {
+          // Provider might be disposed or in error state, ignore
+        }
+      });
+      _loadInitialState();
+    });
 
     return RevenueCatState();
   }
@@ -78,12 +86,18 @@ class RevenueCatNotifier extends Notifier<RevenueCatState> {
   }
 
   void _updateStateFromCustomerInfo(CustomerInfo customerInfo) {
-    final hasActive = customerInfo.entitlements.active.isNotEmpty;
-    state = state.copyWith(
-      customerInfo: customerInfo,
-      hasActiveSubscription: hasActive,
-      activeEntitlements: customerInfo.entitlements.active,
-    );
+    try {
+      final hasActive = customerInfo.entitlements.active.isNotEmpty;
+      // Update state - will fail gracefully if provider is disposed
+      state = state.copyWith(
+        customerInfo: customerInfo,
+        hasActiveSubscription: hasActive,
+        activeEntitlements: customerInfo.entitlements.active,
+      );
+    } catch (e) {
+      // Provider might be disposed or in error state, ignore
+      AppLogger.debug('Error updating RevenueCat state (provider may be disposed)', tag: 'RevenueCatProvider');
+    }
   }
 
   /// Refresh customer info

@@ -4,14 +4,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../models/chat_message.dart';
+import '../models/study_content.dart';
 import '../services/ai_gateway_service.dart';
+import '../services/supabase_service.dart';
 import '../providers/auth_provider.dart';
 import '../providers/app_data_provider.dart';
+import '../utils/logger.dart';
 
 class AIChatPanel extends ConsumerStatefulWidget {
   final String noteId;
+  final VoidCallback? onSummaryUpdated; // Callback to reload summary after editing
 
-  const AIChatPanel({super.key, required this.noteId});
+  const AIChatPanel({
+    super.key,
+    required this.noteId,
+    this.onSummaryUpdated,
+  });
 
   @override
   ConsumerState<AIChatPanel> createState() => _AIChatPanelState();
@@ -22,6 +30,8 @@ class _AIChatPanelState extends ConsumerState<AIChatPanel> {
   final _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
+  String? _conversationId;
+  bool _isLoadingHistory = true;
 
   @override
   void initState() {
@@ -38,14 +48,87 @@ class _AIChatPanelState extends ConsumerState<AIChatPanel> {
 
   Future<void> _loadConversation() async {
     setState(() {
-      _messages.add(ChatMessage(
-        id: '1',
-        role: 'assistant',
-        content:
-            "I'm your personal tutor! I can help explain concepts, answer questions, and guide your learning. What would you like to explore?",
-        timestamp: DateTime.now(),
-      ));
+      _isLoadingHistory = true;
     });
+
+    try {
+      final user = ref.read(authProvider).value;
+      if (user == null) {
+        setState(() {
+          _isLoadingHistory = false;
+          _messages.add(ChatMessage(
+            id: '1',
+            role: 'assistant',
+            content:
+                "I'm your personal tutor! I can help explain concepts, answer questions, and guide your learning. What would you like to explore?",
+            timestamp: DateTime.now(),
+          ));
+        });
+        return;
+      }
+
+      final supabase = SupabaseService();
+      
+      // Get or create conversation for this note
+      _conversationId = await supabase.getOrCreateConversation(user.id, widget.noteId);
+      
+      // Load existing messages
+      final existingMessages = await supabase.loadConversationMessages(_conversationId!);
+      
+      if (existingMessages.isEmpty) {
+        // No history - add welcome message
+        setState(() {
+          _messages.add(ChatMessage(
+            id: '1',
+            role: 'assistant',
+            content:
+                "I'm your personal tutor! I can help explain concepts, answer questions, and guide your learning. What would you like to explore?",
+            timestamp: DateTime.now(),
+          ));
+          _isLoadingHistory = false;
+        });
+      } else {
+        // Load existing messages
+        setState(() {
+          _messages.addAll(existingMessages);
+          _isLoadingHistory = false;
+        });
+        _scrollToBottom();
+      }
+    } catch (e) {
+      AppLogger.error('Error loading conversation', error: e, tag: 'AIChatPanel');
+      setState(() {
+        _isLoadingHistory = false;
+        _messages.add(ChatMessage(
+          id: '1',
+          role: 'assistant',
+          content:
+              "I'm your personal tutor! I can help explain concepts, answer questions, and guide your learning. What would you like to explore?",
+          timestamp: DateTime.now(),
+        ));
+      });
+    }
+  }
+
+  /// Check if the message is a summary editing command
+  bool _isSummaryEditCommand(String text) {
+    final lowerText = text.toLowerCase();
+    final editKeywords = ['add', 'rewrite', 'remove', 'delete', 'edit', 'modify', 'change', 'update', 'insert'];
+    final summaryKeywords = ['summary', 'summaries'];
+    
+    // Check if message contains edit keywords
+    final hasEditKeyword = editKeywords.any((keyword) => lowerText.contains(keyword));
+    
+    // Check if message contains summary keywords or is clearly an editing instruction
+    final hasSummaryKeyword = summaryKeywords.any((keyword) => lowerText.contains(keyword));
+    
+    // Also check for patterns like "add analogy for x", "rewrite the section about y"
+    final hasEditPattern = lowerText.contains('analogy') || 
+                          lowerText.contains('section') ||
+                          lowerText.contains('part') ||
+                          lowerText.contains('paragraph');
+    
+    return hasEditKeyword && (hasSummaryKeyword || hasEditPattern);
   }
 
   Future<void> _sendMessage() async {
@@ -78,9 +161,131 @@ class _AIChatPanelState extends ConsumerState<AIChatPanel> {
         orElse: () => throw Exception('Note not found'),
       );
 
+      // Ensure conversation ID is set
+      if (_conversationId == null) {
+        final supabase = SupabaseService();
+        _conversationId = await supabase.getOrCreateConversation(user.id, widget.noteId);
+      }
+
+      // Save user message to database
+      try {
+        final supabase = SupabaseService();
+        await supabase.saveMessage(_conversationId!, 'user', text);
+      } catch (e) {
+        AppLogger.warning('Failed to save user message', error: e, tag: 'AIChatPanel');
+        // Continue even if save fails
+      }
+
       final aiGateway = AIGatewayService();
 
+      // Check if this is a summary editing command
+      if (_isSummaryEditCommand(text)) {
+        // Get current summary
+        final supabase = SupabaseService();
+        final studyContent = await supabase.getStudyContent(widget.noteId);
+        
+        if (studyContent.summary.isEmpty) {
+          final errorMessage = ChatMessage(
+            id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+            role: 'assistant',
+            content: "I can't edit the summary because there's no summary yet. Please generate a summary first.",
+            timestamp: DateTime.now(),
+          );
+          setState(() {
+            _messages.add(errorMessage);
+            _isLoading = false;
+          });
+          
+          // Save error message to database
+          if (_conversationId != null) {
+            try {
+              final supabase = SupabaseService();
+              await supabase.saveMessage(_conversationId!, 'assistant', errorMessage.content);
+            } catch (e) {
+              AppLogger.warning('Failed to save error message', error: e, tag: 'AIChatPanel');
+            }
+          }
+          
+          _scrollToBottom();
+          return;
+        }
+
+        // Show editing message
+        final editingMessage = ChatMessage(
+          id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+          role: 'assistant',
+          content: "Editing the summary based on your instructions...",
+          timestamp: DateTime.now(),
+        );
+        setState(() {
+          _messages.add(editingMessage);
+        });
+        _scrollToBottom();
+        
+        // Save editing message to database
+        if (_conversationId != null) {
+          try {
+            final supabase = SupabaseService();
+            await supabase.saveMessage(_conversationId!, 'assistant', editingMessage.content);
+          } catch (e) {
+            AppLogger.warning('Failed to save editing message', error: e, tag: 'AIChatPanel');
+          }
+        }
+
+        // Edit the summary
+        final editedSummary = await aiGateway.editSummary(
+          studyContent.summary,
+          text,
+          originalContent: note.content,
+        );
+
+        // Save the edited summary - create new StudyContent with updated summary
+        final updatedContent = StudyContent(
+          summary: editedSummary,
+          flashcards: studyContent.flashcards,
+          quizQuestions: studyContent.quizQuestions,
+          exercises: studyContent.exercises,
+          feynmanTopics: studyContent.feynmanTopics,
+        );
+        await supabase.saveStudyContent(widget.noteId, updatedContent);
+
+        // Trigger reload of summary in note view screen
+        if (widget.onSummaryUpdated != null) {
+          widget.onSummaryUpdated!();
+        }
+
+        // Show success message
+        final successMessage = ChatMessage(
+          id: (DateTime.now().millisecondsSinceEpoch + 2).toString(),
+          role: 'assistant',
+          content: "✅ Summary updated successfully! The changes have been applied. You can view the updated summary in the Summary tab.",
+          timestamp: DateTime.now(),
+        );
+        setState(() {
+          _messages.add(successMessage);
+          _isLoading = false;
+        });
+
+        // Save success message to database
+        if (_conversationId != null) {
+          try {
+            final supabase = SupabaseService();
+            await supabase.saveMessage(_conversationId!, 'assistant', successMessage.content);
+          } catch (e) {
+            AppLogger.warning('Failed to save success message', error: e, tag: 'AIChatPanel');
+          }
+        }
+
+        AppLogger.success('Summary edited successfully', tag: 'AIChatPanel');
+        _scrollToBottom();
+        HapticFeedback.selectionClick();
+        return;
+      }
+
+      // Regular chat message - include conversation history for context
       final messages = <Map<String, String>>[];
+      
+      // Add system message with note context
       if (note.content.isNotEmpty) {
         messages.add({
           'role': 'system',
@@ -88,6 +293,26 @@ class _AIChatPanelState extends ConsumerState<AIChatPanel> {
               'You are a helpful educational assistant. Use the following context from the note to answer questions: ${note.content}',
         });
       }
+      
+      // Add conversation history (last 10 messages for context, excluding current message)
+      final historyMessages = _messages
+          .where((m) => m.role == 'user' || m.role == 'assistant')
+          .take(_messages.length - 1) // Exclude the current user message we just added
+          .toList();
+      
+      // Only include recent history to avoid token limits (last 10 messages)
+      final recentHistory = historyMessages.length > 10 
+          ? historyMessages.sublist(historyMessages.length - 10)
+          : historyMessages;
+      
+      for (final msg in recentHistory) {
+        messages.add({
+          'role': msg.role,
+          'content': msg.content,
+        });
+      }
+      
+      // Add current user message
       messages.add({
         'role': 'user',
         'content': text,
@@ -111,19 +336,44 @@ class _AIChatPanelState extends ConsumerState<AIChatPanel> {
         _isLoading = false;
       });
 
+      // Save assistant message to database
+      if (_conversationId != null) {
+        try {
+          final supabase = SupabaseService();
+          await supabase.saveMessage(_conversationId!, 'assistant', response);
+        } catch (e) {
+          AppLogger.warning('Failed to save assistant message', error: e, tag: 'AIChatPanel');
+          // Continue even if save fails
+        }
+      }
+
       _scrollToBottom();
       HapticFeedback.selectionClick();
     } catch (e) {
       HapticFeedback.heavyImpact();
+      AppLogger.error('Error in AI chat', error: e, tag: 'AIChatPanel');
+      final errorMessage = ChatMessage(
+        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
+        role: 'assistant',
+        content: "I'm sorry, I couldn't process your request. Please try again.",
+        timestamp: DateTime.now(),
+      );
       setState(() {
-        _messages.add(ChatMessage(
-          id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
-          role: 'assistant',
-          content: "I'm sorry, I couldn't process your request. Please try again.",
-          timestamp: DateTime.now(),
-        ));
+        _messages.add(errorMessage);
         _isLoading = false;
       });
+      
+      // Save error message to database
+      if (_conversationId != null) {
+        try {
+          final supabase = SupabaseService();
+          await supabase.saveMessage(_conversationId!, 'assistant', errorMessage.content);
+        } catch (saveError) {
+          AppLogger.warning('Failed to save error message', error: saveError, tag: 'AIChatPanel');
+        }
+      }
+      
+      _scrollToBottom();
     }
   }
 
@@ -165,14 +415,14 @@ class _AIChatPanelState extends ConsumerState<AIChatPanel> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Color(0xFF06B6D4),
-                      Color(0xFF0891B2),
+                      Color(0xFF650941), // Vibrant teal
+                      Color(0xFF8D1647),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(10),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF06B6D4).withOpacity(0.3),
+                      color: const Color(0xFF8D1647).withOpacity(0.3),
                       blurRadius: 8,
                       spreadRadius: 0,
                     ),
@@ -198,11 +448,17 @@ class _AIChatPanelState extends ConsumerState<AIChatPanel> {
         ),
         // Messages
         Expanded(
-          child: ListView.builder(
-            controller: _scrollController,
-            padding: const EdgeInsets.all(20),
-            itemCount: _messages.length + (_isLoading ? 1 : 0),
-            itemBuilder: (context, index) {
+          child: _isLoadingHistory
+              ? const Center(
+                  child: CupertinoActivityIndicator(
+                    radius: 15,
+                  ),
+                )
+              : ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(20),
+                  itemCount: _messages.length + (_isLoading ? 1 : 0),
+                  itemBuilder: (context, index) {
               if (index == _messages.length) {
                 return const Padding(
                   padding: EdgeInsets.all(16),
@@ -231,8 +487,8 @@ class _AIChatPanelState extends ConsumerState<AIChatPanel> {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              Color(0xFF06B6D4),
-                              Color(0xFF0891B2),
+                                 Color(0xFF650941), // Vibrant teal
+    Color(0xFF8D1647) // Vibrant teal
                             ],
                           )
                         : null,
@@ -246,7 +502,7 @@ class _AIChatPanelState extends ConsumerState<AIChatPanel> {
                     boxShadow: isUser
                         ? [
                             BoxShadow(
-                              color: const Color(0xFF06B6D4).withOpacity(0.3),
+                              color: const Color(0xFF8D1647).withOpacity(0.3),
                               blurRadius: 8,
                               spreadRadius: 0,
                             ),
@@ -273,7 +529,7 @@ class _AIChatPanelState extends ConsumerState<AIChatPanel> {
                               height: 1.4,
                             ),
                             code: const TextStyle(
-                              color: Color(0xFF06B6D4),
+                              color: Color(0xFF8D1647),
                               backgroundColor: Color(0xFF1A1A1A),
                             ),
                             codeblockDecoration: BoxDecoration(
@@ -347,8 +603,8 @@ class _AIChatPanelState extends ConsumerState<AIChatPanel> {
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                Color(0xFF06B6D4),
-                                Color(0xFF0891B2),
+                                   Color(0xFF650941), // Vibrant teal
+    Color(0xFF8D1647) // Vibrant teal
                               ],
                             ),
                       color: _isLoading ? const Color(0xFF3A3A3A) : null,
@@ -357,7 +613,7 @@ class _AIChatPanelState extends ConsumerState<AIChatPanel> {
                           ? null
                           : [
                               BoxShadow(
-                                color: const Color(0xFF06B6D4).withOpacity(0.4),
+                                color: const Color(0xFF8D1647).withOpacity(0.4),
                                 blurRadius: 12,
                                 spreadRadius: 0,
                               ),
